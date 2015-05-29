@@ -413,12 +413,12 @@ void StatPhase::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 						break;
 				}
 		} else {
-			static CompoundXactInfo &compound = *CompoundXactInfo::Create();
-			compound.exchanges = 1;
-			compound.reqSize = reqSize;
-			compound.repSize = repSize;
-			compound.lifeTime = repTime;
-			compound.record(rec.theIsolated);
+			static CompoundXactInfo &compound2 = *CompoundXactInfo::Create();
+			compound2.exchanges = 1;
+			compound2.reqSize = reqSize;
+			compound2.repSize = repSize;
+			compound2.lifeTime = repTime;
+			compound2.record(rec.theIsolated);
 		}
 
 		if (x->cookiesSent() > 0)

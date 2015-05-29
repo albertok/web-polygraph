@@ -13,7 +13,7 @@
 
 IntIntHash::IntIntHash(int aCapacity): theHashCap(0) {
 	theHashCap = (aCapacity + aCapacity/3 + 7) | 1;
-	theIndex = new (IntIntHashItem*[theHashCap]);
+	theIndex = new (IntIntHashItem*[this->theHashCap]);
 	memset(theIndex, 0, sizeof(IntIntHashItem*)*theHashCap);
 }
 
