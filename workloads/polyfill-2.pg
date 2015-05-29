@@ -1,0 +1,69 @@
+/*
+ * PolyFill-2 workload designed to pre-fill the caches before
+ * running PolyMix-2 experiments
+ *
+ */
+
+// These specs must be kept in sync with the PolyMix-2 workload
+// Eventually we will re-arrange .pg files to make this synchronization
+// automatic (XXX)
+
+#include "contents.pg"
+#include "phases.pg"
+
+// there is one workload parameter, namely cache size
+size Cache_size = 10GB; // adjust as needed
+
+// make contents 100% cachable
+[ cntImage.cachable, cntHTML.cachable, cntDownload.cachable, 
+  cntOther.cachable ] = 100%;
+
+// the price for having no pointers/references in PGL:
+// we have to re-define the relationship after modifying cntImage
+cntHTML.may_contain = [ cntImage ]; 
+
+// describe PolyFill-2 server
+Server S = { 
+	kind = "PolyFill-2-srv";      // just a label
+
+	contents      = [ cntImage: 65%, cntHTML: 15%, cntDownload: 0.5%, cntOther ];
+	direct_access = [ cntHTML: 95%, cntDownload: 0.8%, cntOther ];
+
+	pconn_use_lmt = zipf(16);
+	idle_pconn_tout = 15sec;
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+// where the simulated servers and robots will be located
+// these ips will need adjustments based on your local environment
+addr[] srv_ips = ['127.0.0.1:8080', '127.0.0.1:8888' ];
+addr[] rbt_ips = ['127.0.0.1' ];
+
+// describe PolyFill-2 robot
+Robot R = {
+	kind = "PolyFill-2-rbt";          // just a label
+	origins = srv_ips;
+
+	recurrence      =  5%;           // just a little bit of hits
+	embed_recur     =  100%;
+	pop_model = { pop_distr = popUnif(); };
+
+	pconn_use_lmt = zipf(64);
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+
+/* phases */
+
+Phase phWarm = { name = "warm"; goal.duration = 2min; log_stats = false; };
+Phase phMeas = { name = "meas"; goal.fill_size = 2*Cache_size; };
+
+// build schedule using some well-known phases and phases defined above
+schedule(phWarm, phMeas, phCool);
+
+// assign agents (servers and robots) to their hosts
+S.addresses = srv_ips;
+R.addresses = rbt_ips;
+
+// commit to using these servers and robots
+use(S, R);

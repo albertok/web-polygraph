@@ -1,0 +1,68 @@
+/*
+ * PolyMix-1 workload approximated using PGL 
+ * (original PolyMix-1 specs were developed prior to PGL)
+ *
+ */
+
+// Warning: These workload specs have not been verified yet!
+
+#include "contents.pg"
+#include "phases.pg"
+
+// there is one workload parameter, namely request rate
+rate Req_Rate = 50/sec; // adjust as needed
+
+// experiment duration
+time ExpDur = 1hour;
+
+// describe PolyMix-1 server
+Server S = { 
+	kind = "PolyMix-1-srv";          // just a label
+	accept_lmt = -1;                 // no limit on number of accept(2) calls
+	contents = [ cntPolyMix_1 ];     // pmix-1 supports only one kind of content
+	xact_think = norm(3sec, 1.5sec); // xaction think time
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+// where the simulated servers and robots will be located
+// these ips will need adjustments based on your local environment
+addr[] srv_ips = ['127.0.0.1:8080', '127.0.0.1:8888' ];
+addr[] rbt_ips = ['127.0.0.1' ];
+
+// handy constant
+int RobotCnt = count(rbt_ips);
+
+// describe PolyMix-1 robot
+Robot R = {
+	kind = "PolyMix-1-rbt";          // just a label
+	origins = srv_ips;
+	recurrence = 55% / cntPolyMix_1.cachable;
+	pop_model = { pop_distr = popUnif(); };
+	req_rate = Req_Rate / RobotCnt;  // each robot has smaller req_rate
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+
+/* phases (note that load is kept at constant level) */
+
+Phase phWarm = { 
+	name = "warm";
+	goal.duration = 10% * ExpDur;
+	load_factor_beg = 1;         // load starts high right away
+	log_stats = false; 
+};
+
+Phase phMeas = { 
+	name = "meas";
+	goal.duration = ExpDur - phWarm.goal.duration; // the rest of the run
+};
+
+// build schedule using some well-known phases and phases defined above
+schedule(phWait, phWarm, phMeas, phCool);
+
+// assign agents (servers and robots) to their hosts
+S.addresses = srv_ips;
+R.addresses = rbt_ips;
+
+// commit to using these servers and robots
+use(S, R);

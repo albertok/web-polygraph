@@ -1,0 +1,51 @@
+/*
+ * WebAxe-4 workload for testing surrogates (aka Web Accelerators and
+ * reverse proxies)
+ */
+
+#include "benches.pg"
+
+/* the settings bellow assume bench ID 101
+ * any ID from 100 to 199 can be used */
+
+Bench TheBench = benchWebAxe4;
+TheBench = {
+	client_side = {
+		addr_space = [ 'lo0::10.101.0-123.1-250/22' ];
+		hosts = [ '172.16.101.61-62' ]; // replace with IPs of your PCs
+	};
+	server_side = {
+		hosts = [ '172.16.101.191-192:80' ]; // replace with IPs of your PCs
+	};
+	proxy_side = {
+		hosts = [ '172.16.101.32:80' ]; // replace with proxy address
+	};
+};
+
+/* You must set all four parameters below.
+ * All parameters must be set from the proxy point of view.
+ * Polygraph will calculate the required number of client-server
+ * pairs and adjust individual pair configuration accordingly. */
+
+
+/* Set your total peak request rate here. For example: 100/sec.
+ * Polygraph will use TheBench to figure out which IP aliases to use.
+ * Polygraph will try to create those aliases. */
+TheBench.peak_req_rate = undef();
+
+/* Set request rate for the cache-filling phase. 
+ * This rate must be between 10% and 100% of peak_req_rate above.
+ * For example: (50%*TheBench.peak_req_rate)   */
+rate FillRate = undef();
+
+/* Set the total cache size (disk + RAM). For example: 30GB+1GB.
+ * ProxyCacheSize is used for the cache-filling phase only.   */
+size ProxyCacheSize = undef();
+
+/* WSS is a working set size of the workload. WSS is similar to
+ * the amount of server content proxies by a surrogate. Use 1GB
+ * if you want to comply with cache-off rules */
+size WSS = 1GB;
+
+// include all the boring details
+#include "webaxe-4-guts.pg"

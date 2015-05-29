@@ -1,0 +1,34 @@
+Portions of NTLM authentication code (src/client/NtlmAuth.(h|cc) files) are
+derived from libcurl of cURL project, circa v7.16.0 (http://curl.haxx.se/):
+
+Copyright (c) 1996 - 2006, Daniel Stenberg, <daniel@haxx.se>.
+
+All rights reserved.
+
+Permission to use, copy, modify, and distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright
+notice and this permission notice appear in all copies.
+
+---------------
+
+MD5 checksum code (src/xstd/Checksum.cc) is derived from RFC 1321,
+Appendix 3. Copyright (C) 1991-2, RSA Data Security, Inc. Created
+1991. All rights reserved. License to copy and use this software is
+granted provided that it is identified as the "RSA Data Security,
+Inc. MD5 Message-Digest Algorithm" in all material mentioning or
+referencing this software or this function. License is also granted to
+make and use derivative works provided that such works are identified
+as "derived from the RSA Data Security, Inc. MD5 Message-Digest
+Algorithm" in all material mentioning or referencing the derived
+work. RSA Data Security, Inc. makes no representations concerning
+either the merchantability of this software or the suitability of this
+software for any particular purpose. It is provided "as is" without
+express or implied warranty of any kind. These notices must be
+retained in any copies of any part of this documentation and/or
+software.
+
+---------------
+
+Fowler–Noll–Vo hash function implementation (src/xstd/gadgets.h file)
+is based on pseudo code from http://www.isthe.com/chongo/tech/comp/fnv/.
+FNV hash algorithms and source code are in public domain.

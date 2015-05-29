@@ -1,0 +1,4 @@
+[DESCRIPTION]
+Polymon is an ncurses-based tool that allows remote monitoring of
+Polygraph tests. The tool normally gets test status updates from the
+udp2tcpd daemon.

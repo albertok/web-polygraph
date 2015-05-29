@@ -1,0 +1,59 @@
+/*
+ * DownTime-2 workload
+ *
+ */
+
+#include "contents.pg"
+
+// describe Downtime-2 server
+Server S = { 
+	kind = "Downtime-2-srv";      // just a label
+
+	contents      = [ cntImage: 65%, cntHTML: 15%, cntDownload: 0.5%, cntOther ];
+	direct_access = [ cntHTML, cntDownload, cntOther ];
+
+	pconn_use_lmt = zipf(16);
+	idle_pconn_tout = 15sec;
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+// where the simulated servers and robots will be located
+// using one robot and one server is probably sufficient for this test
+// these ips will need adjustments based on your local environment!
+addr[] srv_ips = [ '10.12.129.1:8080' ];
+addr[] rbt_ips = [ '10.12.1.1' ];
+
+// describe Downtime-2 robot
+Robot R = {
+	kind = "Downtime-2-rbt";         // just a label
+	origins = srv_ips;
+
+	recurrence      =  55%/80%;      // adjust for average cachability
+	embed_recur     =  100%;
+	pop_model = { pop_distr = popUnif(); };
+
+	// true constant request rate, 3 req/sec per robot
+	req_inter_arrival = const(count(rbt_ips)*sec/3);
+	pconn_use_lmt = zipf(64);
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+
+/* phases */
+
+// power should be turned off (on) at the start (end) of the "dark" phase
+
+Phase phWarm = { name = "warm"; goal.duration = 5min; };
+Phase phLoad = { name = "load"; goal.duration = 5min; };
+Phase phDark = { name = "dark"; goal.duration = 5sec; };
+Phase phMeas = { name = "meas"; goal.duration = 30min; };
+
+// build schedule using some well-known phases and phases defined above
+schedule(phWarm, phLoad, phDark, phMeas);
+
+// assign agents (servers and robots) to their hosts
+S.addresses = srv_ips;
+R.addresses = rbt_ips;
+
+// commit to using these servers and robots
+use(S, R);

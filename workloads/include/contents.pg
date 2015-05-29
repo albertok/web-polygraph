@@ -1,0 +1,101 @@
+
+/*
+ * Commonly used Content models
+ *
+ */
+
+/* Object life cycles are described first, followed by Content models */
+
+// static object life cycle similar to PolyMix-1 environment
+// everything is known and nothing changes
+ObjLifeCycle olcStatic = {
+	length = const(2year);          // two year cycle
+	variance = 0%;                  // no variance
+	with_lmt = 100%;                // all responses have LMT
+	expires = [nmt + const(0sec)];  // everything expires when modified
+};
+
+// object life cycle for "HTML" content
+ObjLifeCycle olcHTML = {
+	length = logn(7day, 1day);      // heavy tail, weekly updates
+	variance = 33%;
+	with_lmt = 100%;                // all responses have LMT
+	expires = [nmt + const(0sec)];  // everything expires when modified
+};
+
+// object life cycle for "Image" content
+ObjLifeCycle olcImage = {
+	length = logn(30day, 7day);    // heavy tail, monthly updates
+	variance = 50%;
+	with_lmt = 100%;               // all responses have LMT
+	expires = [nmt + const(0sec)]; // everything expires when modified
+};
+
+// object life cycle for "Download" content
+ObjLifeCycle olcDownload = {
+	length = logn(0.5year, 30day); // almost no updates
+	variance = 33%;
+	with_lmt = 100%;               // all responses have LMT
+	expires = [nmt + const(0sec)]; // everything expires when modified
+};
+
+// object life cycle for "Other" content
+ObjLifeCycle olcOther = {
+	length = unif(1day, 1year);
+	variance = 50%;
+	with_lmt = 100%;               // all responses have LMT
+	expires = [nmt + const(0sec)]; // everything expires when modified
+};
+
+
+// PolyMix-1 content
+Content cntPolyMix_1 = {
+	kind = "polymix-1"; // just a label
+	mime = { type = undef(); extensions = []; };
+	size = exp(13KB);
+	obj_life_cycle = olcStatic;
+	cachable = 80%;
+};
+
+Content cntImage = {
+	kind = "image";
+	mime = { type = undef(); extensions = [ ".gif", ".jpeg", ".png" ]; };
+	obj_life_cycle = olcImage;
+	size = exp(4.5KB);
+	cachable = 80%;
+	checksum = 1%;
+};
+
+Content cntHTML = {
+	kind = "HTML";
+	mime = { type = undef(); extensions = [ ".html" : 60%, ".htm" ]; };
+	obj_life_cycle = olcHTML;
+	size = exp(8.5KB);
+	cachable = 90%;
+	checksum = 1%;
+
+	may_contain = [ cntImage ];
+	embedded_obj_cnt = zipf(13);
+};
+
+Content cntDownload = {
+	kind = "download";
+	mime = { type = undef(); extensions = [ ".exe": 40%, ".zip", ".gz" ]; };
+	obj_life_cycle = olcDownload;
+	size = logn(300KB, 300KB);
+	cachable = 95%;
+	checksum = 0.01%;
+};
+
+Content cntOther = {
+	kind = "other";
+	obj_life_cycle = olcOther;
+	size = logn(25KB, 10KB);
+	cachable = 72%;
+	checksum = 0.1%;
+};
+
+// Random content similar to request bodies generated before v3.3
+Content cntSimpleRequest = {
+	size = unif(0KB, 8KB);
+};

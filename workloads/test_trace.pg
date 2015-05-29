@@ -1,0 +1,50 @@
+/*
+ * One of the simplest workloads that can replay a given real URL trace using
+ * both Polygraph clients and servers (i.e., without using real servers)
+ * For details, see http://www.web-polygraph.org/docs/userman/replay.html
+ */
+
+// content model used to build responses
+Content SimpleContent = {
+	size = exp(13KB); // response sizes distributed exponentially
+	cachable = 80%;   // 20% of content is uncachable
+};
+
+// a primitive server
+Server S = {
+	kind = "S101"; 
+	contents = [ SimpleContent ];
+	direct_access = contents;
+
+	addresses = ['127.0.0.1:80' ]; // where to create this server agent
+};
+
+DnsResolver Resolver;
+Resolver.servers = [ '127.0.0.1:53' ];
+Resolver.timeout = 5sec;
+
+// a primitive robot
+Robot R = {
+	kind = "R101";
+
+	interests = [ "public": 1%, "foreign" ];
+	foreign_trace = "/tmp/test.urls";
+
+	pop_model = { pop_distr = popUnif(); };
+	recurrence = 55% / SimpleContent.cachable; // adjusted to get 55% DHR
+
+	origins = S.addresses;
+	addresses = ['127.0.0.1' ]; // where this robot agent will be created
+
+	dns_resolver = Resolver;
+};
+
+AddrMap Map = {
+	zone = "."; // use root zone if the trace does not have a smaller zone
+	addresses = S.addresses;
+	names = tracedHosts(R.foreign_trace);
+};
+
+// commit to using these servers, robots, and address maps
+use(S, R);
+use(Map);

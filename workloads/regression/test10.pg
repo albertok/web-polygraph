@@ -1,0 +1,282 @@
+/*
+    TestID=test10 Hit Rates, simplified test9
+
+    1 polyclt with 10 robots, 3 polysrv with 10 servers each
+
+    Run servers with --fake_hosts 127.0.0.1/2/3.
+*/
+
+Bench benchPolyMix3 = {
+        peak_req_rate = undef();
+        client_side = {
+                max_host_load = 600/sec;
+                max_agent_load = 0.4/sec;
+                addr_mask = '10.99.0.0';
+        };
+        server_side = {
+                max_host_load = client_side.max_host_load;
+                max_agent_load = client_side.max_agent_load;
+                addr_mask = '10.99.0.0:3128';
+        };
+};
+
+Bench benchPolyMix4 = {
+        client_side = {
+                max_host_load = 600/sec;
+                max_agent_load = 0.4/sec;
+                addr_space = ['em1::10.99.0-123.1-250/32'];
+                hosts = ['172.28.4.117', '172.28.4.118', '172.28.4.119'];
+        };
+        server_side = {
+                max_host_load = client_side.max_host_load;
+                max_agent_load = undef();
+                addr_space = ['em1::10.99.128-251.1-250:80/32'];
+                hosts = ['172.28.4.107', '172.28.4.108', '172.28.4.109'];
+        };
+};
+
+PolyMix3As asPolyMix3;
+
+PolyMix4As asPolyMix4 = {
+        agents_per_addr = 2;
+};
+
+Bench TheBench = benchPolyMix3;
+
+TheBench.peak_req_rate = 1300/sec;
+
+size ProxyCacheSize = 1GB;
+
+rate FillRate = 1300/sec;
+
+ObjLifeCycle olcStatic = {
+	length = const(2year);
+	variance = 0%;
+	with_lmt = 100%;
+	expires = [nmt + const(0sec)];
+};
+
+ObjLifeCycle olcHTML = {
+	length = logn(7day, 1day);
+	variance = 33%;
+	with_lmt = 100%;
+	expires = [nmt + const(0sec)];
+};
+
+ObjLifeCycle olcImage = {
+	length = logn(30day, 7day);
+	variance = 50%;
+	with_lmt = 100%;
+	expires = [nmt + const(0sec)];
+};
+
+ObjLifeCycle olcDownload = {
+	length = logn(0.5year, 30day);
+	variance = 33%;
+	with_lmt = 100%;
+	expires = [nmt + const(0sec)];
+};
+
+ObjLifeCycle olcOther = {
+	length = unif(1day, 1year);
+	variance = 50%;
+	with_lmt = 100%;
+	expires = [nmt + const(0sec)];
+};
+
+Content cntPolyMix_1 = {
+	kind = "polymix-1"; // just a label
+	mime = { type = undef(); extensions = []; };
+	size = exp(13KB);
+	obj_life_cycle = olcStatic;
+	cachable = 80%;
+};
+
+Content cntImage = {
+	kind = "image";
+	mime = { type = undef(); extensions = [ ".gif", ".jpeg", ".png" ]; };
+	obj_life_cycle = olcImage;
+	size = exp(4.5KB);
+	cachable = 80%;
+	checksum = 1%;
+};
+
+Content cntHTML = {
+	kind = "HTML";
+	mime = { type = undef(); extensions = [ ".html" : 60%, ".htm" ]; };
+	obj_life_cycle = olcHTML;
+	size = exp(8.5KB);
+	cachable = 90%;
+	checksum = 1%;
+};
+
+Content cntDownload = {
+	kind = "download";
+	mime = { type = undef(); extensions = [ ".exe": 40%, ".zip", ".gz" ]; };
+	obj_life_cycle = olcDownload;
+	size = logn(300KB, 300KB);
+	cachable = 95%;
+	checksum = 0.01%;
+};
+
+Content cntOther = {
+	kind = "other";
+	obj_life_cycle = olcOther;
+	size = logn(25KB, 10KB);
+	cachable = 72%;
+	checksum = 0.1%;
+};
+
+Phase phWait = { name = "wait"; goal.xactions = 1; log_stats = false; };
+
+Phase phCool = { name = "cool"; goal.duration = 1min; load_factor_end = 0; log_stats = false; };
+
+int clientHostCount = clientHostCount(TheBench);
+
+addr[] rbt_ips = [ '127.0.0.1' ** 10 ];
+addr[] srv_ips1 = [ '127.0.0.1:7001-7010' ];
+addr[] srv_ips2 = [ '127.0.0.2:8001-8010' ];
+addr[] srv_ips3 = [ '127.0.0.3:9001-9010' ];
+addr[] srv_ips = srv_ips1 + srv_ips2 + srv_ips3;
+
+PopModel popModel = {
+	pop_distr = popUnif();
+	hot_set_frac =  1%;  // fraction of WSS (i.e., hot_set_size / WSS)
+	hot_set_prob = 10%;  // prob. of req. an object from the hot set
+};
+
+Server S = { 
+	kind = "PolyMix-3-srv";
+	contents      = [ cntImage: 54%, cntHTML: 25%, cntDownload: 20.5%, cntOther: 0.5% ];
+	direct_access = [ cntImage, cntHTML, cntDownload, cntOther ];
+
+	//xact_think = norm(2.5sec, 1sec);
+	//pconn_use_lmt = zipf(16);
+	pconn_use_lmt = const(99999999);
+	idle_pconn_tout = 15sec;
+
+	addresses = srv_ips;
+        http_versions = [ "1.0": 10%, "1.1" ];
+};
+
+float HitIfRepeat = 80% * (100% - 5%); 
+
+Robot R = {
+	kind = "PolyMix-3-rbt";
+	origins = srv_ips;
+
+	recurrence      =  35%/HitIfRepeat;
+	embed_recur     =  0;
+	interests = [ "public": 50%, "private" ];
+        foreign_trace = "";
+
+	req_types = [ "Ims200": 5%, "Ims304": 10%, "Reload" : 5%, "Basic" ];
+
+	pop_model = popModel;
+
+	//req_rate = TheBench.client_side.max_agent_load;
+	//pconn_use_lmt = zipf(64);
+	pconn_use_lmt = const(99999999);
+	//open_conn_lmt = 4;
+
+	addresses = rbt_ips;
+        
+        string[] authmix = "FOO\\polytest[0-2000]:barbaz";
+        credentials = authmix;
+
+        http_versions = [ "1.0": 30%, "1.1" ];
+};
+
+int RobotCount = count(R.addresses);
+
+rate PeakRate = RobotCount * 500/sec; //R.req_rate;
+
+time platDur = 2hour;
+time rampDur = platDur/6;
+
+float fillable_ratio = 75%;
+rate  peak_fill_rate = PeakRate * 0.45 * fillable_ratio;
+int wsc = int(peak_fill_rate * platDur);
+working_set_cap(wsc / clientHostCount);
+
+Phase phWarm = {
+	name = "warm"; 
+	goal.duration = 1min;
+	recur_factor_beg = 5%/55%;
+	special_msg_factor_beg = 0.1;
+	load_factor_beg = 0.01;
+	log_stats = false; 
+};
+
+Phase phFRamp = { 
+	name = "framp"; 
+	goal.duration = rampDur; 
+	load_factor_end = FillRate/PeakRate; 
+        load_factor_end = 1.0; 
+	log_stats = false; 
+};
+
+Phase phFill = { 
+	name = "fill"; 
+	goal.fill_size = 2*ProxyCacheSize / clientHostCount;
+	log_stats = false; 
+};
+
+Phase phFExit = { 
+	name = "fexit"; 
+	goal.duration = rampDur; 
+	recur_factor_end = 1;
+	special_msg_factor_end = 1;
+	log_stats = false; 
+};
+
+Goal smallSample = {
+        duration = 10sec;
+};
+
+Goal midSample = {
+        duration = 20sec;
+};
+
+Phase phPR = {
+        name = "peak_finder";
+
+        //goal.duration = platDur;
+        goal.xactions = 100000;
+
+        script = {
+
+                every smallSample do {
+                        StatSample sample = currentSample();
+                        print("sample mean response time is ", sample.rep.rptm.mean);
+                        if (sample.rep.rptm.mean > 2700msec) then {
+                                print("decreasing load factor by -10%");
+                                //changeLoadFactorBy(-10%);
+                        } else {
+                        }
+                }
+
+                every midSample do {
+                        StatSample sample = currentSample();
+                        print("sample mean response time is ", sample.rep.rptm.mean);
+                        if (sample.rep.rptm.mean < 2300msec) then {
+                                print("increasing load factor by 10%");
+                                //changeLoadFactorBy(+10%);
+                        }
+                }
+        };
+};
+
+schedule(
+	//phWarm,
+	//phFRamp, phFill, phFExit,
+        phPR,
+	phCool
+);
+
+StatsSample topSample = { capacity = 10000; };
+
+phPR.stats_samples = [ topSample ];
+
+use(S, R);
+use(TheBench);

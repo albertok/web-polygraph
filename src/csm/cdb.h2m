@@ -1,0 +1,7 @@
+[DESCRIPTION]
+Cdb creates, updates, and displays content databases. If the database
+does not exist, the `add' operation will create it. You can add one or
+more files at a time. By default, contents to be added is read from
+the standard input. Alternatively, you can specify file names. Cdb
+assumes that all input files are in HTML-like format. It is your
+responsibility to strip off any HTTP headers, if needed.

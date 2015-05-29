@@ -1,0 +1,30 @@
+#
+# Makefile to generate lexer and parser source files
+#
+
+.SUFFIXES:
+.SUFFIXES: .cc .o
+
+SHELL	= /bin/sh
+
+DYN_OBJC = PglLexer.cc PglParser.cc
+DYN_OBJH = $(DYN_OBJC:.cc=.h)
+DYN_OBJO = $(DYN_OBJC:.cc=.o)
+
+LEXGEN = ../xparser/gen/lexgen/lexgen
+PARGEN = ../xparser/gen/pargen/pargen 
+
+default: parser lexer
+
+lexer: PglParser.h pgl.lex glexerc.tpl glexerh.tpl $(LEXGEN)
+	$(LEXGEN) pgl.lex
+	mv glexer.cc PglLexer.cc
+	mv glexer.h PglLexer.h
+
+parser: pgl.syn gparserc.tpl gparserh.tpl $(PARGEN)
+	$(PARGEN) pgl.syn
+	mv gparser.cc PglParser.cc
+	mv gparser.h PglParser.h
+
+clean:
+	-rm -f $(DYN_OBJH) $(DYN_OBJC)

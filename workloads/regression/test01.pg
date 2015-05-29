@@ -1,0 +1,49 @@
+/*
+    TestID=test01 Hit Rates
+
+    1 polyclt with 10 robots, 1 polysrv with 30 servers
+
+    public 100%
+    cachable 100%
+    recurrence 50%
+    wss unlimited
+*/
+
+Content cntHTML = {
+	size = exp(8.5KB);
+	cachable = 100%;
+};
+
+PopModel popModel = {
+	pop_distr = popUnif();
+	hot_set_frac = 1%;
+	hot_set_prob = 10%;
+};
+
+addr[] rbt_ips = [ '127.0.0.1' ** 10 ];
+addr[] srv_ips = [ '127.0.0.1:7001-7030' ];
+
+Server S = {
+	contents      = [ cntHTML ];
+	direct_access = [ cntHTML ];
+	addresses = srv_ips;
+	pconn_use_lmt = const(2147483647);
+};
+
+Robot R = {
+	origins = srv_ips;
+	recurrence = 50%;
+	pop_model = popModel;
+	addresses = rbt_ips;
+	interests = [ "public": 100% ];
+	pconn_use_lmt = const(2147483647);
+};
+
+Phase phPR = {
+	name = "peak_finder";
+	goal.xactions = 100000;
+};
+
+schedule(phPR);
+
+use(S, R);

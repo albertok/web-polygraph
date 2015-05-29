@@ -1,0 +1,65 @@
+#include "defaults.pg"
+
+Server S1 = { 
+	kind = "kS1"; 
+	accept_lmt = -1; 
+	contents = [ cntGifs : 30%, cntHtmls : 30%, cntOthers ];
+};
+
+addr[] ips = ['128.117.27.5:8080' : 50%, '127.0.0.1:8080' : 30%];
+addr[] rbt_ips = ['128.117.27.5:8080' : 50%, '127.0.0.1:8080'  ];
+
+int cnt = count(rbt_ips);
+
+Robot R1 = {
+	kind = "kR1";
+	origins = ips;
+	req_rate = 10/sec - 10/5min + 0;
+};
+
+Phase phWait = { name = "wait"; goal.xactions = 1; load_factor_beg = 0; load_factor_end = 0.1; log_stats = false; };
+
+Phase phInc1 = { name = "inc1"; goal.duration = 0.1min; load_factor_end = 1.0; };
+Phase phTop1 = { name = "top1"; goal.duration = 0.4min; };
+Phase phDec1 = { name = "dec1"; goal.duration = 0.1min; load_factor_end = 0.1; };
+
+Phase phIdle = { name = "idle"; goal.duration = 4min; };
+
+Phase phInc2 = { name = "inc2"; goal.duration = 1min; load_factor_end = 1.0; };
+Phase phTop2 = { name = "top2"; goal.duration = 4min; };
+Phase phDec2 = { name = "dec2"; goal.duration = 1min; load_factor_end = 0.1;};
+
+Phase phCool = { name = "cool"; goal.duration = 1min; load_factor_end = 0; log_stats = false; };
+
+
+time_distr dd = now + norm(1sec, sec);
+time_distr[] ddd = [ now + dd : 50%, lmt + exp(1sec) : 30% ];
+addr[] addr_range = '128.117.27-28.1-3:80';
+int[] int_range = (13 .. 15) ** 3;
+int[] int_arr = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] ** 2;
+
+S1.addresses = ips;
+R1.addresses = rbt_ips;
+
+use(S1, R1);
+schedule(
+	phWait, 
+	phInc1, phTop1, phDec1, 
+	phIdle, 
+	phInc2, phTop2, phDec2, 
+	phCool);
+
+StatsSample ss1 = { name = "ss1"; start = 5sec; capacity = 100; };
+schedule(ss1);
+
+addr a1;
+addr a2;
+addr a3;
+[ a1, a2, a3 ] = '128.117.27.0';
+
+addr[] arr1;
+addr[] arr2;
+addr[] arr3;
+[ arr1 : 33%, arr2 : 20%, arr3 ] = '128.117.27.1-60';
+
+string[] strings = [ "r[1-1000]" ];

@@ -1,0 +1,115 @@
+// Web Polygraph configuration language
+
+%tokens
+	ID INT NUM TIME SIZE BOOL_TRUE BOOL_FALSE
+	SQW_STR DQW_STR BQW_STR
+	NUM_PERC
+	CMNT_LINE CMNT_OPEN CMNT_CLOSE
+	EQUAL NEQUAL LT LTE GT GTE BOOL_AND BOOL_OR BOOL_XOR NOT
+	PLUS MINUS MUL DIV MOD POWER
+	ASGN
+	LEFTPARENT RIGHTPARENT RIGHTBRACKET LEFTBRACKET LEFTBRACE RIGHTBRACE
+	PERIOD SEMICOLON COLON COMMA POUND THRU CLONE
+	kw_lmt kw_now kw_nmt
+	kw_if kw_then kw_else kw_every kw_do
+	RE_CUSTOM RE_DEFAULT
+
+// note: expressions must be listed on one level in the rules below for
+//       associativity to work
+
+%left		ASGN
+%noassoc	THRU CLONE
+%left		BOOL_OR
+%left		BOOL_AND
+%left		BOOL_XOR
+%left		NOT
+%noassoc	EQUAL NEQUAL
+%noassoc	LT LTE GT GTE
+%left		PLUS MINUS
+%left		MUL DIV MOD POWER
+
+%rules
+
+Code = StatementSeq .
+
+StatementSeq = Statement StatementSeq | .
+
+Statement = SimpleStatement ';' |  IfCode | EveryCode | '{' Code '}' .
+SimpleStatement = ExprStatement | DeclStatement | .
+
+DeclStatement = PureDecl | ExprInitDecl | CodeInitDecl .
+ExprStatement = Assignment | Call .
+
+PureDecl = TypeName ObjName .
+ExprInitDecl = TypeName ObjName '=' Expression .
+CodeInitDecl = TypeName ObjName '=' '{' Code '}' .
+
+Assignment = ObjName '=' Expression |
+	ObjName '=' '{' Code '}' |
+	'[' Array ']' '=' Expression .
+
+
+Expression = 
+	Bool |
+	Int |
+	Num |
+	Time |
+	Size |
+	DQW_STR |
+	SQW_STR |
+	ID RE_CUSTOM |
+	ID RE_DEFAULT |
+	Qualif |
+	ObjName |
+	'+' Expression |
+	'-' Expression |
+	'!' Expression |
+	Expression '+' Expression |
+	Expression '-' Expression |
+	Expression '*' Expression |
+	Expression '/' Expression |
+	Expression '%' Expression |
+	Expression BOOL_AND Expression |
+	Expression BOOL_OR  Expression |
+	Expression BOOL_XOR Expression |
+	Expression EQUAL Expression |
+	Expression NEQUAL Expression |
+	Expression LT Expression |
+	Expression LTE Expression |
+	Expression GT Expression |
+	Expression GTE Expression |
+	Expression '^' Expression |
+	Expression CLONE Expression |
+	Expression THRU Expression |
+	'[' Array ']' |
+	Call |
+	'(' Expression ')' .
+
+
+Bool = BOOL_TRUE | BOOL_FALSE .
+Int = INT .
+Num = NUM | NUM_PERC.
+Time = TIME .
+Size = SIZE .
+Qualif = "lmt" | "now" | "nmt" .
+
+Array = Array ',' Expression |
+	Array ',' Expression ':' Expression |
+	Expression | Expression ':' Expression | .
+
+List = List ',' Expression | Expression | .
+
+Call = ID '(' List ')' .
+
+IfCode = 
+	"if" Expression "then" '{' Code '}' |
+	"if" Expression "then" '{' Code '}' "else" '{' Code '}' .
+
+EveryCode = "every" Expression "do" '{' Code '}' .
+
+TypeName = ID | ID LEFTBRACKET RIGHTBRACKET .
+ObjName = ID | ID '.' ObjName .
+
+%postlude
+// postlude
+%%

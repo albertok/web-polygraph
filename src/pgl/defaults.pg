@@ -1,0 +1,47 @@
+
+// relatively static object life cycle
+ObjLifeCycle StaticLifeCycle = {
+	birthday = now + unif(-1year, -0.5year);
+	length = const(30day); // norm(30day, 60day);
+	variance = 0%;
+	with_lmt = 100%;
+	expires = [
+		now + const(1day) /* : 20%,
+		lmt + length : 20%,
+		0*/
+	];
+};
+
+// typical gif content
+Content cntGifs = {
+	mime = {
+		type = "image/subimage";
+		extensions = [ ".gif" ]; // ignored for now
+	};
+	size = exp(10KB);
+	obj_life_cycle = StaticLifeCycle;
+	cachable = 90%;
+};
+
+// typical HTML content
+Content cntHtmls = {
+	mime = {
+		type = "text/subhtml";
+		extensions = [ ".html", ".htm" : 20% ];
+	};
+	size = exp(4KB);
+	obj_life_cycle = StaticLifeCycle;
+	cachable = 70%;
+};
+
+// just some other content
+Content cntOthers = {
+	mime = {
+		type = undef();
+		extensions = [ ".tic", ".tac", ".toy" ];
+	};
+	size = exp(100KB);
+	obj_life_cycle = StaticLifeCycle;
+	cachable = 60%;
+};
+

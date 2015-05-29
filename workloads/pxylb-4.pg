@@ -1,0 +1,202 @@
+/*
+ * PxyLB-4 workload for testing Proxy Load Balancers
+ */
+
+#include "phases.pg"
+#include "contents.pg"
+#include "benches.pg"
+
+
+Bench TheBench = {
+	client_side = {
+		max_host_load = 500/sec;
+		max_agent_load = 0.4/sec;
+		hosts = ['10.44.0.61'];
+		addr_space = [ 'lo0::10.45.129-250.1-250' ];
+	};
+
+	server_side = {
+		max_host_load = client_side.max_host_load;
+		hosts = ['10.44.128.61'];
+		addr_space = [ 'lo0::10.45.1-127.1-250:80' ];
+	};
+
+	proxy_side = {
+		max_host_load = 500/sec;
+		max_agent_load = max_host_load; // one agent per host
+		hosts  = ['127.0.0.1'];
+		addr_space = [ 'lo0::10.45.1-127.1-250:80' ];
+	};
+
+	peak_req_rate = 500/sec;
+};
+
+int clientHostCount = clientHostCount(TheBench);
+
+rate FillRate = TheBench.peak_req_rate;
+size ProxyCacheSize = 1GB;
+
+
+// proxy server-side and origin server will inherit from this.
+Server BasicS = {
+	contents = [ cntImage: 65%, cntHTML: 15%, cntDownload: 0.5%, cntOther ];
+	direct_access = [ cntHTML, cntDownload, cntOther ];
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+// proxy client-side and robots will inherit from this.
+Robot BasicR = {
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+
+// an origin server agent
+Server OriginS = BasicS; // "inherit" common properties
+OriginS = {
+	kind = "PxyLB-4-Origin";
+	xact_think = norm(2.5sec, 1sec);
+
+	pconn_use_lmt = zipf(16);
+	idle_pconn_tout = 15sec;
+
+	addresses = serverAddrs(asPolyMix4, TheBench);
+};
+
+
+// estimate number of requests that should produce cache hits if repeated.
+float HitIfRepeat = 80% * (100% - 5%);
+
+// a popularity model for the robots
+PopModel popModel = {
+	pop_distr = popUnif();
+	hot_set_frac = 1%;	// fraction of working set size (WSS)
+	hot_set_prob = 10%;	// prob. of a request for object from hot set
+
+	bhr_discrimination = 90%; // revisit smaller files more often
+};
+
+// client-side robot agent
+Robot ClientR = BasicR; // "inherit" common properties
+ClientR = {
+	kind = "PxyLB-4-Robot";
+	recurrence = 55% / HitIfRepeat;
+	req_rate = TheBench.client_side.max_agent_load;
+	embed_recur = 100%;
+	pop_model = popModel;
+
+	req_types = [ "Ims200": 5%, "Ims304": 10%, "Basic" ];
+	pconn_use_lmt = zipf(64);
+	open_conn_lmt = 4;
+
+	addresses = robotAddrs(asPolyMix4, TheBench);
+};
+int RobotCount = count(ClientR.addresses);
+
+
+
+// a proxy server-side agent (accepting/serving requests/responses)
+Server PxyS = BasicS; // "inherit" common properties
+PxyS = {
+	kind = "PxyLB-4-PxySrv";
+	pconn_use_lmt = exp(10*1024); // a very large limit
+	idle_pconn_tout = 3sec;
+};
+
+// a proxy client-side agent (forwarding/receiving requests/responses)
+Robot PxyR = BasicR; // "inherit" common properties
+PxyR = {
+	kind = "PxyLB-4-PxyClt";
+	req_rate = 0;
+	embed_recur = 0;
+
+	pconn_use_lmt = exp(10*1024); // a very large limit
+	idle_pconn_tout = 5sec;
+};
+
+Cache PxyCache = {
+	capacity = ProxyCacheSize;
+};
+
+Proxy P = {
+	client = PxyR;
+	server = PxyS;
+	cache  = PxyCache;
+	addresses  = proxyAddrs(asPolyMix4, TheBench);
+};
+
+// calculate peak request rate
+rate PeakRate = RobotCount * ClientR.req_rate;
+
+
+/* response-time-stat (as in thermo-stat) settings */
+Rptmstat rptmStat = {
+	sample_dur = 60sec;
+	load_delta = 2%;
+	rptm_min = 1.1sec;
+	rptm_max = 1.2sec;
+};
+
+/* Set length of phases */
+time warmDur = 2min;	// warm-up phase duration ... no stats logged.
+time rampDur = 10min;	// ramp phases (including de-ramp) durations
+time platDur = 1hour;	// length of plat phase
+
+// same as Polymix-3 WSS calculation
+float fillable_ratio = 75%; //	~( cachable, not reloaded, HTTP 200 resp.)
+rate peak_fill_rate = PeakRate * 0.45 * fillable_ratio;
+int wsc = int(peak_fill_rate * platDur);	// number of objects in WS
+working_set_cap(wsc / clientHostCount);
+
+/* the phases */
+Phase phWarm = {
+	name = "warm";
+	goal.duration = warmDur;
+	recur_factor_beg = 5%/55%;
+	special_msg_factor_beg = 0.1;
+	load_factor_beg = 0.01;
+	log_stats = false;
+};
+
+Phase phFRamp = {
+	name = "framp";
+	load_factor_end = FillRate / PeakRate;
+	goal.duration = rampDur;
+};
+
+Phase phFill = {
+	name = "fill";
+	goal.fill_size = 2 * ProxyCacheSize / clientHostCount;
+	wait_wss_freeze = yes;
+};
+
+Phase phFDeRamp = {
+	name = "fderamp";
+	recur_factor_end = 1;
+	load_factor_end = 0.01;
+	special_msg_factor_end = 1;
+	goal.duration = rampDur;
+};
+
+Phase phRamp = { 
+	name = "ramp"; 
+	load_factor_beg = 0.01;
+	load_factor_end = 1;
+	goal.duration = rampDur;
+};
+
+Phase phPlat = { 
+	name = "plat"; 
+	goal.duration = platDur;
+};
+
+Phase phDeRamp = {
+	name = "deramp";
+	load_factor_end = 0.01;
+	goal.duration = rampDur;
+};
+
+schedule(phWarm, phFRamp, phFill, phFDeRamp, phRamp, phPlat, phDeRamp);
+
+// commit to using these things
+use(OriginS, ClientR, P);
+use(TheBench);

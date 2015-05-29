@@ -1,0 +1,48 @@
+/*
+ * Simple workload to test CSM model and injection features
+ *
+ */
+
+// we start with defining content properties for our server to generate
+Content cntRealHTML = {
+	mime = { type = "text/html"; extensions = [ ".html" ]; };
+
+	size = exp(11KB);
+	cachable = 80%;
+
+	content_db  = "pages.cdb";  // import content templates
+	inject_db   = "inj.tdb";    // import text to inject
+	infect_prob = 100%;         // all files will be injected
+	inject_gap  = exp(100Byte); // average distance between injections
+};
+
+// for production tests, never use one host for clients and servers!
+addr[] srv_ips = ['127.0.0.1:8080' ]; // localhost
+addr[] rbt_ips = ['127.0.0.1' ];      // localhost
+
+// a primitive server cleverly labeled "S101"
+// normally, you would specify far more properties,
+// but we will mostly rely on defaults for now
+Server S = {
+	kind = "S101"; 
+	contents = [ cntRealHTML ];
+};
+
+// a primitive robot
+Robot R = {
+	kind = "R101";
+	pop_model = { pop_distr = popUnif(); };
+};
+
+// recurrence is the probability that a robot revisits a URL
+// set recurrence ratio as desired_DHR/cachability_ratio
+R.recurrence = 55% / cntRealHTML.cachable;
+
+R.origins = srv_ips; // tell our robot where the server is
+
+// assign agents (servers and robots) to their hosts
+S.addresses = srv_ips;
+R.addresses = rbt_ips;
+
+// commit to using these servers and robots
+use(S, R);

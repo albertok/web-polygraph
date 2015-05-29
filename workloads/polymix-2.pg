@@ -1,0 +1,96 @@
+/*
+ * PolyMix-2 workload
+ *
+ */
+
+#include "contents.pg"
+#include "phases.pg"
+#include "pipes.pg"
+
+/*
+ * Note: The total request rate depends on the number of robots (each robot is
+ * configured with a constant 0.4/sec rate). If you are designing a custom
+ * workload, you can change that, of course.
+ */
+
+
+// describe PolyMix-2 server
+Server S = { 
+	kind = "PolyMix-2-srv";      // just a label
+
+	contents      = [ cntImage: 65%, cntHTML: 15%, cntDownload: 0.5%, cntOther ];
+	direct_access = [ cntHTML, cntDownload, cntOther ];
+
+	xact_think = norm(2.5sec, 1sec);
+	pconn_use_lmt = zipf(16);
+	idle_pconn_tout = 15sec;
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+// where the simulated servers and robots will be located
+// these ips will need adjustments based on your local environment!
+addr[] srv_ips = ['127.0.0.1:8080', '127.0.0.1:8888' ];
+addr[] rbt_ips = ['127.0.0.1' ];
+
+// describe PolyMix-2 robot
+Robot R = {
+	kind = "PolyMix-2-rbt";          // just a label
+	origins = srv_ips;
+
+	recurrence      =  55%/80%;      // adjust for average cachability
+	embed_recur     =  100%;
+	pop_model = { pop_distr = popUnif(); };
+
+	req_rate = 0.4/sec;
+	pconn_use_lmt = zipf(64);
+	open_conn_lmt = 4;               // open connections limit
+
+	//launch_win = 3min;               // avoid burst of requests at start
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+/* phases */
+
+time phu = 1hour; // phase duration "unit" (handy for testing)
+
+Phase phWarm = { name = "warm"; goal.duration = 3min;
+	load_factor_beg = 0.1; log_stats = false; };
+
+Phase phInc1 = { name = "inc1"; goal.duration = 1*phu; load_factor_end = 1.0; };
+Phase phTop1 = { name = "top1"; goal.duration = 4*phu; };
+Phase phDec1 = { name = "dec1"; goal.duration = 1*phu; load_factor_end = 0.1; };
+
+Phase phIdle = { name = "idle"; goal.duration = 2*phu; };
+
+Phase phInc2 = { name = "inc2"; goal.duration = 1*phu; load_factor_end = 1.0; };
+Phase phTop2 = { name = "top2"; goal.duration = 4*phu; };
+Phase phDec2 = { name = "dec2"; goal.duration = 1*phu; load_factor_end = 0.1;};
+
+
+// build schedule using some well-known phases and phases defined above
+schedule(
+	phWarm,
+	phInc1, phTop1, phDec1, 
+	phIdle, 
+	phInc2, phTop2, phDec2, 
+	phCool);
+
+// limit growth of URL "working set"
+working_set_length(4*phu);
+
+// assign agents (servers and robots) to their hosts
+S.addresses = srv_ips;
+R.addresses = rbt_ips;
+
+// commit to using these servers and robots
+use(S, R);
+
+
+/* same for the pipes (the pipe configuration will be changed to a more
+ * complex as soon as we settle down on the robot:server ratio */
+
+pipe56KbpsIn.addresses = rbt_ips;
+pipe56KbpsOut.addresses = rbt_ips;
+pipeDomesticSrv.addresses = srv_ips;  // this will have to be more complex
+
+use(pipe56KbpsIn, pipe56KbpsOut, pipeDomesticSrv);

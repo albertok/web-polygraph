@@ -1,0 +1,44 @@
+/*
+    TestID=test14  This is test12 with 50% active downloads
+
+    1 polyclt with 10 robots, 1 polysrv with 100 servers
+*/
+
+Content SimpleContent = {
+	size = exp(13KB); // response sizes distributed exponentially
+	cachable = 80%;   // 20% of content is uncachable
+};
+
+Server S = {
+	kind = "S101";
+	contents = [ SimpleContent ];
+	direct_access = contents;
+
+	addresses = ['127.0.0.1:9001-9101' ]; // where to create these server agents
+
+	protocol = [ "FTP" ];
+};
+
+// a primitive robot
+Robot R = {
+	kind = "R101";
+	upload_contents = [ SimpleContent ];
+	pop_model = { pop_distr = popUnif(); };
+	recurrence = 55% / SimpleContent.cachable; // adjusted to get 55% DHR
+
+	origins = S.addresses;      // where the origin servers are
+	addresses = ['127.0.0.1' ** 10 ]; // where these robot agents will be created
+
+	req_types = [ "Basic", "Upload" ];
+	passive_ftp = 50%;
+};
+
+// commit to using these servers and robots
+use(S, R);
+
+Phase phPR = {
+	name = "peak_finder";
+	goal.xactions = 25000;
+};
+
+schedule(phPR);

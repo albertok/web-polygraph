@@ -1,0 +1,75 @@
+/*
+    TestID=test12 SSL only with a variety of request types
+
+    1 polyclt with 10 robots, 1 polysrv with 30 servers
+
+    myssl.conf file should be in the working directory.
+*/
+
+Content SimpleContent = {
+	size = exp(13KB); // response sizes distributed exponentially
+	cachable = 80%;   // 20% of content is uncachable
+};
+
+SslWrap ssl_wrap = {};
+
+// All examples assume 1,000-byte entity
+
+SingleRange range1 = {
+    first_byte_pos_absolute = 30Byte;   // Range: bytes=30-300
+    last_byte_pos_relative = 30%;
+};
+
+SingleRange range2 = {
+    suffix_length_relative = 10%;       // Range: bytes=-100
+};
+
+SingleRange range3 = {
+    suffix_length_absolute = 128Byte;   // Range: bytes=-128
+};
+
+// e.g., Range: bytes=28-175,382-399,510-541,644-744,977-980
+MultiRange rangeM = {
+    first_range_start_absolute = exp(15Byte); // very first octet pos
+    range_length_relative = unif(1%, 10%);    // random spec length
+    range_count = const(5);                   // number of range specs
+};
+
+Server S = {
+	kind = "S101";
+	contents = [ SimpleContent ];
+	direct_access = contents;
+
+	addresses = ['127.0.0.1:9001-9030' ]; // where to create these server agents
+	pconn_use_lmt = const(2147483647);
+	ssl_wraps = [ ssl_wrap ];
+};
+
+// a primitive robot
+Robot R = {
+	kind = "R101";
+	post_contents = [ SimpleContent ];
+	upload_contents = [ SimpleContent ];
+	pop_model = { pop_distr = popUnif(); };
+	recurrence = 55% / SimpleContent.cachable; // adjusted to get 55% DHR
+
+	origins = S.addresses;      // where the origin servers are
+	addresses = ['127.0.0.1' ** 10 ]; // where these robot agents will be created
+	pconn_use_lmt = const(2147483647);
+	ssl_wraps = [ ssl_wrap ];
+
+	req_types = [ "Basic", "Ims200", "Ims304", "Reload", "Range", "Upload" ];
+	req_methods = [ "GET", "HEAD", "POST", "PUT" ];
+
+	ranges = [ range1, range2, range3 ];
+};
+
+// commit to using these servers and robots
+use(S, R);
+
+Phase phPR = {
+	name = "peak_finder";
+	goal.xactions = 100000;
+};
+
+schedule(phPR);

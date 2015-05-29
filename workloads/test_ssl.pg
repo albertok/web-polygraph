@@ -1,0 +1,50 @@
+/*
+ * A very simple "Hello, World!" workload
+ */
+
+// this is just one of the simplest workloads that can produce hits
+// never use this workload for benchmarking
+
+
+// SimpleContent defines properties of content that the server generates;
+// if you get no hits, set SimpleContent.obj_life_cycle to cntStatic, which
+// is defined in workloads/include/contents.pg
+Content SimpleContent = {
+	size = exp(13KB); // response sizes distributed exponentially
+	cachable = 80%;   // 20% of content is uncachable
+};
+
+// a primitive server cleverly labeled "S101"
+// normally, you would specify more properties,
+// but we will mostly rely on defaults for now
+Server S = {
+	kind = "S101"; 
+	contents = [ SimpleContent ];
+	direct_access = contents;
+
+	addresses = ['127.0.0.1:9090' ]; // where to create these server agents
+	ssl_wraps = {
+		// root_certificate = "/tmp/root.pem";
+		// protocols = [ "SSLv2", "SSLv3", "TLSv1" ];
+		// ciphers = [ "ALL:HIGH" ];	// see ciphers(1)
+	};
+};
+
+// a primitive robot
+Robot R = {
+	kind = "R101";
+	pop_model = { pop_distr = popUnif(); };
+	recurrence = 55% / SimpleContent.cachable; // adjusted to get 55% DHR
+
+	origins = S.addresses;      // where the origin servers are
+	addresses = ['127.0.0.1' ]; // where these robot agents will be created
+	ssl_wraps = {
+		// root_certificate = "/tmp/root.pem";
+		// protocols = [ "SSLv23" ];
+		// ciphers = [ "ALL" ];		// see ciphers(1)
+		// rsa_key_sizes = [ 512bit, 1024bit, 2048bit ];
+	};
+};
+
+// commit to using these servers and robots
+use(S, R);

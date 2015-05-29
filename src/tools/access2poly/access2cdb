@@ -1,0 +1,178 @@
+#!/usr/bin/perl -w
+
+#
+# This script reads Squid access log and downloads referenced objects,
+# stuffing them into Polygraph Content Database (.cdb) files, based on
+# reported or guessed content type. The user specifies the directory
+# where the files should be created or updated.
+#
+
+use strict;
+
+# content group entries are checked in the order they are listed here
+# last group always matches
+my @ContentGroups = (
+	{
+		name => 'images',
+		ctypes => [ qr|image/|i ],
+		extensions => [ qr(jpeg|jpg|gif|png)i ],
+		format => 'verbatim',
+	},
+
+	{
+		name => 'htmls',
+		ctypes => [ qr|text/\w*html|i ],
+		extensions => [ qr(html?)i ],
+		format => 'linkonly',
+	},
+
+	{
+		name => 'downloads',
+		ctypes => [ qr|application/(?!\w*java)/|i ],
+		extensions => [ qr(zip|tar|tgz|gz|exe)i ],
+	},
+
+	{
+		name => 'other',
+		ctypes => [ qr|.|i ],
+		extensions => [ qr|.|i ],
+	},
+);
+
+my ($opt, $Dir) = @ARGV;
+die("usage: $0 --cdbs <existing directory to create or update .cdb files in>\n")
+	unless defined $Dir && -d $Dir && $opt eq '--cdbs';
+$Dir =~ s|/*$||g;
+shift @ARGV; shift @ARGV;
+	
+# init groups
+foreach my $g (@ContentGroups) {
+	$g->{hits} = 0;
+	$g->{ctypes_stats} = {};
+	$g->{extensions_stats} = {};
+	$g->{format} = 'verbatim' unless exists $g->{format};
+}
+
+$| = 1;
+
+my $cntEntry = 0;
+while (<>) {
+	chomp;
+	++$cntEntry;
+	&reportProgress() if $cntEntry % 1000 == 0;
+
+	my @fields = (split);
+	next unless @fields >= 10;
+	my $url = $fields[6];
+	my $type = $fields[9];
+
+	# find matching content group
+	my $match;
+	foreach my $g (@ContentGroups) {
+		last if $match = &groupMatch($g, $url, $type);
+	}
+	# last resort
+	$match = $ContentGroups[$#ContentGroups] unless $match;
+
+	&get($match, $url);
+}
+&reportProgress();
+
+map { &reportGroup($_) } sort { $b->{hits} <=> $a->{hits} } @ContentGroups;
+
+exit(0);
+
+sub groupMatch {
+	my ($g, $url, $type) = @_;
+
+	my $match;
+	if (defined $type && $type ne '-') {
+		$match = &listMatch($g, 'ctypes', $type);
+	} 
+
+	if (!$match && defined $url) {
+		my ($ext) = ($url =~ m|/.*\w+\.([^\.]+)|);
+		$match = &listMatch($g, 'extensions', $ext) if defined $ext;
+	}
+
+	return $match;
+}
+
+sub listMatch {
+	my ($g, $name, $text) = @_;
+	my $list = $g->{$name};
+
+	foreach my $e (@{$list}) {
+		if ($text =~ m/$e/) {
+			my $stats = $g->{"${name}_stats"};
+			if (exists $stats->{$e}) {
+				++$stats->{$e};
+			} else {
+				$stats->{$e} = 1;
+			}
+			return $g;
+		}
+	}
+	return undef();
+}
+
+sub get {
+	my ($g, $url) = @_;
+
+	my $tmp = sprintf('%s/wget-%d.out', $Dir, $$);
+	my $wget = sprintf("wget --output-document=%s --server-response '%s'",
+		$tmp, $url);
+	if (system($wget)) {
+		warn("failed to fetch '$url'\n");
+		return;
+	}
+
+	my $db = sprintf('%s/%s.cdb', $Dir, $g->{name});
+	my $cdb = sprintf("cdb %s add --format %s %s",
+		$db, $g->{format}, $tmp);
+	if (system($cdb)) {
+		die("failed to add '$url' to $db: $!\n");
+	}
+
+	unlink $tmp;
+
+	++$g->{hits};
+}
+
+sub reportGroup {
+	my ($g) = @_;
+
+	printf("Group: %s\n", $g->{name});
+	printf("\thits:  %10d\n", $g->{hits});
+
+	&reportList($g, 'ctypes');
+	&reportList($g, 'extensions');
+
+	printf("\n");
+}
+
+sub reportList {
+	my ($g, $name) = @_;
+	my $stats = $g->{"${name}_stats"};
+
+	my $total = 0;
+	map { $total += $_ } values %{$stats};
+
+	printf("\t%-10s: %10d\n", $name, $total);
+
+	while (my ($key, $value) = each %{$stats}) {
+		printf("\t\t%-20s %5d %10.3f\n", $key, $value, &percent($value, $total));
+	}
+}
+
+sub reportProgress {
+	printf(STDERR "#lines: %03dK\n", $cntEntry/1000);
+}
+
+sub percent {
+	my ($part, $whole) = @_;
+	die() unless defined $whole;
+	return -1 unless $whole > 0 && defined($part);
+	no integer;
+	return 100. * $part/$whole;
+}

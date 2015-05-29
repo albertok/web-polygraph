@@ -1,0 +1,7 @@
+Date:  Mon Apr 4 22:50:16 UTC 2011
+Linux dut66 2.6.35-24-server #42-Ubuntu SMP Thu Dec 2 03:58:11 UTC 2010 x86_64 GNU/Linux
+aclocal (GNU automake) 1.11.1
+autoheader (GNU Autoconf) 2.67
+libtoolize (GNU libtool) 2.2.6b
+automake (GNU automake) 1.11.1
+autoconf (GNU Autoconf) 2.67

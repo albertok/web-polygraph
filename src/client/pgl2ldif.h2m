@@ -1,0 +1,6 @@
+[DESCRIPTION]
+Generates LDIF (and other text-based) configuration files from PGL
+code. LDIF is the configuration format used by LDAP servers. To
+generate a configuration file, one needs to create a template.
+Polygraph substitutes well-known keywords in the template file with
+credentials and other authentication-related information.

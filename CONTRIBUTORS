@@ -1,0 +1,33 @@
+- Qiao Yang <geoyang@ironport.com>
+  2008/03 NTLM authentication bugs.
+
+- Dmitry Kurochkin <dmitry.kurochkin@measurement-factory.com>
+  2008/03- Many new features and bug fixes.
+
+- Richard Wall <richard@the-moon.net>
+  2008/03 Compilation bugs on Ubuntu Gutsy
+
+- Mikhail Fedotov <mikhail.fedotov@eykontech.com>
+  2007/01 NTLM authentication support and GCC4 porting.
+
+- Herbert Pfennig <hpfennig@ironport.com>
+  2006/05/22 Investigating problems with creating public aliases using
+  PolyMix-4 rules.
+
+- Sergey A. Osokin <osa@freebsd.org.ru>
+  Porting to FreeBSD 5.2-CURRENT and FreeBSD ports collection
+
+- "Wu S.N." <wsn@21cncorp.com> (a.k.a. Searock)
+  PGL-to-runtime-stats interface fixes
+
+- Nikolay Fedchik <nfedchik@atlantic-link.com.ua>
+  2005/03/21 Gnuplot 4.x porting
+
+- Adrian Chadd <adrian@creative.net.au>
+  2005/09/26 fixes related to handling of network interfaces
+
+- Other
+  We should have started maintaining a detailed list of contributors
+  much earlier. Many good folks have contributed to Polygraph since 
+  its inception in 1998.
+

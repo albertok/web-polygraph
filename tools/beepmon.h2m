@@ -1,0 +1,3 @@
+[DESCRIPTION]
+Connects to specified BEEP servers, starts channel #1, receives BEEP
+messages, and forwards message content to an external program.

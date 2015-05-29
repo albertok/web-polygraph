@@ -1,0 +1,70 @@
+# settings common to all Makefile.ams
+
+# top_builddir/ is needed for generated config.h
+# top_builddir/src/ is needed for generated src/xstd/h/stdint.h
+# top_srcdir/ is needed for post-config.h
+# TODO: move post-config.h and generated config.h to src?
+AM_CPPFLAGS = -I$(top_builddir) -I$(top_builddir)/src -I$(top_srcdir) -I$(top_srcdir)/src
+
+#AM_LDFLAGS =
+#imported_libs =
+
+if ENABLE_MANPAGES_GEN
+
+manpages-am: @top_srcdir@/common.h2m
+	@for binary in $(bin_PROGRAMS) $(dist_bin_SCRIPTS); do \
+		echo "Generating manpage for $$binary"; \
+		manpage=`echo -n "$$binary" | sed -e 's/\..*//'`; \
+		name=`(grep \
+				--after-context=1 \
+				".B \\\\\%polygraph-$$manpage" \
+				'@top_srcdir@/polygraph.man.in' || \
+			echo -n '   a part of Web Polygraph performance benchmark') | \
+			tail -1 | cut -c4-`; \
+		$(HELP2MAN) \
+			--no-info \
+			--name="$$name" \
+			--version-string="polygraph-$$manpage - $(PACKAGE_NAME)" \
+			--include='@top_srcdir@/common.h2m' \
+			--opt-include="$$manpage.h2m" \
+			--output="$$manpage.man" \
+			"./$$binary";\
+	done
+	@if test 'x$(RECURSIVE_TARGETS)' != 'xmanpages-recursive' ; then \
+		$(MAKE) \
+			$(AM_MAKEFLAGS) \
+			RECURSIVE_TARGETS=manpages-recursive \
+			manpages-recursive; \
+	fi
+
+manpages-recursive:
+
+manpages: Makefile $(LIBRARIES) $(PROGRAMS) manpages-am manpages-recursive
+
+manpagesclean-am:
+	@rm -f $(dist_man1_MANS)
+	@if test 'x$(RECURSIVE_TARGETS)' != 'xmanpagesclean-recursive' ; then \
+		$(MAKE) \
+			$(AM_MAKEFLAGS) \
+			RECURSIVE_TARGETS=manpagesclean-recursive \
+			manpagesclean-recursive; \
+	fi
+
+manpagesclean-recursive:
+
+manpagesclean: manpagesclean-am manpagesclean-recursive
+
+.PHONY: manpages-am manpages-recursive manpages \
+	manpagesclean-am manpagesclean-recursive manpagesclean
+
+else
+
+manpages:
+	@echo "Can not generate man pages. Please install help2man and reconfigure."
+
+manpagesclean:
+	@echo "Can not generate man pages. Please install help2man and reconfigure."
+
+.PHONY: manpages manpagesclean
+
+endif

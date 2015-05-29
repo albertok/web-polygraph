@@ -1,0 +1,150 @@
+/*
+ * PolyMix-3 workload (the details)
+ *
+ */
+
+/* modifications in this file cause non-compliance with PolyMix rules  *
+ * all user-specified parameters are in polymix-3.pg                   */
+
+
+#include "contents.pg"
+#include "phases.pg"
+
+
+// compute the number of pairs if not set already
+int clientHostCount = clientHostCount(TheBench);
+
+// robots and servers will bind to these addresses
+addr[] rbt_ips = robotAddrs(asPolyMix3, TheBench);
+addr[] srv_ips = serverAddrs(asPolyMix3, TheBench);
+
+// popularity model for the robots
+PopModel popModel = {
+	pop_distr = popUnif();
+	hot_set_frac =  1%;  // fraction of WSS (i.e., hot_set_size / WSS)
+	hot_set_prob = 10%;  // prob. of req. an object from the hot set
+};
+
+// describe PolyMix-3 server
+Server S = { 
+	kind = "PolyMix-3-srv";
+
+	contents      = [ cntImage: 65%, cntHTML: 15%, cntDownload: 0.5%, cntOther ];
+	direct_access = [ cntHTML, cntDownload, cntOther ];
+
+	xact_think = norm(2.5sec, 1sec);
+	pconn_use_lmt = zipf(16);
+	idle_pconn_tout = 15sec;
+
+	addresses = srv_ips;
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+// compute fraction of requests that should produce hits if repeated
+// account for cachable and non-reloads (what to do with IMSes?)
+float HitIfRepeat = 80% * (100% - 5%); 
+
+// describe PolyMix-3 robot
+Robot R = {
+	kind = "PolyMix-3-rbt";
+	origins = srv_ips;
+
+	recurrence      =  55%/HitIfRepeat; // recurrence is not hit ratio
+	embed_recur     =  100%;
+
+	req_types = [ "Ims200": 5%, "Ims304": 10%, "Reload" : 5%, "Basic" ];
+
+	pop_model = popModel;
+
+	req_rate = TheBench.client_side.max_agent_load;
+	pconn_use_lmt = zipf(64);
+	open_conn_lmt = 4;            // open connections limit
+
+	addresses = rbt_ips;
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+int RobotCount = count(R.addresses);
+
+// re-compute peak request rate
+rate PeakRate = RobotCount * R.req_rate;
+
+/* phases */
+
+time platDur = 4hour;     // plateau phases duration (except idle phase)
+time rampDur = platDur/8; // ramp phases duration    (and idle phase)
+
+// limit the growth of the URL "working set" size (WSS)
+float fillable_ratio = 75%; // ~(cachable, not reloaded, HTTP 200 response)
+rate  peak_fill_rate = PeakRate * 0.45 * fillable_ratio;
+int wsc = int(peak_fill_rate * platDur); // number of objects in the WS
+working_set_cap(wsc / clientHostCount);
+
+
+Phase phWarm = {
+	name = "warm"; 
+	goal.duration = 3min;
+	recur_factor_beg = 5%/55%;
+	special_msg_factor_beg = 0.1;
+	load_factor_beg = 0.1;
+	log_stats = false; 
+};
+
+Phase phFRamp = { 
+	name = "framp"; 
+	goal.duration = rampDur; 
+	load_factor_end = FillRate/PeakRate; 
+};
+
+Phase phFill = { 
+	name = "fill"; 
+	goal.fill_size = 2*ProxyCacheSize / clientHostCount;
+	wait_wss_freeze = yes; // will finish only if WSS is frozen
+};
+
+Phase phFExit = { 
+	name = "fexit"; 
+	goal.duration = rampDur; 
+	recur_factor_end = 1;
+	special_msg_factor_end = 1;
+	load_factor_end = 0.1;
+};
+
+Phase phInc1 = {
+	name = "inc1";
+	goal.duration = rampDur;
+	load_factor_end = 1.0;
+};
+
+Phase phTop1 = { name = "top1"; goal.duration = platDur; };
+Phase phDec1 = { name = "dec1"; goal.duration = rampDur; load_factor_end = 0.1; };
+
+Phase phIdle = { name = "idle"; goal.duration = rampDur; };
+
+Phase phInc2 = { name = "inc2"; goal.duration = rampDur; load_factor_end = 1.0; };
+Phase phTop2 = { name = "top2"; goal.duration = platDur; };
+Phase phDec2 = { name = "dec2"; goal.duration = rampDur; load_factor_end = 0.1; };
+
+/* collect stats samples in the middle of plateau phases */
+StatsSample topSample = { capacity = 10000; };
+StatsSample fillSample = { capacity = int(10% * topSample.capacity); };
+
+phFill.stats_samples = [ fillSample ];
+phTop1.stats_samples = [ topSample ];
+phTop2.stats_samples = [ topSample ];
+
+// build schedule using some well-known phases and phases defined above
+schedule(
+	phWarm,
+	phFRamp, phFill, phFExit,
+	phInc1, phTop1, phDec1,
+	phIdle,
+	phInc2, phTop2, phDec2,
+	phCool
+);
+
+
+// commit to using these objects
+use(S, R);
+use(TheBench);
+

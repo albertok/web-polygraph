@@ -1,0 +1,278 @@
+#!/usr/bin/perl -w
+
+#
+# This script reads access log in Squid format and prints "good" entries
+# Good entries are defined based on the --profile option.
+#
+# "country" profile (for building request interarrival distributions):
+#	- US-based client IP addresses
+#
+# "server" profile (for building most server-side parameters)
+#	- HTTP protocol
+#	- 2xx and 3xx status codes
+#	- GET, POST, and HEAD request methods
+#
+# "content" profile (for building content databases):
+#	- HTTP protocol
+#	- 200 status code
+#	- GET request methods
+#	- no query terms in request-URI
+#
+# The script also dumps statistics related to the above filtering choices
+#
+# "country" profile prerequisite, an IP::Country::Fast Perl module, can be
+# found at http://search.cpan.org/~nwetters/IP-Country-2.17/
+#
+
+use strict;
+use integer;
+
+# grok profile
+my ($option, $Profile) = @ARGV or
+	die("usage: $0 --profile <country|server|content>\n");
+die("unsupported option '$option'\n") unless $option eq '--profile';
+die("unsupported profile '$Profile'\n") unless 
+	($Profile eq 'country' || $Profile eq 'server' || $Profile eq 'content');
+shift @ARGV; shift @ARGV;
+
+my %Ips = ();
+my %Bads = ();
+my %Countries = ();
+my %Statuses = ();
+my %Protos = ();
+my %Methods = ();
+my ($cntEntry, $cntGoodEntry, $cntBad,
+	$cntIp, $cntGoodIp,
+	$cntStatus, $cntGoodStatus, 
+	$cntUri, $cntGoodUri, 
+	$cntCountry, $cntGoodCountry,
+	$cntMethod, $cntGoodMethod,
+	$cntProto, $cntGoodProto) = (0) x 15;
+
+my %GoodCountries = map { ($_ => 1) } qw(US);
+my %GoodMethods = map { ($_ => 1) } qw(GET HEAD POST);
+
+my $Registry;
+
+select(STDERR);
+
+while (<>) {
+	chomp;
+	++$cntEntry;
+	&reportProgress() if $cntEntry % 1000 == 0;
+
+	my @fields = (split);
+	my @bad = ();
+
+	push @bad, 'FC' if @fields < 10;
+
+	# check response status code
+	++$cntStatus;
+	my ($sc) = ($fields[3] =~ m|\w+/(\d+)|);
+	$sc = '??' unless defined $sc;
+	if (defined $Statuses{$sc}) {
+		++$Statuses{$sc};
+	} else {
+		$Statuses{$sc} = 1;
+	}
+	my $goodStatus = $Profile eq 'country';
+	if ($Profile eq 'server') {
+		$goodStatus = $sc ne '??' && ($sc/100 == 2 || $sc/100 == 3);
+	}
+	elsif ($Profile eq 'content') {
+		$goodStatus = $sc eq '200';
+	}
+	if ($goodStatus) {
+		++$cntGoodStatus;
+	} else {
+		push @bad, 'SC';
+	}
+
+	# check protocol
+	++$cntProto;
+	my $uri = $fields[6];
+	my ($proto) = ($uri =~ m|(\w+)://|);
+	$proto = '??' unless defined $proto;
+	if (defined $Protos{$proto}) {
+		++$Protos{$proto};
+	} else {
+		$Protos{$proto} = 1;
+	}
+	my $goodProto = $Profile eq 'country' || $proto eq 'http';
+	if ($goodProto) {
+		++$cntGoodProto;
+	} else {
+		push @bad, 'PRT';
+	}
+
+	# check URI for query terms
+	++$cntUri;
+	if ($Profile ne 'content' || $uri !~ /[\?\&]/) {
+		++$cntGoodUri;
+	} else {
+		push @bad, 'URI';
+	}
+
+	# check request method
+	++$cntMethod;
+	my $method = $fields[5];
+	$method = '??' unless defined $method;
+	if (defined $Methods{$method}) {
+		++$Methods{$method};
+	} else {
+		$Methods{$method} = 1;
+	}
+	my $goodMethod = $Profile eq 'country';
+	if ($Profile eq 'server') {
+		$goodMethod = exists $GoodMethods{$method};
+	}
+	elsif ($Profile eq 'content') {
+		$goodMethod = $method eq 'GET'
+	}
+	if ($goodMethod) {
+		++$cntGoodMethod;
+	} else {
+		push @bad, 'MT';
+	}
+
+	# check client country code
+	++$cntCountry;
+	my ($ip, $cc) = ($fields[2] =~ m|([\-\.\d]+)/?(\w+)?|);
+	if (!defined $cc && $Profile eq 'country') {
+		# init IP registry if needed
+		require IP::Country::Fast;
+		$Registry = IP::Country::Fast->new() unless $Registry;
+		$cc = $Registry ? $Registry->inet_atocc($ip) : '??';
+	}
+	$cc = '??' unless defined $cc;
+	if (defined $Countries{$cc}) {
+		++$Countries{$cc};
+	} else {
+		$Countries{$cc} = 1;
+	}
+	my $goodCC = $Profile ne 'country';
+	if ($Profile eq 'country') {
+		$goodCC = !defined(%GoodCountries) || $GoodCountries{$cc};
+	}
+	if ($goodCC) {
+		++$cntGoodCountry;
+	} else {
+		push @bad, 'CC';
+	}
+
+	# maintain an IP:quality map
+	if (exists $Ips{$ip}) {
+		if ($Ips{$ip}) {
+			if (@bad) {
+				$Ips{$ip} = 0;
+			} else {
+				$Ips{$ip} = $fields[0];
+			}
+		} 
+		# enable to support good IPs
+		# else {
+		# 	push @bad, 'IP';
+		# }
+	} else {
+		$Ips{$ip} = @bad ? 0 : $fields[0];
+		++$cntIp;
+	}
+
+	if (@bad) {
+		&recordBads(\@bad);
+	} else {
+		++$cntGoodEntry;
+	}
+
+	# skip bad entries
+	next if @bad;
+
+	# skip bad IPs
+	# next unless $Ips{$ip};
+
+	print(STDOUT $_, "\n");
+}
+&reportProgress();
+
+foreach my $sc (sort { $Statuses{$b} <=> $Statuses{$a} } keys %Statuses) {
+	printf("SC: %-3s %6d %6.2f\n", $sc, $Statuses{$sc},
+		&percent($Statuses{$sc}, $cntStatus));
+}
+print("\n");
+
+foreach my $proto (sort { $Protos{$b} <=> $Protos{$a} } keys %Protos) {
+	printf("PRT: %-15s %6d %6.2f\n", $proto, $Protos{$proto},
+		&percent($Protos{$proto}, $cntProto));
+}
+print("\n");
+
+printf("URI: %-5s %6d %6.2f\n", 'good', $cntGoodUri,
+	&percent($cntGoodUri, $cntUri));
+printf("URI: %-5s %6d %6.2f\n", 'bad', $cntUri-$cntGoodUri,
+	&percent($cntUri-$cntGoodUri, $cntUri));
+print("\n");
+
+foreach my $method (sort { $Methods{$b} <=> $Methods{$a} } keys %Methods) {
+	printf("MT: %-10s %6d %6.2f\n", $method, $Methods{$method},
+		&percent($Methods{$method}, $cntMethod));
+}
+print("\n");
+
+foreach my $cc (sort { $Countries{$b} <=> $Countries{$a} } keys %Countries) {
+	printf("CC: %2s %6d %6.2f\n", $cc, $Countries{$cc},
+		&percent($Countries{$cc}, $cntCountry));
+}
+print("\n");
+
+printf("entry: %-5s %6d %6.2f\n", 'good', $cntGoodEntry,
+	&percent($cntGoodEntry, $cntEntry));
+printf("entry: %-5s %6d %6.2f\n", 'bad', $cntEntry-$cntGoodEntry,
+	&percent($cntEntry-$cntGoodEntry, $cntEntry));
+print("\n");
+
+$cntGoodIp = scalar grep { $_ } values %Ips;
+printf("IPs: %-5s %6d %6.2f\n", 'good', $cntGoodIp,
+	&percent($cntGoodIp, $cntIp));
+printf("IPs: %-5s %6d %6.2f\n", 'bad', $cntIp-$cntGoodIp,
+	&percent($cntIp-$cntGoodIp, $cntIp));
+print("\n");
+
+foreach my $bas (sort { $Bads{$b} <=> $Bads{$a} } keys %Bads) {
+	printf("Bads: %-3s %6d %6.2f\n", $bas, $Bads{$bas},
+		&percent($Bads{$bas}, $cntBad));
+}
+
+
+
+
+
+
+exit(0);
+
+sub recordBads {
+	my $bads = shift;
+	foreach my $b (@{$bads}) {
+		$Bads{$b} = 0 unless defined $Bads{$b};
+		++$Bads{$b};
+		++$cntBad;
+	}
+}
+
+sub reportProgress {
+	printf("#Klines: %03d IPs: %3d  SC: %6.2f PRT: %6.2f URI: %6.2f MT: %6.2f CC: %6.2f\n",
+		$cntEntry/1000,
+		$cntIp,
+		&percent($cntGoodStatus, $cntStatus),
+		&percent($cntGoodProto, $cntProto),
+		&percent($cntGoodUri, $cntUri),
+		&percent($cntGoodMethod, $cntMethod),
+		&percent($cntGoodCountry, $cntCountry));
+}
+
+sub percent {
+	my ($part, $whole) = @_;
+	$whole = $cntEntry unless defined $whole;
+	return -1 unless $whole && defined($part);
+	no integer;
+	return 100. * $part/$whole;
+}

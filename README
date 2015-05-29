@@ -1,0 +1,33 @@
+
+  Web Polygraph                           http://www.web-polygraph.org/
+  ---------------------------------------------------------------------
+  (C) 2003-2006  The Measurement Factory
+
+
+  Web Polygraph is a performance benchmarking tool for caching proxies,
+  origin server accelerators, L4/7 switches, content filters, and other
+  Web intermediaries.
+  
+  Installation instructions, examples of use, results, and other info
+  are available at the web site.
+
+  Web Polygraph is written by Alex Rousskov and Duane Wessels with the
+  help of CONTRIBUTORS. The software is licensed under the Apache
+  License, Version 2.0, available in the LICENSE file. Web Polygraph,
+  PolyMix, and WebAxe are trademarks of The Measurement Factory.
+
+
+  You can reach us at:
+
+	http://www.web-polygraph.org/
+	users@web-polygraph.org           (public mailing list)
+	polyteam@measurement-factory.com  (developers alias)
+
+	The Measurement Factory
+	PO Box 380
+	Boulder, CO 80306-0380
+	USA
+
+
+  Happy benchmarking!
+

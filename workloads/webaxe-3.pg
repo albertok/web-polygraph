@@ -1,0 +1,144 @@
+/*
+ * WebAxe-3 workload for testing Web Accelerators (reverse proxies)
+ *
+ */
+
+// Warning: These specs are under construction.
+//          They are not pretty and have not been verified yet!
+
+
+#include "contents.pg"
+#include "phases.pg"
+#include "benches.pg"
+
+// replace all "undef()" with real values
+// adjust IP addresses and masks to match your environment
+
+Bench TheBench = {
+	peak_req_rate = undef();
+
+	client_side = {
+		max_host_load = 600/sec; 
+		max_agent_load = 0.4/sec;
+		addr_mask = 'fxp0::10.11.0.0';
+		hosts = [ '172.16.0.61-62' ];
+	};
+
+	server_side = {
+		max_host_load = client_side.max_host_load;
+		max_agent_load = client_side.max_agent_load;
+		addr_mask = 'fxp0::10.11.0.0:80';
+		hosts = [ '172.16.128.61-62:80' ];
+	};
+};
+
+// Fill rate (must be between 10% and 100% of peak request rate PeakRate)
+rate FillRate = undef()*TheBench.peak_req_rate;
+
+// the two standard working set sizes are 100MB and 1GB
+size WSS = undef();
+
+// Cache size affects the duration of the "fill" phase below
+// Use the sum of RAM and cache disks physical capacity
+size CacheSize = undef();
+
+
+
+/* internals */
+
+// popularity model for the robots
+PopModel popModel = {
+	pop_distr = popUnif();
+	hot_set_frac =  1%;  // fraction of WSS (i.e., hot_set_size / WSS)
+	hot_set_prob = 10%;  // prob. of req. an object from the hot set
+};
+
+// describe WebAxe-3 server
+Server S = { 
+	kind = "WebAxe-3-srv";
+
+	contents      = [ cntImage: 65%, cntHTML: 15%, cntDownload: 0.5%, cntOther ];
+	direct_access = [ cntHTML, cntDownload, cntOther ];
+
+	xact_think = norm(0.3sec, 0.1sec);
+	pconn_use_lmt = zipf(16);
+	idle_pconn_tout = 15sec;
+
+	addresses = TheBench.server_side.hosts;
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+// describe WebAxe-3 robot
+Robot R = {
+	kind = "WebAxe-3-rbt";
+	origins = S.addresses;
+
+	recurrence      =   95%;
+	embed_recur     =  100%;
+	pop_model = popModel;
+
+	req_types = [ "Ims200": 5%, "Ims304": 10%, "Reload" : 5%, "Basic" ];
+
+	req_rate = TheBench.client_side.max_agent_load;
+	pconn_use_lmt = zipf(64);
+	open_conn_lmt = 4;              // open connections limit
+
+	addresses = robotAddrs(asPolyMix3, TheBench);
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+int RobotCount = count(R.addresses);
+int ClientHostCount = count(TheBench.client_side.hosts);
+
+// XXX: we need to change launch algorithm to avoid magic
+//R.launch_win = RobotCount * 0.1sec;
+
+
+/* phases */
+
+Phase phWarm = { 
+	name = "warm"; 
+	goal.duration = 3min;
+	load_factor_beg = 0.1; 
+	load_factor_end = FillRate/TheBench.peak_req_rate;
+	recur_factor_beg = 5%/95%;
+	log_stats = false; 
+};
+
+Phase phFill = { 
+	name = "fill";
+	goal.fill_size = 2*CacheSize / ClientHostCount;
+	wait_wss_freeze = yes; // will finish only if WSS is frozen
+};
+
+Phase phLink1 = { 
+        name = "link1";
+        goal.duration = 5min;
+        recur_factor_end = 1.0;
+};
+
+Phase phLink2 = { 
+        name = "link2";
+        goal.duration = 5min;
+        load_factor_end = 1.0;
+};
+
+Phase phTop1 = { name = "top1"; goal.duration = 60min; };
+Phase phDec  = { name = "dec";  goal.duration = 5min; load_factor_end = 0.1; };
+Phase phIdle = { name = "idle"; goal.duration = 10min; };
+Phase phInc  = { name = "inc";  goal.duration = 5min; load_factor_end = 1.0; };
+Phase phTop2 = { name = "top2";	goal.duration = 60min; };
+
+// build schedule using some well-known phases and phases defined above
+schedule(phWarm, phFill, phLink1, phLink2,
+	phTop1, phDec, phIdle, phInc, phTop2, 
+	phCool);
+
+working_set_cap(int(WSS/11KB / ClientHostCount));
+
+// commit to using these servers and robots
+use(S, R);
+
+// do not forget to configure network level delay and packet loss!
+// client side: 100msec delay and 0.1% packet loss in both directions
+// server side: no delays or packet losses.

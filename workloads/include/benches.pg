@@ -1,0 +1,62 @@
+
+/*
+ * configurations for standard test "benches"
+ *
+ */
+
+Bench benchPolyMix3 = {
+	peak_req_rate = undef(); // must be set in the workload file
+
+	client_side = {
+		max_host_load = 400/sec;   // maximum load per PolyMix-3 PC
+		max_agent_load = 0.4/sec;  // maximum robot load
+		addr_mask = '10.1.0.0';    // depricated; affects alias creation
+	};
+
+	server_side = {
+		max_host_load = client_side.max_host_load;
+		max_agent_load = client_side.max_agent_load;
+		addr_mask = '10.1.0.0:80'; // depricated; affects alias creation
+	};
+};
+
+Bench benchWebAxe4 = {
+	client_side = {
+		max_host_load = 500/sec;
+		max_agent_load = 0.4/sec;
+		addr_space = [ 'lo0::10.1.1-123.1-250/22' ];
+	};
+
+	server_side = {
+		max_host_load = client_side.max_host_load;
+		max_agent_load = max_host_load;
+		// addr_space is set to hosts for WebAxe4
+	};
+};
+
+Bench benchPolyMix4 = {
+	client_side = {
+		max_host_load = 500/sec;
+		max_agent_load = 0.4/sec;
+		addr_space = [ 'lo0::10.101.0-123.1-250/22' ];
+	};
+
+	server_side = {
+		max_host_load = client_side.max_host_load;
+		max_agent_load = undef(); // not used
+		addr_space = [ 'lo0::10.101.128-251.1-250:80/22' ];
+	};
+};
+
+
+/* standard address [allocation] schemes */
+
+PolyMix3As asPolyMix3;
+
+SpreadAs asSpread = { agents_per_addr = 2; };
+PolyMix4As asPolyMix4 = { agents_per_addr = 2; };
+WebAxe4As asWebAxe4 = { agents_per_addr = 2; };
+
+SrvLb4As asNoLb_L4_4 = { agents_per_addr = 1; };
+SrvLb4As asSrvLb_L4_4 = { agents_per_addr = 1; };
+SrvLb4As asSrvLb_L7_4 = { agents_per_addr = 1; };

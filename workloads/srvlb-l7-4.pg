@@ -1,0 +1,143 @@
+/*
+ * Server load balancing (layer 7) workload
+ */
+
+#include "benches.pg"
+#include "contents.pg"
+#include "srvlb-l7-4-guts.pg"
+
+/* there must be a minimum of 6 servers, total.
+ * there must be equal numbers of each type of server.
+ */
+
+addr[] html_servers = [ '172.16.45.191-192:80' ];
+addr[] png_servers = [ '172.16.45.193-194:80' ];
+addr[] jpg_servers = [ '172.16.45.195-196:80' ];
+
+Bench TheBench = {
+	client_side = {
+		max_host_load = 700/sec;
+		max_agent_load = 0.7/sec;
+
+		// the primary ("real") ip addresses of the client machines.
+		hosts = [ '172.16.45.61' ];
+		addr_space = [ 'lo0::10.45.1-250.1-250' ];
+	};
+	
+	server_side = {
+		max_host_load = client_side.max_host_load;
+		max_agent_load = max_host_load;
+
+		// the primary ("real") ip addresses of the server machines.
+		// also used as the origin server addresses
+		hosts = [ html_servers, png_servers, jpg_servers ];
+	};
+
+	// use proxy_side to store VIP to keep all real IPs in TheBench
+	proxy_side.hosts = [ '172.16.45.254:80' ];
+
+	// maximum request rate for the configured number of hosts
+	peak_req_rate = client_side.max_host_load * count(client_side.hosts);
+};
+
+AddrMap vipMap = {
+	addresses = serverAddrs(asSrvLb_L7_4, TheBench);
+	names = TheBench.proxy_side.hosts;
+};
+
+// common configuration for all three types of servers
+Server OriginS = {
+	kind = "SrvLb-L7-4";
+
+	xact_think = norm(150msec, 50msec);
+	pconn_use_lmt = zipf(64);
+	idle_pconn_tout = 15sec;
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+Server OriginHTML = OriginS;
+OriginHTML = {
+	kind = "SrvLB-L7-4_HTML";
+	contents = [ cntImage_HTML: 65%, cntHTML_HTML: 15%, 
+		cntDownload_HTML: 0.5%, cntOther_HTML ];
+	direct_access = [ cntHTML_HTML, cntDownload_HTML, cntOther_HTML ];
+	addresses = html_servers;
+};
+
+Server OriginPNG = OriginS;
+OriginPNG = {
+	kind = "SrvLB-L7-4_PNG";
+	contents = [ cntImage_PNG: 65%, cntHTML_PNG: 15%, 
+		cntDownload_PNG: 0.5%, cntOther_PNG ];
+	direct_access = [ cntHTML_PNG, cntDownload_PNG, cntOther_PNG ];
+	addresses = png_servers;
+};
+
+Server OriginJPG = OriginS;
+OriginJPG = {
+	kind = "SrvLB-L7-4_JPG";
+	contents = [ cntImage_JPG: 65%, cntHTML_JPG: 15%,
+		cntDownload_JPG: 0.5%, cntOther_JPG ];
+	direct_access = [ cntHTML_JPG, cntDownload_JPG, cntOther_JPG ];
+	addresses = jpg_servers;
+};
+
+
+PopModel popModel = {
+	pop_distr = popUnif();
+	hot_set_frac = 1%;	// fraction of working set size (WSS)
+	hot_set_prob = 10%;	// prob. of a request for object from hot set
+
+	bhr_discrimination = 90%; // revisit smaller files more often
+};
+
+Robot ClientR = {
+	kind = "SrvLb-L7-4-Clt";
+
+	req_rate = TheBench.client_side.max_agent_load;
+	recurrence = 95%;
+	embed_recur = 100%;
+	pop_model = popModel;
+	req_types = [ "Ims200": 5%, "Ims304": 10%, "Reload" : 5%, "Basic" ];
+	open_conn_lmt = 4;
+	pconn_use_lmt = zipf(16);
+
+	origins = vipMap.names;
+	addresses = robotAddrs(asSrvLb_L7_4, TheBench);
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+
+/* the phases */
+
+Phase phRamp = { 
+	name = "ramp"; 
+	populus_factor_beg = 1%;
+	populus_factor_end = 100%;
+	goal.duration = 30min;
+};
+
+Phase phPlat = { 
+	name = "plat"; 
+	goal.duration = 60min;
+};
+
+Phase phExit = {
+	name = "exit";
+	populus_factor_end = 1%;
+	goal.duration = 30min;
+};
+
+// assume the number of pages on a site does not depend on its popularity
+// working_set_cap(50000 / clientHostCount(TheBench));
+
+// assume sites with higher request rate have more pages (larger WSS)
+working_set_length(phRamp.goal.duration/2);
+
+schedule(phRamp, phPlat, phExit);
+
+
+// commit to using these things
+use(OriginHTML, OriginPNG, OriginJPG, ClientR);
+use(vipMap);
+use(TheBench);

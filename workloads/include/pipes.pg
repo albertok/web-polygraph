@@ -1,0 +1,48 @@
+
+/*
+ * Commonly used network pipes
+ *
+ */
+
+
+// 56Kbps modem, incoming
+NetPipe pipe56KbpsIn = {
+	kind = "56Kbps-in"; // just a label
+	bandwidth = 55Kb/sec;
+	packet_delay = norm(50msec, 5msec);
+	packet_loss = 0.1%;
+	outgoing = false;
+};
+
+// 56Kbps modem, outgoing
+NetPipe pipe56KbpsOut = {
+	kind = "56Kbps-out";
+	bandwidth = 19Kb/sec;
+	packet_delay = pipe56KbpsIn.packet_delay;
+	packet_loss = pipe56KbpsIn.packet_loss;
+	outgoing = true;
+};
+
+// workstation on a 100BaseTX LAN
+NetPipe pipe100Mbps = {
+	kind = "100BaseTX";
+	bandwidth = 94Mb/sec;
+	outgoing = undef();       // symmetric pipe (default, actually)
+};
+
+NetPipe pipeLocalSrv = {
+	kind = "localSrv";
+	packet_loss = 0.01%;
+};
+
+NetPipe pipeDomesticSrv = {
+	kind = "domesticSrv";
+	packet_delay = norm(100msec, 30msec);
+	packet_loss = 0.05%;
+};
+
+NetPipe pipeForeignSrv = {
+	kind = "foreignSrv";
+	packet_delay = norm(250msec, 80msec);
+	packet_loss = 0.5%;
+};

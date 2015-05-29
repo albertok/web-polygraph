@@ -1,0 +1,79 @@
+/*
+ * Some boring details for the SrvLB-L7-4 workload
+ *
+ */
+
+Content cntImage_HTML = cntImage;
+cntImage_HTML = {
+	mime.extensions = [ ".html" ];
+	kind = "Image_HTML";
+};
+
+Content cntImage_PNG = cntImage;
+cntImage_PNG = {
+	mime.extensions = [ ".png" ];
+	kind = "Image_PNG";
+};
+
+Content cntImage_JPG = cntImage;
+cntImage_JPG = {
+	mime.extensions = [ ".jpg" ];
+	kind = "Image_JPG";
+};
+
+Content cntHTML_HTML = cntHTML;
+cntHTML_HTML = {
+	mime.extensions = [ ".html" ];
+	kind = "HTML_HTML";
+	may_contain = [ cntImage_HTML ];
+};
+
+Content cntHTML_PNG = cntHTML;
+cntHTML_PNG = {
+	mime.extensions = [ ".png" ];
+	kind = "HTML_PNG";
+	may_contain = [ cntImage_PNG ];
+};
+
+Content cntHTML_JPG = cntHTML;
+cntHTML_JPG = {
+	mime.extensions = [ ".jpg" ];
+	kind = "HTML_JPG";
+	may_contain = [ cntImage_JPG ];
+};
+
+Content cntDownload_HTML = cntDownload;
+cntDownload_HTML = {
+	mime.extensions = [ ".html" ];
+	kind = "Download_HTML";
+};
+
+Content cntDownload_PNG = cntDownload;
+cntDownload_PNG = {
+	mime.extensions = [ ".png" ];
+	kind = "Download_PNG";
+};
+
+Content cntDownload_JPG = cntDownload;
+cntDownload_JPG = {
+	mime.extensions = [ ".jpg" ];
+	kind = "Download_JPG";
+};
+
+Content cntOther_HTML = cntOther;
+cntOther_HTML = {
+	mime.extensions = [ ".html" ];
+	kind = "Other_HTML";
+};
+
+Content cntOther_PNG = cntOther;
+cntOther_PNG = {
+	mime.extensions = [ ".png" ];
+	kind = "Other_PNG";
+};
+
+Content cntOther_JPG = cntOther;
+cntOther_JPG = {
+	mime.extensions = [ ".jpg" ];
+	kind = "Other_JPG";
+};

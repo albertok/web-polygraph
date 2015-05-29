@@ -1,0 +1,8 @@
+#!/usr/bin/perl -w
+
+while (<>) {
+	my @fields = split;
+	$fields[0] -= $fields[1]/1000;
+	print(map { "$_ " } @fields);
+	print("\n");
+}

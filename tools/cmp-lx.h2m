@@ -1,0 +1,23 @@
+[DESCRIPTION]
+Cmp-lx compares results from two tests and prints stats that differ
+significantly. With important scope some stats are ignored. The
+following events are not important:
+
+  *.last
+
+  *.min and *.max except for *.hist.min and *.hist.max
+
+  *.mean if there is corresponding *.hist.mean
+
+  rare events
+
+Histogram and errors are important.
+
+Rare events are events that happened in less than 0.1% of the cases
+where they could have occurred. Measurements related to such events
+are not important. Event rate is calculated using xact.started
+measurement as total count. List of events:
+
+  basic offered hit miss cachable uncachable fill ims reload range
+  head post put abort page ssl ftp 100_continue proxy_validations auth
+  tunneled proxy_validation rep req

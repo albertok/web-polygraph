@@ -1,0 +1,11 @@
+
+/*
+ * Commonly used Phases
+ *
+ */
+
+// wait for some positive activity, you may want to adjust load_factor_end
+Phase phWait = { name = "wait"; goal.xactions = 1; log_stats = false; };
+
+// cool down for one minute
+Phase phCool = { name = "cool"; goal.duration = 1min; load_factor_end = 0; log_stats = false; };

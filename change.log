@@ -1,0 +1,3175 @@
+version 4.3.2
+2011/04/05
+
+	- Fixed assertion when a container PGL Content type uses an
+	  embedded PGL Content that was not configured yet.
+
+	- Fix build with OpenSSL libraries with disabled SSLv2 protocol.
+	  In particular, this fixes build on Debian Weezy. Workloads using
+	  SSLv2 will be rejected if Polygraph was built without SSLv2
+	  support.
+
+	- Fixed layout of tables printed on the console (e.g. "Server
+	  content distributions" and "Phases").
+
+	- Fix persistent working set ID reporting when loading the stored
+	  set. Before the change, a new ID was generated each time the set
+	  was loaded.
+
+	- Cleanup copyright preamble to make Debian folks happier: add
+	  copyright where missing, remove copyright from generated config.h
+	  file, update copyright years, replace "(C)" with "Copyright".
+
+	- Remove files specific to Windows build which has not been
+	  supported for a while.
+
+
+version 4.3.1
+2011/03/03
+
+	- Better support for trace replay: Ignore Robot.origins field
+	  for PGL Robots with foreign-only interest. Before the change,
+	  non-empty Robot.origins field was required, even if it was
+	  unused because the Robot has no interest other than replaying
+	  the foreign trace.
+
+	- Better support for trace replay: Do not "warm up" Robots with
+	  foreign-only interest. Before the change, many workloads
+	  containing trace-replaying Robots could get stuck in the first
+	  phase due to an infinite warmup. Now, foreign-only Robots do
+	  not affect the warmup, and the first phase ends as expected.
+
+	- Print the corresponding workload file line and number for many
+	  PGL-related warnings and errors.
+
+	- Fixed client crash on exit when Robot.accept_content_encodings
+	  PGL field is set.
+
+	- Fixed generation of lifecycle-related entity parameters when
+	  the same ObjLifeCycle object is used multiple times in the
+	  workload. The bug resulted in unexpected entity-header (e.g.,
+	  Last-Modified-Time and Expires) changes when the same URL was
+	  revisited.
+
+	- Fix statistics recording for aborted transactions. Before the
+	  change, non-basic (e.g. POST) aborted transactions were
+	  recorded in the wrong category (e.g. post). Now, all aborted
+	  transactions are recorded in the aborted category.
+
+	- OpenSSL 1.0 support (LP:690599).
+
+	- Fixed epoll(2)-related bug which could result in "Socket not
+	  connected" and similar errors.
+
+	- Fixed select(2) support in SSL-related workloads.
+
+	- Code cleanup.
+
+
+version 4.3.0
+2010/12/10
+
+	- Content-driven Robots support: The user may configure Robot
+	  behavior based on Content. Real HTTP client behavior often
+	  depends on web site and its content.  Content-driven Robots
+	  help simulate those dependencies.
+
+	  All for-Robot settings in PGL Content objects are grouped
+	  under the new Content::client_behavior field. A new PGL
+	  ClientBehavior type is added. Assigning PGL Robot to
+	  ClientBehavior and vice versa is supported. Once Server and
+	  Content are selected, Content::client_behavior settings, if
+	  any, overwrite the corresponding Robot fields.
+
+	  For now, the following three Robot behavior properties can be
+	  specified on per-Content basis: req_types, req_methods, and
+	  ranges.
+
+	- Considerably improved the randomness of distribution values
+	  tied to URLs, such as response sizes. The old distributions
+	  could have too many similar values, with too few extreme
+	  values, especially when non-unique worlds (--unique_world no)
+	  were used with multiple PGL Servers and table-based
+	  distributions.
+
+	- Linked object blobs from traffic stream tables in report.
+
+	- Fixed poll(2)-related bug which could result in "Socket not
+	  connected" or similar errors on platforms without epoll(2)
+	  support such as Mac OS X.
+
+	- Multiple world support for distr_test tool: The world_count
+	  option is intended to simulate URL-based value generation in
+	  workloads with multiple PGL Servers, each Server being a "oid
+	  world" for the Robot. By default, world_count is 1, and all
+	  oids are generated from a single world. If world_count is
+	  greater than 1, distr_test generates oids from multiple
+	  worlds. The number of oids generated from each world is
+	  (trials count / worlds count).
+
+	- Minor fixes and code cleanup.
+
+
+version 4.2.2
+2010/11/05
+
+	- Added custom stats: The user may configure which transactions
+	  are added to custom stats based on HTTP status code.
+	  Configuration is done with Agent.custom_stats_scope PGL field:
+
+	    custom_stats_scope = ["all", "-2xx", "+30x", "+206"];
+
+	  If a transaction finishes before getting a reply, or there is
+	  no HTTP status code for another reason, the transaction is not
+	  included in the custom stats.
+
+	  The following custom stats are collected: custom.rep,
+	  custom.live.rep, custom.projected.rep. Custom stats are
+	  accessible from PGL phase scripts.
+
+	- Fixed PGL TblDistr to produce the same results for the same
+	  seed. For example, if a table distribution is used for
+	  response body sizes, the response size would stay the same
+	  when the same URL is visited multiple times.
+
+	- Fixed several build and startup problems on Mac OS X.
+
+	- Fixed a DummyNet-related build problem on FreeBSD 8.1.
+
+	- Fixed IPv6 address parsing in command line arguments.
+
+	- Fixed segfault when parsing a PGL array or list with a
+	  malformed item.
+
+	- Allow IPv6 addresses in PGL to start with '[:'.
+
+
+version 4.2.1
+2010/10/14
+
+	- Transaction lifetime support: Allow the user to limit the
+	  lifetime of client and server transactions via the new PGL
+	  Agent::xact_lifetime field. A transaction aborts when its
+	  configured lifetime expires. Aborted transactions are treated
+	  as errors on client and server sides of the test, for now.
+
+	  Client transaction lifetime includes both connection slot
+	  waiting time (if any; see Robot::open_conn_lmt) and regular
+	  execution time. Server transaction lifetime includes both think
+	  time (if any; see Agent::xact_think) and regular execution time.
+
+
+version 4.2.0
+2010/10/08
+
+	- Allow PGL scripts to monitor in-flight or "live" transactions
+	  so that they can adjust load even when many transactions get
+	  stuck or slow down and do not immediately contribute to regular
+	  postmortem stats.  Measure how long live transactions have
+	  been running (live.rep.rptm) and how many response bytes they
+	  have read (live.rep.size). Make these new stats available to
+	  PGL scripts via the regular stats interfaces
+	  (currentSample().live.* and currentPhase().live.*).
+
+	- Added projected.rep.* statistics that combines live and
+	  finished transaction stats. Available to PGL scripts only.
+
+	- Treat an HTTP CONNECT response as the end of the transaction.
+	  Collect and report stats dedicated to these new CONNECT-only
+	  transactions. These CONNECT transactions are often rather
+	  different from the in-tunnel transactions that follow.
+	  Isolating them also prevents CONNECT overheads from polluting
+	  the first in-tunnel transaction stats.
+
+
+version 4.1.2
+2010/11/06
+
+	- Fixed PGL TblDistr to produce the same results for the same
+	  seed. For example, if a table distribution is used for
+	  response body sizes, the response size would stay the same
+	  when the same URL is visited multiple times.
+
+	- Fixed several build and startup problems on Mac OS X.
+
+	- Fixed a DummyNet-related build problem on FreeBSD 8.1.
+
+	- Fixed IPv6 address parsing in command line arguments.
+
+	- Fixed segfault when parsing a PGL array or list with a
+	  malformed item.
+
+	- Allow IPv6 addresses in PGL to start with '[:'.
+
+
+version 4.1.1
+2010/10/07
+
+	- Add dump command to the cdb tool, which stores all verbatim and
+	  link-only objects into individual files. Cdb dump accepts an
+	  optional --as "path/prefix${name}.suffix " parameter. Default
+	  --as value is "./cdb${name}". ${name} macros are substituted with
+	  1,2,3,4... integers.
+
+	- Cdb interface has changed. Commands (add, dump, show) are passed
+	  as options with database argument, i.e. cdb --show test.cdb.
+
+	- Limit PGL load and population factors value to [0%, 100%] range.
+	  Print error and exit if begin or end factor value is greater than
+	  100%. If a script changes factor to a negative or greater than
+	  100% value, print warning and set the factor to 0%/100% instead.
+
+	- Set Recursion Desired (RD) flag for outgoing DNS queries because
+	  some modern resolvers do not accept queries without that flag
+	  and because we do not recursively resolve ourselves.
+
+	- Skip already configured network interface aliases when creating
+	  new ones if delete_old_addrs option is false.
+
+	- Do not send Content-MD5 header with HTTP 206 (Partial Content)
+	  responses. This fixes segfault and is in line with HTTPbis.
+	  See http://trac.tools.ietf.org/wg/httpbis/trac/ticket/178
+
+	- Fix assertion during network interface alias creation.
+
+	- Fix errPersistButNoCLen error on client-side when multi-ranges
+	  and persistent connections are enabled. Content-Length is not
+	  required if message uses the media type "multipart/byteranges".
+
+	- Fix LP:644813: SSL issues with DNS and embedded objects.
+
+	- Fix address space size check for SpreadAs.
+
+	- Fix multiple alias range support in the aka tool.
+
+	- Fix compilation of the msl_test tool on Linux.
+
+	- Make out-of-memory handler more robust.
+
+	- Minor fixes and code cleanup.
+
+
+version 4.1.0
+2010/05/13
+
+	- Support SOCKS5 proxies for HTTP, HTTPS, and passive FTP
+	  traffic (socks_proxies and socks_prob PGL Robot fields).  No
+	  support for Active FTP data connections yet.  "None" and basic
+	  "username/password" SOCKS authentication methods are
+	  supported. Chaining SOCKS and HTTP proxies is supported (the
+	  socks_chaining_prob PGL Robot field).
+
+	- Extend the ipsToNames() PGL function to support a domain name
+	  generation template with ${dashed_ip} and ${port} macros. This
+	  change allows more flexibility in naming a large number of
+	  server domains.
+
+	- Add a dynamize() PGL function that converts an array of static
+	  domain names to dynamic names (using the supplied renewal
+	  percentage), similar to what the dynamicName() function does
+	  to one static name. This change allows creation of a large
+	  number of servers, each with a unique dynamic domain name.
+
+	- Do not send "100 Continue" control response if we got the
+	  entire request body already. This fix prevents POST requests
+	  sent without waiting for 100 Continue response from getting
+	  stuck because the client sent everything and cannot continue.
+
+	- Fix server freeze when "Expect: 100-continue" request headers
+	  and body (partial or complete) is received in a single read(2)
+	  call.
+
+	- Fix assertion when an HTTP client aborts transaction.
+
+	- Fix abort position calculation on the client side. The abort
+	  size was set bigger than the request size, and client aborted
+	  after the request was sent, during response reading.
+
+
+version 4.0.11
+2010/11/06
+
+	- Limit PGL load and population factors value to [0%, 100%] range.
+	  Print error and exit if begin or end factor value is greater than
+	  100%. If a script changes factor to a negative or greater than
+	  100% value, print warning and set the factor to 0%/100% instead.
+
+	- Fixed PGL TblDistr to produce the same results for the same
+	  seed. For example, if a table distribution is used for
+	  response body sizes, the response size would stay the same
+	  when the same URL is visited multiple times.
+
+	- Fixed several build and startup problems on Mac OS X.
+
+	- Fixed a DummyNet-related build problem on FreeBSD 8.1.
+
+	- Skip already configured network interface aliases when creating
+	  new ones if delete_old_addrs option is false.
+
+	- Do not send Content-MD5 header with HTTP 206 (Partial Content)
+	  responses. This fixes segfault and is in line with HTTPbis.
+	  See http://trac.tools.ietf.org/wg/httpbis/trac/ticket/178
+
+	- Fix assertion during network interface alias creation.
+
+	- Fix errPersistButNoCLen error on client-side when multi-ranges
+	  and persistent connections are enabled. Content-Length is not
+	  required if message uses the media type "multipart/byteranges".
+
+	- Fix assertion when an HTTP client aborts transaction.
+
+	- Fix abort position calculation on the client side. The abort
+	  size was set bigger than the request size, and client aborted
+	  after the request was sent, during response reading.
+
+	- Fix LP:644813: SSL issues with DNS and embedded objects.
+
+	- Fix address space size check for SpreadAs.
+
+	- Fixed IPv6 address parsing in command line arguments.
+
+	- Fixed segfault when parsing a PGL array or list with a
+	  malformed item.
+
+	- Allow IPv6 addresses in PGL to start with '[:'.
+
+	- Fix multiple alias range support in the aka tool.
+
+	- Fix compilation of the msl_test tool on Linux.
+
+	- Make out-of-memory handler more robust.
+
+	- Minor fixes.
+
+
+version 4.0.10
+2010/04/13
+
+	- Ignore ssl_wraps for FTP servers because we do not really
+	  support FTPS yet.
+
+	- Servers with ssl_wraps no longer verify SSL peer certificates
+	  because verification causes an optional peer certificate
+	  request, which some proxies do not ignore but abandon their
+	  man-in-the-middle decryption instead.
+
+	- In PGL arrays using well-known strings (e.g., protocol names),
+	  reject unknown names that share a common prefix with the known
+	  ones.
+
+	- Fixed spreading of array probabilities that do not add up to
+	  100%. Only the first such array in the workload had its
+	  probabilities adjusted.
+
+	- Raised verbosity level of FYI and warning messages from 0 to 1
+	  to minimize zero-level output.
+
+	- Fixed segfault in ltrace that rendered the tool unusable.
+
+	- Fixed logging of very long messages.
+
+	- Fixed memory leak in pgl2ips.
+
+	- Minor man pages and spelling fixes.
+
+
+version 4.0.9
+2010/02/14
+
+	- Used newer autotools: automake v1.10.2 to v1.11 and autoconf
+	  v2.63 to 2.64.
+
+	- Added polygraph(7) and individual man pages for each binary.
+
+	- Added cmp-lx.pl --precision=percent option to ignore relative
+	  measurement differences below the specified percentage.  The
+	  default is 10 percent. Zero percent shows all, including
+	  identical, measurements. Other fixes for cmp-lx.pl.
+
+	- Added header_size/body_size field at the end of "--dump sum"
+	  log line. This change may be reverted in future releases.
+
+	- Added rng_seed option for distr-test tool.
+
+	- Allow apostrophe and a few other non-alphanumerical symbols in
+	  PGL comments.
+
+	- Detect the lack of SSL support and quit with an error for SSL
+	  workloads.
+
+	- Fixed HTTP authentication for SSL connections.
+
+	- Do not assert if an agent address lacks a netmask.
+
+	- Delete old IP aliases by name, not by index, to avoid having
+	  lo:1 without lo:0. May need more work.
+
+	- Warn about duplicate network interface addresses instead of
+	  asserting that there are none.
+
+	- Fixed a segfault when retrieving IPv6 addresses from a network
+	  interface.
+
+	- Removed tcp2xmld as unused.
+
+
+version 4.0.8
+2009/10/01
+
+	- New addressing scheme called Spread. It is possibly the
+	  simplest addressing scheme that distributes the load evenly
+	  across all hosts, unlike the PolyMix-4 addressing scheme that
+	  does not add a host until existing hosts are 100% utilized.
+
+	- Allow the user to specify alias addresses explicitly,
+	  overwriting the "concatenate PGL agent addresses" default.
+	  This allows defining several Server kinds (e.g. plain and SSL)
+	  and then spreading their aliases across all hosts.
+
+	- Add size and response time phase stats for all HTTP response
+	  status codes received by polyclt and sent by polysrv. The
+	  measurements are collected for all transactions, including
+	  failed and non-basic ones. See the new "HTTP reply status..."
+	  tables in the report.
+
+	- Add tools/cmp-lx.pl script to compare two tests and print
+	  important differences. Test logs must be preprocessed with lx
+	  first.
+
+	- Print warning if Content-MD5 header is present but malformed.
+
+	- Polished generated reports: Sort a few tables, number and link
+	  report generation notes, stretched histogram plots, make
+	  one-page summary fit.
+
+	- Comply with Filesystem Hierarchy Standard (FHS) and Debian
+	  Policy requirements:
+	    * set default installation prefix to /usr/local
+	    * install workloads to share/polygraph/workloads
+	    * rename polyclt/polysrv to client/server
+	    * replace '_' with '-' in binaries name (pop_test to pop-test)
+	    * add polygraph- prefix to all binaries during installation
+	    * strip .pl prefix from Perl scripts during installation
+
+	- Fix "content type mismatch" regression error with reporter log
+	  processing.
+
+	- Fix negative open connection level and ttl stats.
+
+	- Fix reporter crash when it is called with the --phases option
+	  and the phase does not exist. Warn if a phase does not exist.
+
+	- Fixed parsing of ":sup" ranges in table distributions.
+
+	- Fix "inconsistent computation of unseen_objects" report error.
+
+	- Fix "reference to an undefined blob
+	  'object.all_proxy_validations...'" reporter error.
+
+	- Quit nicely when the reporter runs out of memory.
+
+	- Fix (potential) double delete errors.
+
+	- Made more modern compilers happier.
+
+	- Remove gnuplot build dependency.
+
+	- Do not link with libnsl on platforms where libnsl is not used.
+
+
+version 4.0.7
+2009/07/15
+
+	- Support origin server authentication for Robots. Foreign
+	  origin servers are supported as well.
+
+	  Unlike real browsers, Robots do not support or remember nested
+	  paths. For example, if the /foo/bar/ path got authenticated,
+	  the same Robot would go through the entire authentication for
+	  /foo/bar/baz/ even though a real browser would probably try to
+	  reuse the first (higher-level directory) authentication
+	  information instead.
+
+	- Support cookie-based Robot authentication, including that with
+	  foreign URLs. Robots now have their own private cookie storage
+	  and queue. Cookie Max-Age parameter is parsed and honored.
+	  Stale cookies are not sent.
+	  
+	  Cookie path and domain parameters are still ignored as if they
+	  were not sent.
+
+	- Support active FTP mode (i.e., FTP PORT command). Configured
+	  using Robot's passive_ftp field. The default is 100% passive.
+
+	- Added pgl2ips tool that takes a PGL workload and prints agent
+	  IP addresses that a test would use.
+
+	- Added modulo operator support for PGL integers. Useful for
+	  flipping coins in PGL Phase scripts.
+
+	- Users no longer need to patch system headers to get more file
+	  descriptors on Linux: Polygraph now ignores FD_SETSIZE limit
+	  when using poll(2) or epoll(2), which is the default on most
+	  platforms.
+
+	- Exit gracefully on SIGTERM (SIGINT as supported earlier).
+	  Killall sends SIGTERM by default and we were getting truncated
+	  console logs because of that.
+
+	- Better HTTP cookies support: honor expires/discard options and
+	  support cookie updates. Do not send cookies that do not fit.
+
+	- Better handling of and error reporting in HTTP 401, 403, and
+	  407 corner cases.
+
+	- Polished FTP error reporting.
+
+	- Limit SSL error reporting frequency to minimize noise during
+	  high-performance tests with many SSL errors. Polished
+	  reporting.
+
+	- Better reporting of tests with different client- and
+	  server-side PGL workloads.
+
+	- Better reporting of foreign trace configuration errors.
+
+	- Removed some expensive mallocs.
+
+	- Removed unseen object blobs and unknown (zero and N/A) rows in
+	  stream and object tables from the HTML report.
+
+	- Allow tabs where were spaces allowed in PGL.
+
+	- Fixed memory leaks.
+
+	- Fix alias creation bug when workload contains both generated
+	  and manually configured aliases. Some aliases were created on
+	  many hosts while others were not created on any hosts.
+
+	- Fixed misleading 'unknown log file format' error when the
+	  named binary log file is not found by lx, ltrace, or reporter.
+
+	- Fixed error handling code that was ignoring certain fatal
+	  errors.
+
+	- Made more modern compilers happier.
+
+	- Ignore zero-valued Content-Length in GET instead of
+	  terminating the server transaction with the "unexpected
+	  Content-Length header" error. Some proxies add that header to
+	  some GET requests.
+
+	- Fixed select(2) support (unused on most platforms by default).
+
+	- Report that content types differ and exit instead of asserting
+	  when a report is generated using logs with mismatched content
+	  types.
+
+	- Do not send body in HTTP HEAD response. This fixes a bug that
+	  resulted in "malformed HTTP request or response line" errors
+	  on the client side when Range requests were used.
+
+	- Work around crashes in OpenSSL versions older than 0.9.8c:
+	  http://objectmix.com/apache/674160-apache-start-segmentation-
+	  fault-emlink-too-many-links.html
+
+
+version 4.0.6
+2009/04/20
+
+	- Added support for FTP STOR to robots and servers, triggered by
+	  selecting the new "Upload" request type in PGL
+	  Robot::req_types.
+	  
+	  STOR transactions use PGL content configuration, including cdb
+	  support, just like PUT transactions already do.
+
+	  Robot::put_contents PGL field is replaced with
+	  Robot::upload_contents. The old put_contents field is still
+	  supported, with a deprecated warning.
+
+	  Request method selection code adjusted to select PUT/STOR
+	  method for HTTP/FTP transactions if "Upload" request type is
+	  chosen.
+
+	- When parsing and generating URLs and related addresses, handle
+	  default port with respect to the protocol scheme (80 for HTTP,
+	  443 for HTTPS, 21 for FTP).
+
+	- Make the test quit when phase error goal is reached.  One of
+	  the goals here is to prevent automated tests from getting
+	  stuck forever.
+
+	- Added a PGL Phase.primary boolean field. If any of the phases
+	  have that field set, those phases and only those phases should
+	  be used for the executive summary and the baseline report. The
+	  new field is logged when phase stats are logged. This change
+	  resulted in the log version increase to v17.
+
+	- Skip phases without stats when trying to guess which phases
+	  should be included in the baseline report and the executive
+	  summary.
+
+	- Added initial set of 13 workloads for regression testing to
+	  workloads/regression/. These workloads need more work.
+
+	- Report when phase positive/negative goal is reached for the
+	  first time.
+
+	- When reporting stat phase progress say "waiting for WSS to
+	  freeze" only when the phase itself is actually locked, waiting
+	  for WSS to freeze. We used to report when polyclt was waiting,
+	  which was confusing in a phase progress report context.
+
+	- Report more information about locked phases that may continue
+	  to run after reaching their explicit goal. This should help
+	  diagnose remaining problems with phases getting stuck when a
+	  test generates many errors.
+
+	- Report IP address counts in addition to dumping (potentially
+	  huge) address arrays when local and PGL addresses do not
+	  match. Helps to identify addressing problems quicker.
+
+	- Log details about server warmup plan start and completion.
+
+	- Fixed nil pointer derefence bug when dealing with rare SSL
+	  tunnel establishment failures. User-visible bug effects are
+	  unknown but could include polyclt crashes.
+
+	- Fixed epoll support in the presence of some connection errors.
+	  The bug resulted in some errors not reported to the user and
+	  an infinite loop.
+
+	- Fixed agent alias allocation bug that resulted in identical IP
+	  aliases created on different hosts. The bug was exposed by
+	  workloads that randomized generated address order using PGL
+	  select() or slicing assignment.
+
+	- Fixed stats collection for authenticated HTTP transactions.
+	  User-visible effects could include runtime assertions but the
+	  exact effects are unknown.
+
+	- Deleted a questionable assertion being hit by users (during an
+	  error-rich test) when SSL tunneled transactions are in use.
+	  The exact cause of the assertion is still unknown and could be
+	  already removed by other changes.
+
+
+version 4.0.5
+2009/02/05
+
+	- Warn about "unusable" objects as arguments to use(). Skip such
+	  objects.
+	  
+	  Skipping unusable objects simplifies workloads where some
+	  agents or address maps become unusable if some workload
+	  parameter leaves them without any addresses. A common use case
+	  is a workload where agent addresses are selected using slicing
+	  assignments or select() function calls, with "ratio of
+	  such-and-such agents" as a configurable parameter.
+
+	- Fixed SSL connection level accounting. The level was not 
+	  decremented properly, resulting in artificially high number of
+	  open SSL connections being reported.
+
+	- Fixed oid management to avoid an assertion when dumping foreign
+	  request URLs and to dump more oid details.
+
+	- Do not blab about configured SSL proxies and/or servers if
+	  there are none.
+
+
+
+version 4.0.4
+2009/02/04
+
+	- Added Robot.http_proxies and Robot.ftp_proxies PGL fields to
+	  support HTTP proxies dedicated to ftp:// transactions.
+	  Specifying an empty ftp_proxies array, disables proxying of
+	  those transactions.  The Robot.proxies field is now
+	  deprecated.  The overall logic is similar to how browsers can
+	  be configured to use different proxies for different origin
+	  server protocols. Polygraph still supports HTTP proxies only.
+
+	- Added setAddrPort(addresses, newPort) PGL function call,
+	  returning original addresses but with each port is set to
+	  newPort. The function is useful for assigning a
+	  protocol-specific port to server addresses, when those
+	  addresses were selected or sliced from a larger address array
+	  used for many protocols.
+
+	- Support https:// URLs in traces.
+
+	- Support ${url_number} macro in URL traces. The substitution
+	  value is a "URL position in the trace" number that increases
+	  as the trace wraps. Using this macro, it is possible to create
+	  a virtually endless sequence of unique URLs using very short
+	  traces, which is useful for testing using specific URL
+	  patterns.
+
+	- Significantly decreased startup times for workloads with thousands
+	  of agent addresses.
+
+	- Fixed "FtpCltXact.cc:195: assertion failed: 'false'" on data
+	  connect errors.
+
+	- Better handle various FTP RETR-related command sequences and
+	  server races.
+
+	- Do not refuse to create agent aliases if some but not all
+	  agent addresses lack network interface names. Instead,
+	  ignore/skip nameless addresses in the alias:host mapping
+	  algorithm.
+	  
+	  This change helps when a workload mixes agents for which
+	  Polygraph should create aliases dynamically with agents for
+	  which the addresses are created before the test.
+
+	- Complain about the lack of the root certificate once. When the
+	  number of SslWraps is large, complaining for each takes too
+	  much time and space, while there is little new information
+	  with each new complaint.
+	  
+	- Do not warn if using non-ALL cipher for SslWrap. The default
+	  may be ALL:HIGH now and warning for each cipher takes too much
+	  time and space.
+
+
+version 4.0.3
+2009/01/21
+
+	- Support ${target_ip} macro in PGL-configured robot
+	  credentials. If found, the macro is replaced with the IP
+	  address of the target (i.e., true origin) server. This is
+	  especially useful for reverse FTP proxies that distinguish the
+	  true origin server by FTP user credentials.
+
+	- Support empty robot passwords via "username:" credentials
+	  pattern.
+
+
+version 4.0.2
+2009/01/19
+
+	- Added initial support for PWD command. The directory we return
+	  always ends with a slash ("/") for now.
+	  
+	- Revised FTP RETR logic to make 1xx responses required and to
+	  distinguish FTP 150 "Opening data connection" from the newly
+	  added "FTP 125 "Data connection already open; transfer
+	  starting" response.
+	  
+	- Added initial support for user-configurable FTP origin server
+	  authentication. If no credentials are configured, the FTP
+	  transaction will use anonymous:anonymous@ credentials. For
+	  now, credentials are always supplied (i.e., the FTP
+	  transaction always tries to login to the server).
+	  
+	- Use "227 Entering Passive Mode (,,,,)" format for PASV
+	  responses. Some FTP clients expect the parens because that is
+	  what FTP RFC uses, probably informally.
+
+	- Be flexible when parsing FTP PASV response: search for the
+	  first digit as the start of a,b,c,d,p1,p2 sequence instead of
+	  assuming a fixed response format.
+
+	- Fixed address map support: Agent protocol is determined by the
+	  target origin server and not by the visible server. Visible
+	  server may have no Agent configuration at all (e.g., if an
+	  address map is used in reverse proxy configurations).
+
+	- Avoid polysrv assertions when a foreign URL or its size is
+	  requested without a subsequent request for a Polygraph URL.
+
+	- Polished stats maintenance for FTP data connection.  Needs
+	  more work.
+
+	- Made libtool 2.2.4 happier.
+
+
+version 4.0.1
+2009/01/14
+
+	- Pause FTP client transactions before writing a RETR command if
+	  the data connection has not succeeded yet.
+
+	- Pause HTTP 100-Continue client writing when we are done
+	  writing HTTP request headers and are waiting for a 100
+	  Continue response from the server. Resume writing, if needed,
+	  when we get a response. Old code would waste CPU cycles and
+	  occasionally assert when checking whether it is possible to
+	  write the request body while we were receiving a response. May
+	  need more work.
+
+	- FTP clients may send repeated PASV commands, especially if
+	  they try unsupported commands. If a PASV command is received
+	  when we are already listening or even accepted a data
+	  connection (but have not sent any data!), we simply close the
+	  data channel and open another one, assuming the client
+	  considers the old data channel unusable.
+
+	- Treat 150 "Data connection opened" response as optional. We
+	  may not receive it if the server sent all data by the time it
+	  could generate a RETR response. Or, at least, that is what
+	  happens with Polygraph FTP server.
+
+	- Wait for the data connection if the FTP server got RETR before
+	  it accepted the data connection: The client sending RETR
+	  cannot know whether its data connection was already accepted
+	  by the server. TODO: We need a timeout for this wait.
+
+	- Finish with errFtpNoDataXfer ("FTP exchange terminated w/o
+	  data transfer") error when the FTP client did not RETR
+	  anything.  This prevents feeding an unclassified (no oid
+	  even!) but successful transaction to stats collection.
+
+	- Fixed logging of request body content type meta-information
+	  for content types not used as server response content types.
+	  Partial meta-information led to core dumps during log
+	  extraction and analysis (also fixed).
+
+	- Be more forgiving when encountering an unclassified
+	  transaction and when encountering a compound transaction
+	  without an authentication scheme. Both are bugs. We have not
+	  observed the former, but the latter does happen in some NTLM
+	  tests (and still needs to be fixed).
+
+	- Report FTP port binding errors.
+
+	- Report synchronous connect(2) errors for the data channel.
+	  May need more work handling the errors.
+	  
+	- Check for asynchronous connect(2) errors for the data channel
+	  and terminate the transaction when they happen.
+	  
+	- Made GCC v3.4.6 and v4.3.2 happier.
+
+
+version 4.0.0
+2008/11/25
+
+	- Added initial FTP client and server support. Robots use FTP
+	  for talking directly to an FTP server.  When a transaction
+	  ends at an FTP server via an HTTP proxy, robots use HTTP and
+	  ftp:// Request-URLs, as most real web clients would. Only
+	  passive FTP downloads are supported.
+
+	  Added a "protocol" field to the PGL Server type to specify
+	  the distribution of protocols. "HTTP" and "FTP" strings are
+	  accepted. Multiple protocols make sense if Server specifies
+	  multiple simulated servers using the addresses field. 
+
+	  Many FTP aspects require more work, such as support for more
+	  FTP commands and responses, FTP uploads, configurable FTP user
+	  authentication, better correlation with various HTTP-centric
+	  workload parameters, and a clear definition of an FTP
+	  transaction boundary for statistics collection.
+
+	  The code changes to support FTP were significant and
+	  widespread.
+
+
+version 3.6.1
+2008/11/25
+
+	- Removed unnecessary delays when processing log comments. The
+	  entire process (or even host) buffers and inodes were flushed
+	  with every console log message. The bug increased the time to
+	  process a single log comment significantly. The sync(2) delays
+	  become a noticeable problem when PGL watchdogs print a lot of
+	  custom statistics while Polygraph is working at the bench
+	  performance limit. The same probably happens when many errors
+	  are reported.
+
+	- Fixed (enabled) statistics collection for socket write(2)
+	  calls.
+
+	- Fixed assert failure when repeating foreign URLs from a trace.
+
+
+version 3.6.0
+2008/09/22
+
+	- Fixed URL selection algorithm: A change in URL selection code
+	  accidentally exposed an ancient bug that led to incorrect
+	  offered hit ratios. The bug remained unnoticed because the
+	  effect was negligible in most standard workloads. However, a
+	  significant difference in offered hit ratios can be observed
+	  in some custom workloads that used large portion of private
+	  URLs.
+
+	  Removed support for private URL worlds. Adding dynamic DNS
+	  feature (Polygraph v3.4.0) broke this support, offering false
+	  hits among private URLs. Hopefully, removing private URL
+	  worlds has no significant effect on standard workloads as this
+	  feature should only affect URL paths, which most DUTs treat as
+	  opaque.
+	  
+	  We may resurrect support for private URL worlds. The problem
+	  here is how to make private URLs use the same set of dynamic
+	  domain names as public URLs use. Since new names in public and
+	  private slices usually appear at a different speed, one
+	  category of URLs may use domain names that the other category
+	  stopped using long time ago.
+
+	- Added authentication scheme stats. Response time and size
+	  stats are collected for each auth scheme separately. HTML
+	  report now includes "all auth-ing" (all authenticating) and
+	  "all auth-ed" (all authenticated) categories for individual
+	  HTTP transactions.  There is also "all auth" stats combining
+	  all categories.  The following log objects introduced:
+	  auth.none auth.ing.basic auth.ing.ntlm auth.ing.negotiate
+	  auth.ed.basic auth.ed.ntlm auth.ed.negotiate auth.none.
+
+	- Added recurrence ratio stats. Put unique URL count and
+	  recurrence ratio to the executive summary table in the
+	  reporter.  Added url.unique.count and url.recurrence.ratio log
+	  objects.
+
+	- Report various stats for compound transactions such as
+	  authentication transactions that may require several
+	  individual transactions before the final response is received.
+
+	- Added SslWrap.ssl_config_file PGL field to set config file
+	  path for SSL certificate generation. The old 'myssl.conf'
+	  default is honored but deprecated.
+
+	- Added SSL stats reporting. New SSL Load blob, similar to the
+	  old [HTTP] Load blob.  Added SSL hits and misses to stream and
+	  object tables. Made SSL stats available in scripts. The
+	  following objects added:
+	      ssl.xact.* - successful SSL transactions HR and levels
+	      ssl.conn.* - open SSL connections level stats
+	      ssl.err_xact.count - failed SSL transactions count
+
+	- Added --hushed_error_tout option to polysrv and polyclt to
+	  configure error reporting frequency. This reduced log sizes
+	  for long tests designed to produce many errors.
+
+	- Added stats for HTTP transactions exchanged using a CONNECT
+	  tunnel.
+
+	- Polished generated HTML reports.
+
+	- Fixed CONNECT regression bug introduced by NTLM authentication
+	  changes.
+
+	- Fixed reporter initialization bug causing occasional coredumps
+	  and bogus results.
+
+	- Fixed occasional parsing errors of chunked encoded message
+	  bodies.
+
+	- Fixed assertion failure when handling an errors response to an
+	  "Expect: 100-Continue" request.
+
+	- Updated running-out-of-RAM handling code that has not been
+	  tested for a while. This should remove a PolyApp.cc warning
+	  when Polygraph process starts.
+
+
+version 3.5.0
+2008/06/22
+
+	- Recognized authentication errors as transaction errors. It is
+	  now possible to write workloads that stop the test or decrease
+	  the load when there are too many authentication errors (using
+	  PGL phase goals or watchdogs).
+
+	- Added epoll(2) level-triggered interface support. Epoll is now
+	  default on systems that support it (e.g., Linux). It should be
+	  faster than poll(2), the old default. Use the --file_scan
+	  command-line option to force poll if epoll gives you troubles.
+
+	- Fix gcc 4.3 warnings and errors.
+
+	- Removed deprecated acconfig.h that was causing ./configure
+	  warnings. Removed autotools-generated files from VCS control.
+
+
+version 3.4.2
+2008/05/27
+
+	- Fixed NTLM authentication of CONNECT requests.
+
+
+version 3.4.1
+2008/05/22
+
+	- Fixed 407 Authentication Required response handling: A v3.3.0
+	  regression bug resulted in "misdirected" errors for
+	  authenticated requests.
+
+
+version 3.4.0
+2008/05/16
+
+	- Support dynamic domain name generation using masks like
+	  '*.example.com:80'. The speed of new name generation is
+	  configurable and proportional to the miss rate. The number of
+	  names is frozen if the working set size is. Details at
+	  http://www.web-polygraph.org/test/docs/userman/dns.html
+	  
+	- Added proxy authentication support for CONNECT requests.
+
+	- Fixed CONNECT requests support (v3.3 regression bugs).
+
+
+version 3.3.1
+2008/04/29
+
+	- Report gzip-specific headers correctly for range responses.
+
+	- Fix assert failures when using gzip encoding or range requests
+	  with bodies from a content database. Mixing range requests,
+	  gzip-compressed content, and cdbs now works correctly.
+
+	- Fixed v3.1 regression bug: Uninitialized theBodyParser member
+	  led to occasional polyclt segfaults.
+
+
+version 3.3.0
+2008/04/17
+
+	- Support configurable POST/PUT content. Request body content
+	  configuration is very similar to how response content is
+	  configured. Content databases (cdbs) are supported. Actual
+	  request content type properties are measured runtime and
+	  reported by the reporter.
+
+	  Standard workloads have been updated. Custom workloads must be
+	  updated if you are using POST or PUT request types. Use
+	  cntSimpleRequest content defined in contents.pg to mimic old
+	  behavior.
+
+	  Details and configuration examples at
+	  http://www.web-polygraph.org/docs/userman/req_bodies.html
+
+	- Detect proxy validation requests (i.e., transactions where the
+	  proxy converts a regular GET request into an If-Modified-Since
+	  request, most likely because it has the content cached but
+	  considers it stale).  Collect stats for useful and useless
+	  proxy validation requests. Useless validation requests are
+	  those resulting in a 304 Not Modified response (i.e., the
+	  cached content is still fresh).
+
+	  Added "Validation effectiveness" table to generated reports.
+	  This helps to analyze the effectiveness of proxy validations.
+
+	  Added "Cheap proxy validation hit ratio" table to the
+	  generated reports. The reported hit ratios are calculated as
+	  if useless proxy validation requests are so cheap that they
+	  should not be counted as server accesses for the purpose of
+	  hit ratio calculation.
+
+	- Added basic statistics for messages without bodies and
+	  messages with unknown body content types. Requests with body
+	  have an "unknown" content type on server side. Messages with a
+	  non 2xx status and a body also have an "unknown" content type.
+
+	- Fixed report generation bug leading to occasional garbage in
+	  the report text.
+
+
+version 3.2.1
+2008/03/25
+
+	- Polished stat object names related to Range request
+	  generation.
+
+	- Fix segfault when server replies to HEAD request and attempts
+	  to pour body.
+
+	- Fixed Proxy-Authenticate scheme parsing bug that was causing
+	  random segfaults during authentication tests (Qiao Yang at
+	  IronPort)
+
+
+version 3.2.0
+2008/03/19
+	
+	- Added support for generation of Range requests and responses,
+	  including configurable single- and multi-range Range requests,
+	  single Content-Range responses, and multipart/byterange 
+	  responses.
+
+	- Fixed "undefined assert()" compilation error on Ubuntu Gutsy.
+
+
+version 3.1.5
+2008/03/13
+
+	- Initial and mostly untested support for NTLM/GSSAPI proxy
+	  authentication. We need to find a proxy that supports
+	  NTLM/GSSAPI to test this feature.
+
+	- Added support for recycling or sharing SSL certificates that
+	  have identical generation parameters. The support is enabled
+	  by setting PGL SslWrap::sharing_group to a non-empty string.
+	  The certificates within the same group will be shared if their
+	  openssl generation commands are the same.
+	  
+	  Sharing provides significant speedup in Polygraph start times
+	  when hundreds of servers require certificate generation.
+	  
+	- Some Linux kernels have gettimeofday bugs that cause time
+	  jumps of approximately 72 minutes, especially on SMP systems.
+	  We saw it on an 8-CPU box running 2.6.18-8.el5. For 2002
+	  discussion, start at
+	  http://www.kernel-traffic.org/kernel-traffic/kt20020708_174.html#1
+	  
+	  We now try to ignore individual jumps exceeding 60 minutes. If
+	  the time did change, the change will be honored during the
+	  second gettimeofday() call.
+
+	- Make NTLM code compile when SSL is disabled. Polygraph will
+	  assert if NTLM is used without SSL support because it needs
+	  SSL code for NTLM.
+
+	- Removed extra terminating CRLF after CONNECT headers.
+
+
+version 3.1.4
+2007/11/12
+
+	- Use the first (top) supported Proxy-Authenticate method
+	  instead of the last one.
+
+	- Use the last '@' in NTLM credentials to separate the host name
+	  from the user name because the user name itself may contain '@'.
+
+	- Robots were not parsing some CONNECT responses correctly.
+
+	- Send full Request URL only if we are talking directly to a
+	  proxy. Sending an HTTP request inside the CONNECT transaction
+	  is not talking directly to a proxy.
+
+	- Do not try to parse content as markup if we are not going to
+	  request embedded objects due to non-positive embed_recur.
+
+
+version 3.1.3
+2007/06/13
+	- Tolerate binary log "level" statistics with negative mean level
+	  data, which may be caused by level sum overflow.
+
+	- Fixed --log and --sample_log command-line option descriptions.
+	  (Mikhail Fedotov).
+
+	- Removed no longer used or maintained nmake-specific Makefiles.
+
+
+version 3.1.1
+2007/03/07
+	- Fixed the 'theInOff <= theCapacity' assertion.
+
+
+version 3.1.0
+2007/03/05
+	- Support client-side NTLM authentication with proxies.
+
+	- Fixed a bug resulting in a stuck client transaction when the
+	  HTTP request did not fit into a single I/O.
+
+	- Make GCC4 on Ubuntu6 happier (Mikhail Fedotov).
+
+
+version 3.0.5
+2006/09/25
+
+	- Changed license to Apache v2.0.
+
+	- Support gzip Content-Encoding: Build fails if gzip content
+	  encoding is requested but an appropriate zlib library is not
+	  found. Added encoding PGL field to PGL Content type to specify
+	  supported encodings for a given content type.  Added
+	  accept_content_encodings field to PGL Robot type to control
+	  Accept-Encoding request header generation. When parsing
+	  Content-Encoding values, only gzip encoding is recognized for
+	  now, and q=0 parameter (if any) is ignored. Generate 406 "Not
+	  Acceptable" responses and record transaction errors when
+	  content coding negotiation fails. Send Vary:  Accept-Encoding
+	  header when multiple codings are possible, depending on client
+	  acceptance rules.
+
+	- Use autotools to generate Makefiles instead of relying on
+	  custom generators that are too costly to maintain.
+
+	- Removed licensing terms acknowledgment from ./configure
+
+	- Do not simulate cached DNS responses for embedded objects if
+	  embedded URL points to a foreign server.
+
+	- Set pipelining depth for each newly opened connection; the
+	  default is the depth of 1 (i.e., no pipelining)
+
+	- Added initial support for HTTP cookies. Generate cookies based
+	  on probability, count, and size params supplied by the user
+	  via PGL (cookie_set_prob, cookie_set_count). Added
+	  Agent::cookie_sender PGL field to specify sticky probability
+	  that an agent supports (generates or returns) cookies. Added
+	  Server::cookie_size PGL field to specify the size distribution
+	  for generated cookies.  Added Robot::cookie_keep_lmt PGL field
+	  to control how many cookies (per server) are kept on the
+	  client side.
+
+	- Added hostedUrls() PGL function to convert a URL trace to an
+	  array of extracted host addresses.
+
+	- Added pipeline_depth PGL field to control the maximum number
+	  of concurrent (pipelined) HTTP requests per connection.
+
+	- Allow for more names than there are IP addresses in the PGL
+	  address map and use round-robin mapping to assign IPs. This is
+	  needed to support URL traces that may have a lot more real
+	  host names than the IP addresses the tester is willing to
+	  create.
+
+	- Support "." or root zone when configuring PGL address maps for
+	  BIND configuration generation.
+
+	- Disabled recursion in named config file, just in case.
+
+	- When generating a BIND configuration file, comment out records
+	  for names with underscores: BIND will not use the entire zone
+	  if it has invalid names.
+
+	- Speedup warmup phase: If we sent two requests to the server,
+	  the server is considered warmed-up even if there were no
+	  first-hand responses.
+
+	- Raised log version to 11.
+
+	- Complain if response to a reload request was generated before
+	  the reload request.
+
+	- Allow content database (cdb) to co-exist with may_contain PGL
+	  content option and use container information to configure the
+	  database.
+
+	- Allow the number of embedded objects in a page to exceed 255
+	  with a slight chance an embedded object ID colliding with
+	  another object ID. Warn if the number of embedded objects
+	  increases beyond 500.
+
+	- Added "linkonly" input format to cdb. With this format, cdb
+	  manipulates embedded URIs (links) as if markup format was used
+	  but preserves the entire file as a single object as if
+	  verbatim format was used.
+
+	- Added tagname-independent catch-all rules for common
+	  attributes such as background and src so that we can find more
+	  embedded URLs.
+
+	- Presence of the Xact-Id header field is now sufficient for the
+	  response to be considered as generated by Polygraph.
+
+	- Do not cancel a server-side transaction if the request lacks
+	  Polygraph headers because it may be a prefetch.  Count such
+	  requests as errors, for now.
+
+	- When generating IP aliases, avoid interfaces that have no inet
+	  family information at all (e.g., teql0 on a Linux laptop).
+	  Thanks to Adrian Chadd.
+
+	- Enabled recovering partial phase statistics from interval
+	  stats.
+
+	- Deal with duplicate phase names by appending unique suffixes
+	  instead of crashing.
+
+	- Added page-related stats such as page response time and page
+	  size.  Page download accounting starts with the first
+	  "container" transaction and ends with the last transaction
+	  among those that fetch the container and embedded objects.
+	  Client-side only.
+
+	- Added a "mean response time versus load" scattered plot figure
+	  to the report.
+
+	- Added traces of offered and measured hit ratios, based on
+	  client-side measurements.
+
+	- Report pipelining statistics.
+
+	- Switched to Gnuplot 4.x command conventions. PNG terminal in
+	  Gnuplot 4.x does not have a 'color' option.  All "set *style"
+	  commands are now "set style *"
+
+	- Be more robust when reading strings from a corrupted test log.
+
+	- Fixed --unique_world handling when persistent working set
+	  feature is enabled.
+
+	- Fixed seed generation when computing random request bodies.
+	  Old generated request content sequences were probably not
+	  random enough because they were probably always started at the
+	  beginning of the precomputed random-content source instead of
+	  starting at random offsets.
+
+	- Fixed handling of timed out DNS queries. The queries were
+	  probably not retried unless the timeout was reported on the
+	  console.
+
+	- Content checksums were not generated for some URLs.
+
+	- Newer FreeBSD versions require (/32, /128) netmasks for
+	  aliases on public interfaces. Warn, but do not quit if the
+	  explicit mask is too small.
+
+	- The "real." and "cachable."  prefixes of PGL stat objects were
+	  not recognized. Thanks to Wu S.N.  <wsn@21cncorp.com> (a.k.a.
+	  Searock)
+
+	- Various GCC3 and GCC4 portability fixes, including the use of
+	  the newer stringstream interface instead of strstream, to
+	  avoid "deprecated header" warnings in GCC3 and compilation
+	  errors in GCC4. The code will no longer work with GCC2 though
+	  because GCC2 does not support stringstreams.
+
+ 	- Applied FreeBSD 5.2-CURRENT / gcc-3.3.3 compatibility patches
+	  from Sergey A. Osokin <osa/at/freebsd.org.ru>
+
+	- Give priority to new <header>s but still load <old.h> headers
+	  if new headers do not exist. Loading old headers is unlikely
+	  to help anyway because many interfaces have changed.
+
+	- Fixed network socket handling code on Solaris.
+
+
+
+version 2.8.1
+2004/10/11
+	- GCC 3.4 compatibility fixes
+	- GCC 3.3 compatibility fixes backported from Polygraph 3.0
+	- guard SIOCGIFINDEX-dependent code (Linux compatibility)
+	- String does not have a reset() method
+	- include <strstream> as a last resort when compiling string.h
+	  wrapper; ideally, it too should be guarded by ./configure
+	- make sure configure fails if SSL support is not disabled and
+	  SSL files are not found
+	- fixed ReportGen installation, although new reporter should
+	  be used instead; ReportGen is deprecated and will not be
+	  available in 3.x
+
+
+version 2.8.0
+2003/11/17
+	- SSL/TLS (https) support, including CONNECT requests 
+	- HTTP Authentication support, including support for very 
+	  large user databases (e.g., via LDAP directory) and loadable 
+	  modules for custom authentication schemes (e.g., RADIUS) 
+	- IPv6 support 
+	- Automatic adjustment of offered load based on real-time 
+	  measurements, such as response time or throughput (aka 
+	  peakfinder or watchdog) 
+	- Persistent working set and ability to continue/resume tests 
+	- Support for checking decisions of URL- and content-based 
+	  filtering proxies to allow, deny, or modify content during 
+	  a performance test 
+	- Better integrated, more detailed, and robust result reporter
+	- GCC 3.2 support
+
+
+2.7.4 -> 2.7.5
+20011231
+	- removed "you can modify" clause from the default end-user
+	  license to comply with University of California license
+	- changed default PopModel.bhr_discrimination from 100% to zero
+	  to remain backward compatible with earlier versions and workloads
+	  that did not use BHR discrimination algorithm
+	- removed "under construction" warnings from -4 workload files
+	- log statistics about transactions involving foreign URLs
+	- make all accept(2) errors on the server side non-fatal;
+	  continue to report previously fatal errors
+	- make errors when creating a UDP socket to send a DNS query non-fatal
+	- report current load factor level when rptmstat is in use
+	- better handle very large console messages (some errors may 
+	  generate output exceeding internal buffer capacity)
+	- fixed phase synchronization bug; reordered requests from
+	  robots could sometimes confuse phase synchronization
+	  algorithm and lead to incorrect phase schedule 
+	- BSDI portability fix
+	- fixed lx segmentation fault bug that was especially likely
+	  in the presence of large number of different errors logged
+	  during the test
+	- do not print millions of "fyi: populus reached max level"
+	  messages when (often incorrectly configured) test attempts
+	  to increase the number of robots when all robots are already
+	  in use
+	- fixed other minor bugs that probably remained invisible in 2.7
+	  branch but were exposed by ongoing code changes
+
+2.7.3 -> 2.7.4
+20010922
+	- synchronized packet delay/loss parameters with on-line
+	  workloads documentation (PolyMix-4 and WebAxe-4): 40msec delay
+	  and 0.05% packet loss in both directions, on one side
+	- changed plateau phase duration back to 4 hours until more
+	  evidence is collected to support the theory that shorter
+	  measurement phase is OK. (WebAxe-4)
+	- set final populus factor to zero and added "synchronize =
+	  false" flag to last phase (dec2) in PolyMix-4 and WebAxe-4
+	  workloads to ensure smooth test termination
+	- do not perform DNS lookups for embedded objects
+	- added "synchronize" flag to Phase type (PGL); by default,
+	  phases try to synchronize their finishes with remote
+	  schedules; if set to false, the phase will quit when its local
+	  schedule tells it so; the latter is handy for the very last
+	  phase of the test when request rate may be almost zero,
+	  leaving few chances for synchronization; this per-phase flag
+	  replaces the global --sync_phases option
+	- emit progress reports on the console every 5 minutes; handy
+	  when a phase seem to be stuck for no apparent reason; the
+	  report frequency is currently hard-coded
+	- do not report "premature end of message body" errors when
+	  transaction is aborted by the other side due to PGL abort_prob
+	  settings
+	- ignore stale objects that became stale while in-transit;
+	  report more info about stale objects
+	- update clock more often at startup
+	- replaced several assertions with warnings and workarounds to
+	  be robust in the presence of yet unknown internal and external
+	  errors
+	- fixed waiting transaction accounting bug: when robots were
+	  made idle to meet (smaller) populus goal or for other reasons,
+	  waiting transaction queue was silently flushed instead of
+	  "killing" each individual queued xaction and updating
+	  appropriate counters/tables; the bug led to wrong wait.level
+	  statistics and to memory leaks
+	- robot transactions were not resetting calculated Object
+	  Lifecycle timestamps leading to false "stale object" errors
+	- different embedded object IDs were sometimes generated for the
+	  same container, screwing MD5 checksums and probably some
+	  supersmart intermediaries because generated content for the
+	  same oid may not be the same
+	- optimized address map searching; linear search was too slow
+	  for large scale configuration, leading to worse response times
+	  for servers closer to the end of the robots' origins array
+	- make sure that no more than scheduled abort size gets
+	  written/read on a connection; old code would read/write as
+	  much as possible, and many scheduled aborts would not happen
+	  until the object is fully written/read, when it is too late
+	  for the other side to notice/experience an abort
+	- a CRLF sequence was getting appended to a host name in the
+	  Host: header if that header happened to be the last HTTP
+	  header in the request/response; Polygraph servers would report
+	  "foreign host name" errors because of that extra CRLF in the
+	  host name; other headers in the same [last] position were
+	  getting extra CRLF as well, but, apparently, their parser
+	  would ignore those extra characters (or, at least, no
+	  side-effects were noticed)
+	- initialize OS-dependent libraries in aka to prevent aka from
+	  quitting due to WSAStartup() not being called on MS Windows;
+	  alias handling code still needs more work on Windows
+
+
+2.7.2 -> 2.7.3
+20010830
+	- submit requests to foreign URLs if needed; the corresponding
+	  responses are read but not counted/analyzed as
+	  hits/misses/etc; the only current valid source of foreign URLs
+	  are redirect (HTTP 302 Found) responses that have foreign URLs
+	  in the Location: field
+	- use relative URLs in container objects because most embedded
+	  URLs that point to the same Web site are relative and because
+	  it solves problems with group of "identical" servers
+	  implementing one Web site (each server should not put its own
+	  address into a URL, but should put its visible name, but one
+	  server may, in theory have multiple visible names)
+	- attempt to handle more errors gracefully, without terminating
+	  a connection and aborting the transaction; still report
+	  errors as they are detected (polyclt)
+	- handle [large] string ranges efficiently (PGL)
+	- all open square brackets ('[') in strings must now be escaped
+	  with a backslash ("\[") for the string to be interpreted as a
+	  string rather than a range (PGL)
+	- compute MD5 checksum for selected objects
+	- WSS of 1GB is now required for cache-off entries (WebAxe-4)
+	- default port for HTTP surrogates should be 80 (WebAxe-4)
+	- client and server-side .hosts values where swapped (WebAxe-4)
+	- minimized the number of differences in parameters and layout
+	  between PolyMix-4 and WebAxe-4
+	- added proxy IP:port address to webaxe-4.pg and address map to
+	  webaxe-4-guts.pg; robots should send requests directly to the
+	  proxy address as if it were an origin server
+	- added port numbers for WebAxe-4 servers (via
+	  server-side.hosts array)
+	- replaced "foreign HTTP request/reply" errors with "foreign
+	  HTTP request or response" (response without Polygraph-specific
+	  headers while those headers were expected) and "foreign URL"
+	  (a URL that does not belong to Polygraph URL space) errors
+	- added "foreign URL without host name" error to complain about
+	  relative foreign URLs when they are not expected
+	- warn if popularity model is not set and rep_types are used
+	  because some reply types require popularity model
+	- added X-* extension headers to HTTP 302 responses
+	- use WSAEMFILE on W2K instead of EMFILE when indicating
+	  out-of-sockets condition to make that error reporting on W2K
+	  work
+	- webaxe-4-guts.pg file was not installed on "make install"
+	- fixed order-dependency bug in polymix-4-guts.pg and synced
+	  webaxe-4-guts.pg
+	- polished polymix-4-guts file to eliminate non-differences
+	  with webaxe-4 guts file
+	- lx should not read standard input by default
+	- fixed yet another bug affecting reported "level" stats; old
+	  reports could have much higher per-phase level stats than
+	  what could be inferred from ltrace plots; per-phase level
+	  stats were incorrect
+	- set GET method for redirected requests; old code would assert
+	  on redirects
+
+
+2.7.1 -> 2.7.2
+20010813
+	- calculate values for If-Modified-Since header fields using
+	  Object Life Cycle configuration of the corresponding object
+	  content type instead of using cached last-modified values;
+	  robots could not cache enough objects to generate reasonable
+	  number of IMS requests with "sane" IMS headers; the new method
+	  solves the problem and eliminates requirement for maintaining
+	  a private cache on each robot (saving lots of RAM for large
+	  scale configurations); now we can specify the number of
+	  IMS-200s and IMS-304s and should be able to meet the specs;
+	  this is a yet another change that makes it crucial to have
+	  identical client- and server- side PGL configurations
+	- select object birthday as a random point within the object
+	  life cycle starting at "time zero" instead of allowing
+	  relative or absolute birthdays; birthday point should not
+	  matter for any current practical purpose, and having relative
+	  birthdays made it impossible(?) to re-generate OLC timestamps
+	  in non-authoritative processes (e.g., clients); the latter was
+	  needed for robots to generate sane IMS requests; PGL object
+	  birthday settings are now deprecated and ignored
+	- removed private_cache_cap settings (i.e., disabled robots'
+	  private caches) from all standard workloads; we no longer
+	  need a private cache to generate IMS requests and, hopefully,
+	  the latter was the only reason to have it; private caches
+	  consumed a lot of memory on large scale configurations
+	- added "bhr_discrimination" field to the PopModel type to
+	  control the aggressiveness of the byte hit ratio (BHR)
+	  discrimination algorithm; 100% makes algorithm the most
+	  aggressive (default); 0% disables the algorithm; internally,
+	  bhr_discrimination is actually a probability of applying the
+	  discrimination algorithm when oid selection is made
+	- added bhr_discrimination to generation-4 workloads
+	- make request body size of PUT and POST requests random rather
+	  than 8192 bytes; 8192 bytes is now an upper limit given 16KB
+	  I/O buffers
+	- moved WebAxe-4 details into include/webaxe-4-guts.pg and
+	  synchronized WebAxe-4 specs with recent PolyMix-4 changes to
+	  keep the two workloads similar (needs more work)
+	- removed "recurrence" field from content types in contents.pg
+	  since Polygraph does not use it anymore; warn if "recurrence"
+	  is set
+	- increased public_interest from 50% to 75% because we now have
+	  robots that are not active until after the [private] working
+	  set size is frozen and, thus, some robots will not be able to
+	  request objects from their private working set, violating the
+	  old goal of 50% of request submitted to private subsets;
+	  while no drastic changes are expected due to this change, we
+	  need more measurements to understand its effect
+	- removed birthday settings from standard OLC configs; OLC now
+	  ignores birthday settings
+	- decreased the ratio of IMS requests in PolyMix-4 from 20% to
+	  15%
+	- configured PolyMix-4 robots and servers to abort 0.1% of
+	  transactions
+	- added 1.5% of POST and 0.1% of HEAD request methods to
+	  PolyMix-4 and WebAxe-4 workloads
+	- added zone name back to AddrMap in PolyMix-4; dns_cfg should
+	  work with polymix-4.pg now
+	- increased supported and required log version to 10 due to
+	  transaction logging changes; older logs cannot be read with newer
+	  readers and vice-versa
+	- IpsToNames() now preserves port numbers (PGL)
+	- supply more information about DNS timeout errors
+	- DNS answers were allocated but not freed, leaking a memory on
+	  every DNS request
+	- try other DNS servers (if any) when DNS query times out
+	- cloned addresses are now iterated depth first when agent
+	  aliases are created, because alias creation code tries to
+	  allocate n-th chunk of addresses rather than every k
+	  addresses; the old code would create twice as many aliases for
+	  addressing schemes with more than one agent per address; the
+	  new code creates the same alias twice; needs more work to
+	  avoid extra creation
+	- "--names" option was treated as "--addresses" option (dns_cfg)
+	- improved old IP alias deletion on OSes with numbered virtual
+	  interfaces (e.f., Linux and Solaris); this needs more work;
+	  for example, one cannot have both polyclt and polysrv creating
+	  aliases on the same Linux box
+	- fixed netmasks and broadcast address settings on systems with
+	  "numbered" virtual interfaces and without ifaliasreq structure
+	  (e.g., Linux and Solaris); old code did not set netmasks and
+	  broadcast addresses at all (effectively), and defaults were
+	  probably assigned by OS
+	- when creating aliases, we were opening a new socket instead of
+	  closing an old one, creating thousands of "extra" sockets when
+	  aliases were created on a box; this led to "too many open
+	  files" errors on some systems, at least
+
+2.7.0 -> 2.7.1
+20010803
+	- added "recurrence" field to PGL's Content type; recurrence
+	  value affects the probability of the content type being
+	  selected when Polygraph decides which object should be
+	  revisited among a set of candidates; recurrence is a "weight"
+	  rather than "probability" because several objects of the same
+	  type may be present in the selection group and the sum of all
+	  weights can exceed 1.0; in other words, the selection group is
+	  formed first, recurrence weights are applied second;
+	  recurrence weight defaults to 1.00
+	- added "zone" field to AddrMap type (PGL); the zone name is
+	  not used by Polygraph run-time, but can be used by external
+	  programs such as dns_cfg to build zone files based on PGL
+	  configuration
+	- added ipsToNames() PGL function to convert an array of IP
+	  addresses into host names using a simple 1:1 mapping
+	- added "--config" and "--cfg_dirs" options to dns_cfg to
+	  extract required information from a PGL file; old
+	  command-line options interface is still supported and is
+	  mutually exclusive with the new PGL interface
+	- added DNS resolver address as a parameter for PolyMix-4
+	  workload; set DNS resolver timeout to 5 seconds
+	- use ipsToNames() to generate DNS names for PolyMix-4 servers
+	  PolyMix-4 workloads are now using DNS names; this can be
+	  disabled (in violation of PolyMix-4 rules) by setting AddrMap
+	  "names" to server "addresses"
+	- polished PolyMix-4 workload files to explicitly list address
+	  space and real hosts settings; /22 subnet must be specified
+	  for address space or PGL will compute the smallest subnet
+	  given the bench configuration (smaller subnet will lead to a
+	  different agent addresses compared to the required /22 subnet,
+	  screwing up routing)
+	- added recurrence weights to content types used in PolyMix-4;
+	  this should improve byte hit ratio (BHR) simulation, but it
+	  looks like more work is needed to actually make that happen
+	- polished dns_cfg output to better match BIND files format
+	- renamed "--domain" to "--zone" (dns_cfg)
+	- renamed Session's heartbit_notif_rate to heartbeat_notif_rate
+	  (PGL)
+	- reduce the number of "labeled logs have no object named X"
+	  messages when generating reports
+	- account for the number of agents per address when computing
+	  minimum (smallest) subnet in version-4 addressing schemes;
+	  old code incorrectly complained about /22 being too small for
+	  PolyMix-4 workloads because it did not account for the fact
+	  that two PolyMix-4 robots may share an IP address
+	- plot_traces was using unportable regular expression feature
+	  that led to "Character class syntax [: :] is reserved for
+	  future extensions" Perl errors when generating reports; use a
+	  more portable expression instead
+	- delete old IP aliases before creating new ones; old code
+	  was not calling the delete method
+
+2.6.5 -> 2.7.0
+20010729
+	- added "req_methods" field to Robot (PGL) to specify
+	  distribution of HTTP request methods for a robot to use;
+	  supported methods are GET, HEAD, POST, and PUT; methods that
+	  allow request bodies (POST and PUT) use constant body size of
+	  8192Bytes, for now.
+
+	- added "abort_prob" field to robot and server PGL
+	  configurations to abort transactions based on on a given abort
+	  probability; robots may abort while receiving response body,
+	  and no aborts while sending headers, waiting for a response,
+	  or reading response headers are supported; servers may abort
+	  while sending response body, and no aborts while sending
+	  headers, waiting for a request, or reading request headers are
+	  supported
+
+	- added "addr_space" field that deprecates "addr_mask" field;
+	  version-4 addressing schemes use "addr_space" addresses to
+	  generate robot and server addresses; older schemes used only
+	  two first octets of, now deprecated, addr_mask, making agent
+	  address configuration too rigid; "addr_space" can list any IP
+	  addresses as long as they comply with the addressing schemes
+	  in use; this is a big change so there may be bugs in
+	  implementations of addressing schemes that now use addr_space
+
+	- rewrote PGL arrays to allow array members to be arrays; the
+	  nesting is almost transparent to the end-user as far as member
+	  iteration is concerned (i.e., nested arrays are flattened
+	  automagically), but does affect probabilities assignment
+	  because each container can have its own [sub-]probabilities in
+	  addition to a member probability specified in the array;
+	  doing something like "[ a: 5%, [b: 10%, c]: 50%, d]" is now
+	  possible and equivalent to "[a: 5%, b: 5%, c: 45%, d]"
+
+	- added a binary "+" operator for arrays so that two arrays
+	  can be concatenated without nesting
+
+	- added "--delete_old_addrs <bool>" option to polyclt/srv to
+	  specify whether old IP addresses should be deleted when
+	  creating new IP addresses; defaults to "yes"; may allow to
+	  run polyclt on the same box as polysrv _and_ create aliases
+	  run-time (bit more work would be needed for OSes that number
+	  their alias interfaces for system call purposes)
+
+	- do not send Last-Modified and Expires headers for uncachable
+	  objects; some proxies (e.g., Apache's mod_proxy 1.3)
+	  completely ignore "Cache-control no-=cache,private" and
+	  "Pragma: no-cache" response headers and cache an object if
+	  a response has, say, a valid Last-Modified header
+
+	- use interface names and subnets directly from agent.addresses
+	  arrays instead of addr_mask when creating new aliases; now, in
+	  theory, one can have agents bound to several interfaces and
+	  still be able to create aliases automatically
+
+	- added PolyMix-4 workload (first draft) and 
+	  synchronized them with PGL changes
+
+	- use 2 robots per IP for WebAxe-4 and PolyMix-4; this allows to
+	  support higher request rates with reasonable number of IP
+	  aliases
+
+	- bumped log version to 9 due to new stats (HEAD/POST/PUT and
+	  aborts) being logged
+
+	- reduced memory footprint of large address ranges and large
+	  "**" clones (PGL)
+
+	- renamed option "--addrs" to "--addresses" (dns_cfg)
+
+	- "something/0" expressions were interpreted as rate because
+	  zero is convertible to time (e.g., 0 seconds); forced PGL to
+	  just complain about division by zero instead
+
+
+2.6.4 -> 2.6.5
+20010729
+	- use "binary" mode for log files; required on MS Windows for
+	  the logging to work; previous versions produced corrupted
+	  log files on MS Windows or any platform that treats binary
+	  files specially
+	- changed Unix makefiles to stop after the first error
+
+2.6.3 -> 2.6.4
+20010709
+	- added "proxies" field to robot PGL configuration; proxies
+	  must not be used together with the --proxy command line
+	  option as they are mutually exclusive; a robot selects a
+	  random proxy at the configuration time and uses that proxy
+	  for the entire duration of the test (sticky proxy
+	  assignment); proxy addresses are distributed evenly (if
+	  possible) among all robots in the test; individual groups of
+	  robots (e.g., all robots on one host) may not get an even
+	  distribution.
+	- support "make install" in workload files; "make install"
+	  will overwrite existing files in the destination directory
+	  (/usr/local/polygraph/workloads by default); users are not
+	  supposed to modify original workload files and should
+	  create copies when modifications are needed
+	- made aka robust when no primary IP is present on the interface
+	- lognormal mean and standard deviation were not reported
+	  correctly (Johnson Lee <jl03@gte.com>)
+	- synced comments in polymix-3.pg with Bench type changes
+	- clientHostCount in PolyMix-3 on 2.6 branch was not computed
+	  correctly, leading to ridiculously small working set sizes
+	  and shorter fill phases
+
+
+2.6.2 -> 2.6.3
+20010627
+	- emit (errUnreachContType) "unreachable content type" when an
+	  embedded content type cannot be found on the [visible] server that
+	  hosts the container object; Polygraph can only handle embedded
+	  objects that reside on the same visible server as the container
+	- use the same content distribution for all L7 servers (except
+	  for the URL extension) so that all servers will get similar
+	  load
+	- when server's direct_access probabilities are specified manually,
+	  use them and do not compute our own
+	- added "byte.rptm.mean", [milliseconds / kilobyte] object to Report
+	  Generator. The object value is visible in make_report as "byte"
+	  table entry in the Response Time table and as the byte_rptms plot.
+	- replaced --rng_seed option with two new options:  --global_rng_seed
+	  and --local_rnd_seed. Both default to 1.  All processes within a
+	  test must have the same --global_rng_seed value to correctly
+	  generate "global" information such as a URL extension for the same
+	  object ID.  All processes within a test should have different
+	  --local_rnd_seed settings to avoid lock-step behavior of things that
+	  should not be synchronized.
+	- do not print "Potential problems" header if no problems are detected
+	  by make_report
+	- when generating a public miss, use local public world slice
+	  only; using remote slices creates race condition for
+	  generating a miss with the corresponding remote agent; these
+	  race conditions lead to buggy offered hit ratio
+	- W2K select(2) fails if no FDs are passed to it (i.e., all FDs sets
+	  are empty)
+	- fixed fixed a very old bug (again) that, under certain conditions,
+	  left some FDs ignored by select(2); the earlier fix was ineffective
+	- fixed ceil() workaround once again: the earlier fix was ineffective
+
+2.6.1 -> 2.6.2
+20010613
+	- polished SrvLB workloads; added SrvLb4As addressing scheme;
+	  same as WebAxe4 but uses server_side.hosts for server
+	  addresses instead of building them using a
+	  server_side.addr_mask
+	- try to select appropriate target if content type is known so
+	  that embedded objects will be directed to the right targets;
+	  this feature is needed for L7 SLB tests; needs more work to
+	  randomize target selection when more than one target server
+	  has the required content type
+	- if no command is given to forsome, just print addresses in the
+	  specified host group
+	- check that the content type in the request URI belongs to the
+	  server that the request was sent to; generate a misdirected
+	  request error if it does not; previously, a server would
+	  happily serve any content type that belonged to at least one
+	  server in a PGL configuration
+	- open DNS/UDP socket for a robot only when the first DNS query
+	  needs to be sent out; this will prevent polyclt from creating
+	  one socket for every robot even when no DNS queries are
+	  needed; also do not select(2) DNS/UDP socket for reading when
+	  there are no pending transactions to reduce CPU overhead when
+	  some DNS queries are present
+	- public URL worlds were erroneously updated with stale data
+	  when hot set position of the stale snapshot differed from the
+	  current one; the bug led to incorrect (higher than what should
+	  have been offered) offered hit ratios
+	- fixed a very old bug that, under certain conditions, left some
+	  FDs ignored by select(2)/poll(2); most likely, the bug was
+	  never or infrequently triggered by Polygraph code before;
+	  noticed the bug when adding BEEP support that has somewhat
+	  different FD registration/scanning pattern from the rest of
+	  the code.
+	- libc's ceil(700/0.7) returns 1001; the old workaround was not
+	  good enough, and led to creation of 1001 agents where only
+	  1000 agents were needed; added a better workaround
+	- made interface aliases / primary address detection code more
+	  robust on Linux
+	- changed recur_factor to recur_factor_{beg,end} in webaxe-1.pg
+
+2.6.0 -> 2.6.1
+20010605
+	- fixed "version three" addressing scheme bug that led to incorrect
+	  addresses being auto-generated for PolyMix-3 and other -3 workloads
+	  that used addressing scheme PGL feature
+	- a server now checks for requested URL to belong to that server; if
+	  request is misdirected, the connection is closed with an xaction
+	  error message dumped to the console; no 404 HTTP error is generated
+	  at this time
+	- added --load_balancer option to make_report to generate slightly
+	  different reports for load balancing tests
+
+2.5.5 -> 2.6.0
+20010522
+	- changed licensing terms and added not-for-publication clause
+	- updated README
+	- added DNS/FQDN client-side support; robots can now send
+	  [non-blocking asynchronous] DNS queries to specified DNS servers to
+	  resolve destination addresses; DNS responses are currently not
+	  cached
+	- added pxylb-4.pg and srvlb-l4-4.pg workload drafts to test proxy
+	  and origin server load balancing, respectfully
+	- added webaxe-3.pg configuration file for WebAxe workload; this
+	  file was distributed with Polygraph version 2.5.4 under the name
+	  webaxe-2.5.pg
+	- create IP aliases upon startup, based on the PGL bench
+	  configuration; warn if aliases are not being created and explain
+	  why
+	- log PGL configuration upon startup
+	- added support for URL prefixes; arbitrary string(s) can be
+	  specified to be included as a URL "prefix", right after the first
+	  '/' following the host name or host address; use Mime.prefixes for
+	  now (just like Mime.extensions)
+	- added "special_msg_factor_beg" and "special_msg_factor_end" fields
+	  to Phase specs to control the presence of special messages (IMS,
+	  Reload, 302 Found, etc.) in the generated stream (PGL); useful to
+	  speedup fill phase and to test the influence of those special
+	  requests on the cache
+	- handle ``302 Found'' replies: treat them as special valid kind of
+	  an HTTP response and follow URIs in the Location: field; 302s may
+	  be foreign replies, but 302 takes priority when it comes to
+	  redirection handling and statistics logging
+	- added client-side support for HTTP 300, 303, and 307 responses; a
+	  Robot would request the Uri found in the Location: field of the
+	  response after processing the original transaction
+	- use new client-centric PubWorld interface instead of old
+	  server-centric object ID (oid) exchange; use/maintain related
+	  global indexes; broadcast/update PubWorld info
+	- added support to flip-flop debugging (--dump hdrs) status on USR1
+	  signal
+	- try to flush logs when process is running out of memory;
+	  pre-allocate a 16KB buffer to be freed when we are running out of
+	  memory, in hope to get enough memory to flush the logs; this trick
+	  may help to save some of the logs when Polygraph quits with
+	  "virtual memory exhausted in new"; may need more work
+	- added phase name reporting to ltrace; when multiple logs with
+	  different phases are merged, the printed phase name can be the
+	  name of any then-current phase.
+	- added polyprobe -- a traffic-volume-oriented network test tool
+	  that will, eventually, replace netperf for many-to-many raw
+	  network bandwidth tests used before PolyMix tests
+	- added polyrrd tool to supply run-time Polygraph stats to the rrd
+	  tool; rrd tool is a "better MRTG" software for displaying run-time
+	  stats in graphical form:
+	  http://ee-staff.ethz.ch/~oetiker/webtools/rrdtool/
+	- added rrd-cgi.sh as a sample file to use with polyrrd and rrd tool
+	- pgl_test now accepts include directories as parameters (after the
+	  PGL file to test)
+	- assume URLs starting with "/health" are health checks and reply as
+	  if --ignore_urls was set
+	- added "Rptmstat" PGL type to store response-time-stat (as in
+	  thermo-stat) configuration; a rptmstat attempts to keep response
+	  time within the specified bounds by adjusting offered request rate
+	  (just as a thermostat attempts to keep temperature within the
+	  specified bounds by adjusting the furnace or A/C operation)
+	- added "rptmstat" field to Phase type; rptmstats are activated on a
+	  per-phase basis
+	- added "rep_types" field to Server agent type (PGL); "Basic" and
+	  "302 Found" reply types are supported
+	- added "client.hosts" and "server.hosts" fields to Bench object to
+	  specify real machine addresses (as opposed to "virtual" aliases for
+	  agents) (PGL);
+	- added DnsResolver PGL type to configure DNS resolver for robots
+	- skip insane/corrupted entries in the trace and warn about them;
+	  trace corruption may happen when Polygraph process or the host OS
+	  is killed without a chance to flush the binary logs
+	- added dns_resolver field to Robot type
+	- support port ranges in PGL addresses
+	- added use(Bench) PGL call to specify the bench configuration for
+	  the test
+	- added minimize_new_conn field to Robot to specify probability of
+	  an attempt to use idle connections to address' substitutes when no
+	  idle connections to the address are available; added
+	  note_substitutes() procedure call to register known substitute
+	  groups (PGL); substitutes are useful to approximate connection
+	  reuse pattern of a single-destination workload in a no-proxy or
+	  no-balancer setup
+	- added dns_cfg tool to generate configuration files for named, a
+	  DNS server, needs more work
+	- use a new tool to generate Makefiles for Unix (gmake) and MS
+	  Windows (nmake). Temporary lost ability to built out of the source
+	  directory.
+	- renamed --*log_size to --*log_buf_size so better reflect the true
+	  meaning of the option
+	- removed the --new_oids* options as unused
+	- renamed popularity distributions pmUnif and pmZipf to popUnif and
+	  popZipf to avoid conflict with popularity models (pm*)
+	- polished simple.pg and moved simple server to port 9090 to avoid
+	  strange port 8080 hijacking problems on some Windows installations
+	- synced standard workloads with PGL changes
+	- changed HotSet algorithm to avoid storing theObjLmt: change hot
+	  position when it is no longer in the working set; when WSS is
+	  unknown, keep hot position in the middle of the URL set
+	  (constantly sliding position); the rationale is to reduce memory
+	  overhead and, maybe, to simplify remote synchronization of hot
+	  positions
+	- changed Bench definition to use BenchSides instead of client_ and
+	  server_ prefixes
+	- added new "Addressing Scheme" PGL types to calculate agent
+	  addresses for various workloads
+	- PGL agents should always bind(2) to specified addresses
+	- removed "Rptm vs Size" and "Conn Life Time vs Use Count"
+	  statistics; (they were huge and rarely used; similar data can
+	  probably be derived from stats samples)
+	- changed binary log format and version
+	- moved pop_model PGL field from Robot to Agent because Server agent
+	  needs it to generate ``302 Found'' responses
+	- replaced "agent.hosts" fields with "agent.addresses" to be more
+	  consistent; "hosts" in PGL usually means "real, permanent
+	  address" while "addresses" are often used for IP aliases that are
+	  created run-time
+	- use address ranges when printing arrays of addresses, if possible
+	- when checking for "clocks out of sync" errors, ignore replies that
+	  took a long time; slow replies is usually an indication of
+	  problems other/bigger than clock synchronization
+	- embedded objects should inherit request type property from the
+	  container (not ideal, but better than using default req type for
+	  all embedded objects)
+	- removed old place() PGL function
+	- increased client-group-count-dependent hash capacities from 11 to
+	  37 old limits did not allow to use more than 11 clients or server
+	  machines in a test
+	- changed default value of polysrv's --idle_tout to 5 minutes
+	- removed piper tool -- it was not used and caused compilation
+	  problems on FreeBSD 4.x due to new DummyNet interface
+	- tried to make alias manipulation with aka work again on Linux
+	- added port of msl_test to linux, based, in part, on code donated
+	  by Andrew Schultz from Mission Critical Linux, Inc. More work is
+	  required to make msl_test more portable
+	- provide traces of conn.open.rate and conn.estb.rate in the report
+	- improved report generation tools
+	- AIX portability fixes
+	- HP-UX (aCC) portability fixes
+	- Linux portability fixes
+	- MS W2K (VC++) portability fixes
+	- Solaris portability fixes
+	- added config.bat script to compile sources with nmake on Windows
+	- reduce default optimization level on Linux to 1 (-O1) to avoid
+	  coredumps
+	- lots of polypxy fixes to make it more robust; needs more work
+	- a yet another attempt to fix code that merges level stats
+	- adjusted alias creation code to extract and honor individual
+	  subnets of the alias addresses
+	- when merging (not concatenating) stats, the duration should be set
+	  to the maximum duration of the two intervals being merged so that
+	  merging 10 req/sec for 1 sec and 1 req/sec for 1 hour does not
+	  result in 11 req/sec mean; will this screw anything that used to
+	  work?
+	- when merging or concatenating phase stats, do not change the phase
+	  name if phases with the same are joined
+	- fixed ./CdbBodyIter.cc:43: assertion failed: '!theInjector';
+	  a common problem with realistic content simulation module
+	- fixed an old ltrace bug: sampling windows were sometimes getting
+	  huge, leading to excessive memory consumption and possibly somewhat
+	  incorrect trace plots
+	- "ceil(700/0.7)" returns 1001(!!); added a workaround; old IP
+	  calculation tools were generating wrong values when 700
+	  req/sec/host and 0.7req/sec/agent combination was used
+	- aka was not setting subnets right
+
+
+2.5.4 -> 2.5.5
+20010501
+	- updated copyright/license statements
+	- added licensing terms acknowledgment to ./configure script
+	- resurrected support for user-defined or "table-based" distributions;
+	  e.g., ``SimpleContent.size = table("/tmp/t.distr", "size");'' where
+	  /tmp/t.distr contains the distribution of type size_distr
+	- added webaxe-3.pg configuration file for WebAxe workload; this file
+	  was distributed with Polygraph version 2.5.4 under the name
+	  webaxe-2.5.pg
+	- Red Hat 7.0 compatibility fixes
+	- AIX compatibility fixes
+	- fixes for platforms with unsigned chars (e.g. AIX); PGL parser would
+	  quit on those platforms with error location pointing to the end of a
+	  file being parsed
+	- fixed an old ltrace bug: sampling windows were sometimes getting
+	  huge, leading to excessive memory consumption and possibly somewhat
+	  incorrect trace plots
+	- fixed local time detection bug on Solaris; the bug caused Polygraph
+	  to complain about client/server clocks being out of sync even if
+	  both processes were running on the same host
+	- replaced "MB/sec" column heading produced by make_report 
+	  with less confusing Mbit/sec
+
+
+2.5.3 -> 2.5.4
+20000724
+	- added "special_req_factor_beg" and "special_req_factor_end"
+	  fields to Phase specs to control the presence of special
+	  requests (IMS, Reload, etc.) in the generated stream (PGL)
+	- identify cases when HTTP race conditions lead to connectivity
+	  errors on used-to-idle persistent connections; retry
+	  transactions when such errors occur; log the number of retried
+	  transactions (that otherwise do not affect statistics)
+	- eliminated most of the special (non-Basic) requests during the
+	  fill to shorten the fill phase (PolyMix-3)
+	- when a phase meets its goal, wait until all remote phases are
+	  ready before proceeding
+	- added the "--sync_phases <bool>" option to disable auto phase
+	  synchronization if needed
+	- log statistics about oid generation algorithm
+	- distinguish "hot" requests in stats samples
+	- polished stats samples and made them smaller
+	- report WSS in terms of bytes (in addition to object count); be
+	  careful when interpreting the values -- adjust for embedded
+	  objects and other hosts in the bench
+	- complain if server agent port is not specified
+	- upgraded current and required log versions from 2 to 3; log
+	  versions were not upgraded for a while despite format changes,
+	  unfortunately
+	- warn about log extractor <--> log producer versions mismatch
+	  when reading a log
+	- fixed typo in X-Srv-Sets header parsing code that led to
+	  growing WSS for public (shared) objects, resulting in
+	  lower-than-expected HR
+	- fixed ./CdbBodyIter.cc:43: assertion failed: '!theInjector'
+	- fixed coredumps when all configured phases are ended and
+	  Polygraph adds a "cold" phase for the last transactions to
+	  finish and coredumpts with segmentation fault
+	- made reportgen.cfg dependent on ./configure parameters
+
+
+2.5.2 -> 2.5.3
+20000719
+	- ProxyCacheSize in polymix-3.pg should now be set to the
+	  *total* proxy cache size, without adjusting for the number of
+	  polyclt processes; all adjustments are now done in
+	  polymix-3-guts.pg, without user participation (the patch
+	  with the above functionality was posted shortly after 2.5.2
+	  was released)
+	- added the clientHostCount() function to compute the number of
+	  client hosts based on the PolyMix-3 rules (PGL)
+	- added client_host_count to benchPolyMix3; if not defined by
+	  the user, its value will be computed on-the-fly in
+	  polymix-3-guts.pg:  TheBench.client_host_count will be set to
+	  clientHostCount(TheBench)
+	- added the "fexit" phase to PolyMix-3; fexit increases hit
+	  ratio to peak level while decreasing request rate; this phase
+	  may be required for proxies that get overwhelmed by high loads
+	  with low hit ratio; the latter were possible during "inc1"
+	  when hit ratio was increased along with request rate, but not
+	  "fast enough".
+	- adjust Robot's recurrence ratio for Reload requests (we are still
+	  unsure what to do with IMSes)
+	- collect small transaction sample during the fill phase (PolyMix-3)
+	- polypxy can now handle misses (not yet robust in error-rich
+	  environments)
+	- a Robot that did not request any private objects from a server
+	  before WSS was frozen should try not to request new private
+	  oids from that server; doing otherwise populates the working
+	  set with oids that cannot be requested again in the future
+	  (because the corresponding WSS is zero) but may consume cache
+	  space, etc.  Generating a new private oid is always the last
+	  resort, but it should not be the second best choice.
+	- hot set objects may have been sometimes chosen outside of the
+	  working set, leading to false false hits and lower hit ratio;
+	  other objects may have been subjected to this as well
+	- request embedded objects during the initial server scan (not
+	  requesting them makes Polygraph think that an embedded object
+	  was requested before when it was not, decreasing HR)
+	- made polymon report Network Bandwidth usage again (untested)
+	- moved foreign request error reporting so that we still have
+	  request headers to dump
+	- marking a freshly accepted socket as a non-blocking or
+	  not-naggling socket may fail when poly* is overloaded; do not
+	  exit the program but rather continue after reporting the error
+	- fixed two coredump-inducing bugs in the polypxy module
+	- aka was exiting silently when no "anonymous" options where
+	  specified
+	- support the "log_dir" option to label_results
+
+
+2.5.1 -> 2.5.2
+20000713
+	- accept more than one alias range (aka); useful for running
+	  robots and servers on the same machine (but do not do that for
+	  production tests!)
+	- do not attempt to extract the broadcast address of the
+	  interface, we do not need it and some interfaces (e.g., lo0 on
+	  FreeBSD) may not have one (aka)
+	- added tools/pmix3-ips.pl script which is identical to
+	  pmix2-ips.pl except that it also prints IP ranges for each
+	  host in the bench (in default, verbose mode)
+	- added IMS/reload statistics collection and reporting IMS and
+	  reload transactions are now treated separately from "basic"
+	  transactions and do not affect hit ratios, fill rates and
+	  other statistics that is hard to define for IMS and reloads
+	  (e.g., what IMS response can be count as a hit?); The
+	  "Contribution" table in generated reports needs more work as it
+	  is not 100% in sync with the above change
+	- added working_set_cap() function to freeze WSS based on the
+	  number of transactions rather than run time (PGL)
+	- added min() and max() functions to PGL
+	- split polymix-3.pg into [modifiable] polymix-3.pg and
+	  [read-only] include/polymix-3-guts.pg
+	- specify WSS in terms of fill responses rather than time (the
+	  calculation is still time-based, just like in Polymix-2); WSS
+	  is meant to be equal to 4 hours of fill traffic during a "top"
+	  phase, approximately (polymix-3.pg)
+	- specify ramp durations as a fraction of plateau durations to
+	  ease scaling of a test (polymix-3.pg)
+	- added "wait_wss_freeze" boolean field to PGL's Phase; if set,
+	  the phase will finish only if the working set size is frozen
+	  (and all other goals are satisfied, of course)
+	- make sure that fill phase stops only if working set is frozen
+	- do not request embedded objects while in the initial
+	  server-scan mode
+	- shortened launch window because we no longer request embedded
+	  objects
+	- decreased warmup phase goal to a single launch window
+	- detect malformed HTTP request or response lines and complain
+	- check that embedded object type makes sense and complain if it
+	  does not (instead of dumping core)
+	- Polygraph was erroneously reporting "hit on reload requests"
+	  for some embedded objects
+	- removed "http." prefix from some lx object names
+	- report the number of local private objects in the working set
+	  size
+	- obey RFC 2616: do not send any extension-headers with 304s
+	- Zip files should have ".zip" extension, not "zip"
+	  (contents.pg)
+	- yet another attempt to make oid exchange algorithm more robust
+	  (needs more work)
+	- increased new_oids_history default to from 1024 to 2*1024
+	- increased new_oids_prefetch default to from 128 to 256
+
+
+2.5.0 -> 2.5.1
+20000626
+	- added support for realistic HTML simulation
+	- added aka support for IP alias manipulation on systems that
+	  use virtual interfaces such as eth0:1, including Solaris
+	  (untested) and Linux (tested)
+	- polished the code that searches for local interface addresses
+	  in hope to make it work on more OSes
+	- added robotAddrs() and serverAddrs() functions: PGL now knows
+	  how to compute PolyMix-2,3 IP addresses, given the peak
+	  request rate (and other parameters); make use of that feature
+	  so that people do not have to spell out IP addresses in
+	  polymix-3.pg; explicit addresses are still supported, of
+	  course; IP aliases still need to be created before the test
+	- added "Bench" type to describe parameters for the IP
+	  allocation schemes and include/benches.pg to describe standard
+	  IP allocation schemes
+	- support variable recurrence ratio: replaced "recur_factor" in
+	  Robot with recur_factor_beg / recur_factor_end pair for smooth
+	  change in recurrence ratio (PGL)
+	- polished definitions of fill-related phases to make use of
+	  variable recurrence in PolyMix-3
+	- polished launch window calculations in PolyMix-3 (needs more
+	  work)
+	- added the "--ign_bad_cont_tags" option to ignore content tags
+	  that a Robot cannot parse; useful with realistic HTML
+	  simulation
+	- added the "--ign_urls" option to generate content regardless
+	  of the URL being requested; useful when running polysrv in a
+	  "demo" mode
+	- fixed logging of ICP statistics
+	- added reporting of ICP measurements to the Report Generator;
+	  the above reporting is enabled only when ICP stats are present
+	  in the logs
+	- make sure IMS timestamp is always at least 00:00:00 UTC,
+	  January 1, 1970
+	- fixed type unification compile-time bugs
+	- Solaris portability fixes (IP aliasing improvements are
+	  untested due to the lack of root access to a Solaris box)
+	- "everything expires when modified" should use "nmt" not "lmt"
+	  in olcStatic in contents.pg
+	- replaced pop_model settings to make old workloads "compile"
+	  with new PopModel type (PGL)
+	- support number/rate operation (returns time) (PGL)
+
+
+2.2.8 -> 2.2.9
+20000113
+	- added downtime-2.pg workload specs for the "power-off" test
+	- when transaction fails, it may take a while for polysrv to
+	  stop waiting on the corresponding object id; the latter may
+	  lead to a situation when hits are generated only using oids
+	  that are smaller than the lost oid, preventing WSS algorithm
+	  from "sliding"; we now attempt to report "lost" oids back to
+	  the server so it does not wait for them; the latter may
+	  improve hit ratio for "small" caches in the presence of
+	  errors
+	- freeze WSS based on last object id sent to the server rather
+	  than last object id confirmed by the server (to prevent
+	  funny tiny working sets in the presence of errors when oids
+	  may get lost)
+	- groups with working set size of zero were not handled
+	  correctly; a group has zero size if it was never used prior
+	  to the working set freezing time
+	- on the client side, distinguish closed connection with no
+	  headers sent from a closed connection with some headers
+	  sent; that is, distinguish "connection closed before sending
+	  headers" from "premature end of msg headers"; the former may
+	  by due to HTTP race condition, the latter is definitely a
+	  bug.
+	- added "Errors Total Count x 1000" screen to polymon
+	- assume BB/*.pm files are in /usr/local/polygraph/BB or in
+	  the current dir
+	- polished bb.pl output
+	- added tools/pmix2-ips.pl and tool/BB/forsome scripts that
+	  help in configuring and running [large scale] experiments
+	- removed most defaults values for options of Report Generator
+	  tools; reportgen.cfg should be used instead; needs more work
+	- allow up to 0.1% difference between fill count measured and
+	  computed based on hit and cachability ratios (Report
+	  Generator)
+	- do not complain about too many waiting requests because it
+	  is not clear what "too many" is (Report Generator)
+	- plot cachability ratio along with hit ratios (Report
+	  Generator)
+	- ported Report Generator to Solaris (the patch was available
+	  for 2.2.8)
+	- do not dump core if a requested phase is not found in the
+	  log (lx)
+	- do not quit on logs with [very] different absolute times
+	  (ltrace)
+	- made log merging algorithm less susceptible to minor local
+	  time differences between machines where the logs where
+	  generated (lx, ltrace); "level" traces (e.g., those produced
+	  by Report Generator) no longer have weird slight downward
+	  slopes
+	- statistics about "waiting" (queued for connections)
+	  transactions was not collected appropriately resulting in
+	  zero readings
+	- fixed "request rate for robot X is not positive"
+	  configuration time bug (the patch was available for 2.2.8)
+	- compile IpSocket.cc even when IPFW is not supported (the
+	  patch was available for 2.2.8)
+	- prevent "invalid type X for default argument to Y"
+	  compilation errors
+
+
+2.2.7 -> 2.2.8
+19991227
+	- added "req_inter_arrival" field to Robot to specify other
+	  than Poisson inter-arrival time distributions; for example,
+	  downtime test will use constant distribution (PGL)
+	- redesigned lx to concentrate on phase-related statistics and
+	  support multiple log files; phases with equal names are
+	  merged, and phases with different names are concatenated to
+	  produce correct "totals"
+	- added `ltrace', a tool to generate traces based on binary
+	  logs; this functionality was moved from `lx' that no longer
+	  supports trace extraction
+	- changed naming scheme for log objects to be more consistent
+	  and scalable, added a few new objects
+	- log statistics about transactions waiting for resources to
+	  become available (e.g., requests waiting for a robot
+	  connection pool to allocate a connection); this changed log
+	  format, unfortunately
+	- dump more information on "foreign content <tag>" and
+	  "malformed content <tag>" errors
+	- added a cool "summary" screen to polymon
+	- do not quit when all phases met their goals when there is a
+	  positive idle timeout; wait for that timeout to expire (so
+	  that servers do not quit while clients are running)
+	- do not log ascii representation of addresses when storing
+	  current state
+	- "level" statistics was not maintained properly between
+	  phases
+	- "fill" stream was measured as "miss" stream instead of
+	  "cachable miss"; polyfill-2.pg was not affected because all
+	  polyfill objects were cachable
+	- gettimeofday(2) system call is broken on FreeBSD; make sure
+	  internal Polygraph clocks never go backwards and show sane
+	  values
+	- avoid infinite recursion coredumps when we fail to write a
+	  log entry; report and try to salvage logging errors instead
+	- do not dump core if a phase has no name, use "" name instead
+
+
+2.2.6 -> 2.2.7
+19991215
+	- added "--time_scale" option to lx; positive values make lx to
+	  print relative [to the run start] time for traces, scaled by the
+	  specified amount
+	- added "Traces" macro to represent all "traceable" objects in lx
+	- added rptm_mean:hit and rptm_mean:miss to lx's All micro
+	- only redirect standard output when --out option is used (lx); used
+	  to redirect error streams as well
+	- try to skip corrupted entries in [otherwise valid] binary logs
+	- implementation of lognormal distribution used incorrect standard
+	  deviation leading to occasional huge objects and
+	  smaller-than-configured means
+	- changed content sizes for cntOther and cntDownload after fixing
+	  the lognormal distribution bug to get the right mean object size
+	- removed percents from Server.direct_access specs; those values are
+	  ignored by Polygraph because servers calculate them from scratch
+	  to match "global" content distribution
+	- the sum of squared values was not computed correctly leading to
+	  incorrect readings for standard and relative deviations for
+	  samples with sampled values larger than 46341
+
+2.2.5 -> 2.2.6
+19991207
+	- PolyMix-2 workload now uses 0.4/sec per-robot request rate; use
+	  cloning or IP aliases to get more robots (and hence higher
+	  request rates)
+	- added "rep_sz_mean" object to lx
+	- added polyfill-2.pg to workloads/
+	- added pmix2 blob to tools/BB/bb.pl and polished bb.pl's comments
+	- when using --dump, dump transaction meta-info even if there is
+	  no message data to dump
+	- recognize KB scale for command line size options
+	- two meant-to-be-independent random number generators used for
+	  simulating object sizes got "in-sync", producing wrong size
+	  distributions
+	- phases with decreasing request rate were dropping request rate
+	  too fast
+	- public_interest for PolyMix-1 and DataComm-1 workloads should be
+	  set to 0%, not 50%.
+	- added now-required hit ratio and popularity model specs to
+	  datacomm-1.pg
+	- avoid division by zero on corrupted log files
+
+
+2.2.4 -> 2.2.5
+19991129
+	- added "idle_pconn_tout" field to Agent to specify the maximum
+	  time an idle (no pending transactions) persistent connection
+	  should remain open (PGL)
+	- support phase-dependent recurrence ratio; useful for populating
+	  the cache (fast, with only a few hits) and then doing
+	  measurement phase with appropriate hit ratio, all in one run
+	- added "recur_factor" field to Phase (PGL)
+	- added support for priority scheduling: Polygraph runs (N-1) file
+	  scans for file descriptors (connections) that require urgent
+	  action and then one scan for all file descriptors; N is
+	  configurable using the --priority_sched option
+	- added "--priority_sched" option to control priority level for
+	  somewhat urgent socket I/O operations; giving higher priority to
+	  some operations may improve performance in environments with
+	  lots of probably idle connections as Polygraph will spend less
+	  time processing those connections; "over-optimized" setting are
+	  likely to cause noticeable increase in response time; the
+	  default priority is 5; to disable the optimization, set to 1
+	- added support for assigning the same value to several variables
+	  with one assignment operator (PGL): [ a1, a2, a3 ] = 100%;
+	- added support for randomly distributing values of an array among
+	  several arrays, each with an optional "portion" quantifier; for
+	  example:
+	        [ arr1 : 60%, arr2 : 20%, arr3 ] = '10.0.1.1-255';
+	  this feature is very convenient when distributing network
+	  addresses among several objects (e.g., servers or pipes) (PGL)
+	- grow storage area for new oids when clients start to run out of
+	  them (to make prefetching more aggressive)
+	- optimized initial server scan (when robots are "touching" all
+	  servers to make sure robots can later generate hits on every
+	  server); the scan is now much faster and has more random access
+	  pattern
+	- added reporting of server scan progress
+	- "lock" first phase until all robots are ready to hit all servers
+	- when an advertised oid has not been requested for a while, see
+	  if we should grow the bitmap to store more oids (and hence keep
+	  an oid for a longer time) instead of reclaiming that stuck oid
+	- changed default for "--new_oids_prefetch" from 256 to 128
+	  because Polygraph is not capable of dynamically adjusting
+	  prefetch amount
+	- if load factor reaches zero, stop submitting requests
+	- check for late alarms and other timers and report if we are
+	  getting behind the schedule
+	- server now accepts new connections for at most 10msec at a time
+	- do not quit when running out of file descriptors in accept()
+	  call
+	- destroy PGL objects after use to reduce memory footprint for
+	  large scale configurations
+	- use idle_pconn_tout of 15 seconds for PolyMix-2 servers
+	- changed Robot.open_conn_lmt to 4 in polymix-2.pg
+	- polished phase definitions in polymix-2.pg
+	- check for error status when deleting rules and pipes (piper)
+	- re-ordered screens in polymon
+	- resurrected err_cnt_tbl in lx
+	- the "--phase" option was not supported for non-traceable objects
+	  (lx)
+	- fixed introduced in 2.2.4 typo that made servers "blocking" and
+	  hence unusable (they would get stuck in the accept(2) call);
+	  client-side sockets were also affected but that was not visible
+	  to an end-user because blocking robots may still work; the patch
+	  was posted to the Polygraph list
+	- portability star, ncurses, #defines timeout causing namespace
+	  havoc
+	- bad guys #defined `select' in Solaris system files causing
+	  namespace havoc
+	- I/O buffer pool was not reporting memory growth correctly (err..
+	  at all)
+	- prevent coredumps when printing a histogram with max value less
+	  than 1 (lx)
+	- True64 requires a special setsysinfo(2) call to raise FD limit
+	  beyond the default hard limit of 4K
+
+
+2.2.3 -> 2.2.4
+19991109
+	- added "piper", a program to configure DummyNet network pipes
+	  based on PGL
+	- added 'bwidth' -- a basic PGL type to represent [network]
+	  bandwidth small set of operations are supported for now
+	- added NetPipe PGL type to describe network pipes; a pipe
+	  specifies maximum network bandwidth, packet delay and loss,
+	  and other low -level network parameters/conditions
+	- added pipes.pg with definitions of commonly used network pipes,
+	  including modems and various kinds of origin servers
+	- added configure-time check for DummyNet and IPFW interfaces
+	- reduced start-up time in configurations with large number of
+	  robots and servers; reduced memory footprint for large
+	  configurations (more work may be needed)
+	- print aggregate statistics (min/mean/max/etc) for histograms
+	  produced by lx and distr_test
+	- report agent creation progress every 5 seconds rather than
+	  every 50 agents
+	- report system resource usage before and after run
+	- adjusted the way stat intervals (i- lines on the console) are
+	  printed in a blocking or overloaded environment
+	- increase the maximum number of FD ./configure script can
+	  detect to 2^16 (65K)
+	- fixed configuration bug in environments with no rlim_t type
+	- include limits.h file to avoid compilation errors on Solaris
+	- do not print "array probabilities (above) add up to .. less
+	  than 100%" if they add up to more than 99%
+	- cntDownload in contents.pg was named cntDowload; some found it
+	  funny
+	- lx could not handle logs with combination of duration-based
+	  and non-duration based phases
+	- some environments do not know better than #define getc and
+	  putc macros causing namespace havoc
+	- rptm_hist was printed twice by lx --objects All
+	- a typo caused size type to do multiplication instead of
+	  division (PGL)
+
+
+2.2.2 -> 2.2.3
+19991026
+	- added "--sample_log" and "--sample_log_size" options to
+	  configure sample log; sample log defaults to the general
+	  purpose log; if separate log is specified, it is not flushed
+	  to disk on periodic basis as general log (to avoid potential
+	  run-time overhead)
+	- added "StatsSample" object to PGL to describe the time and
+	  size of a statistical sample; Samples must be scheduled(),
+	  just like Phases; more work needed to make scheduling more
+	  convenient (phase related?)
+	- added "kind" field to label Content object (PGL)
+	- added "cntDowload" content to represent relatively large
+	  downloads; use cntDowload in PolyMix-2
+	- disabled sharing of embedded objects among containers; with no
+	  sharing, we have to rely on user specified content
+	  configuration with no tools to "tune" the model internally --
+	  resulting (actual) global content distribution may not match
+	  the planned one; a likely global distribution is reported so a
+	  user can check their specs without running an experiment
+	- disabled client side cache in PolyMix-2
+	- set embedded recurrence to 100% in PolyMix-2
+	- added initial support to save experiment "state"; eventually
+	  we will use state information to resume experiments from a
+	  given point and also for stats analysis; needs more work
+	- added support for collecting low-level statistics in the form
+	  of samples; sample collection is controlled using PGL
+	  "StatsSample" type and "schedule()" call
+	- for large configurations, inform about the progress in
+	  creating agents at startup
+	- prevent int overflows when generating very large files
+	- several bug fixes related to size constants (PGL)
+	- try to handle "unlimited" resources reported by getrlimit(2)
+	  correctly
+
+
+2.2.1 -> 2.2.2
+19991020
+	- added "cache_cap" field to Robot (PGL); the cache is currently used
+	  for embedded objects only; it prevents robots from requesting the
+	  same embedded objects many times, emulating browser behavior
+	- added "conn_lvl_mean" lx object to report average number of opened
+	  concurrent connections; because of Polygraph does not update time on
+	  every open() and close(), this statistics may not be accurate
+	- robots now scan all servers (in a semi-random manner) before
+	  proceeding with truly random accesses; the initial scan ensures
+	  that all connectivity problems are detected early and also helps
+	  reach stable HR earlier
+	- inform user when all robots are ready to generate hits on all
+	  servers
+	- no "wait_xact_lmt" by default, a robot can queue as many
+	  transactions as needed; this is potentially dangerous because a user
+	  does not see those queued transactions (yet) and may think that
+	  everything is OK; more work is needed
+	- generate new oids only when we know that the xaction will not be
+	  queued; this rule prevents robots from thinking an oid has already
+	  been seen by a proxy while it was not (because it got queued); the
+	  latter used to decreases offered hit ratio
+	- agents should share random number generators to avoid a
+	  hard-to-detect artificial condition when all agents are "doing the
+	  same" all the time (e.g., all robots send requests to the same
+	  subset of servers for a while)
+	- if no new alias is specified, just delete old ones (aka)
+	- make sure that we always #include sys/types.h before inet.h because
+	  old BSD systems may not include sys/types.h in inet.h, and they
+	  should
+	- removed --out option from aka
+	- fixed a bug that led to an occasional assertion if the FD limit is
+	  reached on server side
+	- fixed bugs leading to occasional segv and assertions when poll(2)
+	  system call is used
+	- fixed parsing of the --dump option; now all tag combinations are
+	  parsed correctly
+	- request rate field of a Robot was misinterpreted unless N/sec format
+	  was used (PGL)
+	- due to ioctl(2) interface differences, aka does not work on Linux
+	  and probably some other OSes; more work is needed
+	- fixed IP range parsing bug; some valid ranges were declared
+	  malformed
+	- logging modifications; binary logs are not compatible with previous
+	  versions (again)
+	- updated polymix-2.pg and contents.pg; changed content weights to
+	  ensure that an "average" object has 80% chance of being cachable
+
+2.2.0 -> 2.2.1
+19991012
+	- added support for IP ranges using a-b.c-d.e-f.g-h notation,
+	  for example '10.0.1-2.50-99' constant specifies an array of
+	  100 addresses; the old range operator (A .. B) is still
+	  supported but is less flexible; subnet and/or port
+	  specification is also allowed
+	- added "aka", an ingeniously named tool to create [large]
+	  number of IP aliases for a given interface; aka accepts IP
+	  specs in the PGL format (a-b.c-d.e-f.g-h/subnet) which allows
+	  for specifying hundreds of aliases in a compact form; aka will
+	  _delete_ all aliases for the interface before setting new
+	  ones; aka requires superuser access, of course
+	- added "new_oids_per_msg_max", "new_oids_prefetch", and
+	  "new_oids_history" options to control synchronization between robots
+	  and servers; may be useful if you get many oid-related errors in
+	  large scale experiments and/or when a proxy gets too slow or drops
+	  requests
+	- added "open_conn_lmt" and "wait_xact_lmt" fields to Robot
+	  (PGL) to limit the number of concurrent connections a single
+	  Robot may have at a time, emulating browser behavior (the code
+	  was written for version 2.2.0, but lacked PGL hook-ups and was
+	  not tested)
+	- removed place() function call and replaced 'host' field in
+	  Agent with 'hosts' field to reduce memory footprint when
+	  configuring lots of agents on a single machine; place() call
+	  used to clone lots of agent specs that would differ only in
+	  'host' field setting; we now specify all the hosts directly
+	  (in 'hosts' field) bypassing the cloning step (PGL)
+	- added "conn_close_act_use_hist" and "conn_close_act_ttl_hist"
+	  lx objects to filter stats for "actively" closed connections
+	  only (i.e., all connections except those that were closed in
+	  an "idle" state)
+	- agents where not binding to their addresses when they were
+	  supposed to
+	- robots used to maintain one private object space as if there
+	  was only one origin server; the bug led to lower than expected
+	  hit ratios when robot's public_interest was less than 100%
+	- robots were not setting server world id (wid) for embedded
+	  requests
+	- statistics for idle persistent connections closed by Polygraph
+	  was not maintained
+	- synchronized workload specs
+
+
+2.1.0 -> 2.2.0
+19990928
+	- added support for embedded objects: a server populates content with
+	  special tags that point to embedded objects (based on PGL Content
+	  specs); a robot parses server responses for those tags; a robot
+	  requests embedded objects as it detects them; we try to keep average
+	  request rate at the specified level (if any) despite these "extra"
+	  requests requests for embedded objects do cause bursts in traffic,
+	  just like in the real worlds
+	- added may_contain and embedded_obj_cnt fields to Content type (PGL)
+	- added "embed_recur" ratio to Robot; the ratio specifies the portion
+	  of embedded objects in a container that are re-requested, on average
+	- added "choice_space" field to Content type (PGL); Choice space
+	  specifies the number of oids considered when selecting next embedded
+	  oid for a container oid:
+	    embedded_oid = uniform(k*container_oid, k*container_oid + choice_space)
+	- added "direct_access" field to Server (PGL); direct_access selector
+	  specifies (a) objects that can be accessed not as an embedded part of
+	  other object and (b) relative frequency of such an accesses (e.g. 1%
+	  of all direct accesses are images and 95% of all direct accesses are
+	  HTML pages)
+	- added tools/msl_test tool that attempts to estimate the maximum time
+	  a proxy keeps a TCP connection in a TIME_WAIT state. (Glenn Chisholm
+	  <glenn at ircache dot net>)
+	- added rng_test to test the quality of various random number
+	  generators that Polygraph is using
+	- added the "--dump" option to control what type of messages and what
+	  message parts must be dumped to console. The option accepts a list of
+	  flags; the old --prn_* interface was not flexible enough or required
+	  too many options; new interface needs more work
+	- renamed "--prn_dump_size" to "--dump_size"
+	- removed "--prn_reqs", "--prn_reps", and "--prn_errs" options
+	- robots must bind(2) to the IP addresses they are running on except
+	  when all robots are running on the same address
+	- report approximate time a server waited for an advertised oid to be
+	  requested
+	- always randomize IO buffers before use
+	- use agent id along with object id when seeding r.n.g; this prevents
+	  skew in pseudo-random numbers when many agents are dealing with the
+	  same small subset of oids
+	- use one port manager for all addresses to reduce memory footprint for
+	  big scale runs
+	- install SIG_INT (^C) handler _after_ polyclt/srv has configured
+	  itself; makes possible to kill a program if configuration takes
+	  forever
+	- workload files were missing server side delays (Becky Larsen
+	  <balarsen at novell dot com>)
+	- polymix-2.pg file comments were saying that it is a PolyMix-1 file
+	- fixed typo in [client] "closed conn w/o sending data" error message
+	- polymon.cc::TheSelHostCnt was not defined properly, causing
+	  compilation warnings (Ron Jones <ronjones at himalaya dot fc dot hp
+	  dot com>)
+	- udp2tcpd.cc was using `int' instead of `socklen_t' causing
+	  compilation errors on Linux and others OSes that require socklen_t
+	  (Ron Jones <ronjones at himalaya dot fc dot hp dot com>)
+	- a kludge to prevent mysterious (compiler?) bug causing segmentation
+	  faults in RecSym::getDistr on some platforms
+
+2.0.0 -> 2.1.0
+19990917
+	- added pop_test program that simulates an LRU-based cache and can be
+	  used to estimate [memory] hit ratios depending on popularity model
+	  and other related workload parameters
+	- added "pop_model" field to Robot; two popularity models are
+	  supported:  pmUnif() and pmZipf(skew_factor).
+	- added "public_interest", "recurrence", and "unique_urls" fields to
+	  Robot
+	- added working_set_length() procedure call to PGL; use it to limit
+	  working set size and hence prevent hit ratio decline during long
+	  tests
+	- added a "--prn_dump_size" option to limit the size of HTTP message
+	  dumps
+	- added a "--prn_errs" option to print HTTP messages that caused
+	  xaction errors
+	- recognize 'All' macro in --phase option (lx)
+	- removed "--unique_urls" option (polyclt) -- it is now Robot's field
+	- removed unused `world' options (polyclt): world_type, world_id,
+	  world_urls, unique_urls, order, recur, pop_model, tmp_loc,
+	  tmp_loc_delta, tmp_loc_depth, exp_oids, prefilled_cnt; some of these
+	  option were already implemented via PGL, and some wait till be
+	  implemented/ported/tuned
+	- removed the "dhr" field from Robot specs (the field was ignored
+	  anyway)
+	- share URL space among all robots and servers; robots may have a
+	  "private" URL subset while "public" subset is shared by all; servers
+	  send robots information about the current global state; current
+	  limitation is that all polyclt processes should emit request streams
+	  with similar rate (per robot differences are OK), otherwise the
+	  servers start complaining that some clients are not doing their
+	  share in creating the load; solving the latter problem would require
+	  more heavy negotiations among clients and servers
+	- make IO buffer content "more random" than it used to be; servers now
+	  produce Web objects filled with more random content. Note that
+	  servers still may produce different content for the same URL, even
+	  if the headers imply that the object has not changed. The latter is
+	  probably OK under "normal testing conditions" though.
+	- do NOT make relative URIs artificially long by prepending them with
+	  an '/http:/ip-address' prefix; transparent proxies usually receive
+	  relative URIs so they do have and advantage of handling shorter
+	  request-lines, and we probably should simulate that
+	- HTTP/1.0 connections are non-persistent by default, no need to send
+	  *Connection: close header.
+	- write all 'unique ids' (e.g., world id) using hex notation and fixed
+	  length fields
+	- write oids in URLs using hex notation and fixed length fields
+	- console now displays minutes since the start of an experiment rather
+	  than absolute time; absolute time is logged and is available to lx
+	- when building executables, use CXXFLAGS instead of CFLAGS in
+	  Makefiles
+	- "conn_ttl_vs_use" was erroneously named "conn_ttl_vs_sz"
+	- fixed parsing bug that caused assertions on a "''" expression
+	- offered (ideal) hit ratio was not recorded properly
+
+
+1.3.2 -> 2.0.0
+19990907
+	- new copyright file header and polished licensing terms
+	- added support for PGL configuration language; most experiment
+	  parameters are now set via a configuration file
+	- "--pop_model" option defaults to "unif"orm now (used to be "zipf")
+	- added the "--idle_tout" option to the client side; "idle" in
+	  "--idle_tout" now means "no network I/O activity" -- Polygraph may
+	  still be trying to do something
+	- added the "--stats_cycle" option to specify the duration of a cycle
+	  that collects and logs "cheap" stats (defaults to 5 seconds)
+	- added "fill size" experiment goal
+	- removed accept_lmt, rep_sz, obj_bday, obj_life_cycle,
+	  obj_life_cycle_var, obj_with_lmt, obj_expire, cool_phase, goal,
+	  launch_win, rep_cachable, maximize_req_rate, and perhaps other
+	  options; similar functionality is usually provided in PGL
+	- renamed "--dhr" to "--recur" (recurrence ratio or how often a URL is
+	  revisited by a robot); in Polygraph 2.0.0 the actual DHR is
+	  recurrence/cachability ratio; DHR may be affected by popularity
+	  model and other factors; we had to rename "--dhr" because Polygraph
+	  can no longer simulate any given DHR independent from other config
+	  parameters -- the models are becoming too complex; this is still
+	  work in progress and changes are likely
+	- removed `ephemeral' string as a valid port range in --ports
+	- the "--file_scan" option now defaults to poll if poll(2) is
+	  supported; Polygraph used to call select(2) by default
+	- added conn_close_frgn_use_hist,conn_close_frgn_ttl_hist,
+	  conn_close_lcl_use_hist,conn_close_lcl_ttl_hist, soread_sz_hist,
+	  sowrite_sz_hist, and phase_name objects to lx
+	- made 'All' macro a default "object" to be extracted by lx
+	- honor --phase option in trace mode of lx
+	- changed binary log format; new format is not backwards compatible
+	- log errno strings along with errnos; makes error logging portable
+	  across OSes
+	- modified logging procedure to flush binary log data periodically
+	- removed "X-ETag" header field
+	- send Proxy-Connection: header when talking to a proxy (used to send
+	  Connection: which was a terrible idea and was not honored by some
+	  proxies)
+	- added support for Content-Type header field in responses
+	- added support for arbitrary number of user-defined simulation
+	  "phases"
+	- cachability is now determined on the server side (again!)
+	- added ./configure script to preconfigure the distribution before
+	  `make'
+	- added INSTALL file with generic package installation instructions
+	- added root-level Makefile
+	- added distclean goal to Makefiles to remove most auto-generated
+	  files
+	- changed Perl interpreter name in scripts to '/usr/bin/perl'; ideally
+	  we need to determine the location at ./configure time
+	- explicitly require Perl version 5.003 or higher in Perl scripts
+	- added DataComm-1 specs to bb.pl
+	- added workloads directory with standard workloads specs written in
+	  PGL.
+	- added polymix-1.pg, polymix-2.pg, and datacomm-1.pg workload specs
+	- added simple.pg, a minimalistic workload to use as a "Hello World"
+	  example
+	- complain about "uncachable hits"
+	- ignore "false hits" by default
+	- removed hard coded limits on the reply content size; the change may
+	  have performance effect for workloads with zipf popularity model
+	- removed 'loop' tool until it gets fixed
+	- applied some HPUX compatibility patches (submitted by James Murphy
+	  <murphy@fc.hp.com>)
+	- 'max' values printed by distr_test was greater than real max by one
+	- lots of other additions, modifications, and bug fixes
+	
+
+1.3.1 -> 1.3.2
+19990830
+	- this minor release incorporates all previously released patches for
+	  1.3.1; the pathces fix a few logging bugs and, to the best of our
+	  knowledge, do not affect Polygraph run-time performance
+	- replaced the "--prn_trace" lx switch with the "--trace" option; now
+	  trace stats can be averaged at a specified time interval; small
+	  window sizes emulate old behavior
+	- added "conn_use_mean" object to lx
+	- added datacomm-1 workload specs to bb.pl script
+	- increment error count on each phase/log
+	- fixed generation of class-based object names
+	- fixed lx coredump when extracting class-based stats like 
+	  class_rptm_mean:hit
+
+1.3.0 -> 1.3.1
+19990616
+	- added the "--notify" option that enables notification messages to be
+	  sent to a monitoring program; messages (currently less than 100
+	  bytes) are sent via UDP every 20 seconds.
+	- added "--label" option to specify a [short] run description; the
+	  label gets included into notification messages if any.
+	- added udp2tcpd, a daemon that runs on port 18256 (default), listens
+	  to notification messages (UDP), and forwards them to polymon(s) via
+	  TCP; the intention is to support multiple monitoring programs for
+	  the same notification stream without using IP multicast or broadcast
+	- added polymon; a ncurses-based program that monitors run-time status
+	  of Polygraph experiments using udp2tcpd daemon
+	- added the err_cnt_tbl option to lx to print error table; note that
+	  Unix error codes are not standardized so you may get different
+	  descriptions of error messages if you move binary logs around (this
+	  is a bug)
+	- fixed "invalid port" assertion in ExpPortMgr
+	- fixed logging of error table (it probably was not logged before)
+	- fixed compile-time warnings reported on Linux
+	- fixed compile-time poll(2) errors on Linux
+	- fixed a few compile-time problems on Solaris
+	- maybe improved timegm() port to True64 and other environments with
+	  tm_gmtoff
+	- removed custom polyVersion dependency from Makefile; it caused too
+	  many re-compilations and we never used the $CompileTime$ feature
+	  anyway
+	- polished comments in Makefiles
+
+
+1.2.2 -> 1.3.0
+19990608
+	- added poll(2) support; users must add -DLACK_POLL to DEFINES
+	  in src/xstd/Makefile in the environments without poll(2);
+	- added the "--file_scan" option to select between poll(2) and
+	  select(2); the default is still select, but that is likely to change
+	- added the "--maximize_req_rate" option that enables "maximum request
+	  rate" searching mode; must be used together with the "--req_rate"
+	  option which specified initial rate; search is done by incrementing
+	  or decrementing actual request rate depending on the reply rate;
+	  support is rudimental, more work needed
+	- added the "--prn_rep_cnt" option to lx; similar to --prn_time;
+	  prepends trace lines with number of replies received since log start
+	- added response time statistics for major request classes:
+	  hits, misses, cachable, uncachable, etc.
+	- added several lx objects to extract new stats: conn_use_hist,
+	  conn_ttl_vs_use, resp_tm_vs_class, class_rptm_mean
+	- added stats for persistent connections (xactions per connection)
+	- "rep_rate" and "req_rate" objects are now traceable via lx
+	- log errors "histogram"
+	- scan the port range and mark used ports at start-up if port manager
+	  is enabled via the "--ports" option; the scan adds about 2.5 seconds
+	  to polyclt start but avoids some of the run-time port binding errors
+	- improved random number generation; do not use object ids as r.n.g
+	  seeds directly; generate a "good" "uncorrelated" random value and
+	  use that instead; prevents "loops" in reply size generation and
+	  other oid-dependent models; the loops were visible only on some
+	  micro-level workloads though; 
+	  the fix adds a few seconds to polyclt/srv start time and about 4MB
+	  to memory footprint
+	- adjusted histogram dumps so that max column in the output
+	  corresponds to max rather than max+1
+	- avoid floating point exceptions when reading bogus log data
+	- improved handling of incomplete or old binary logs in lx
+	- fixed FP exception error due to wrong double->int cast
+	  (a patch was available for 1.2.2)
+	- use "linux" #define to prevent "FD_SETSIZE already defined"
+	  warnings on Linux (one can also add -DLINUX in Makefiles)
+
+1.2.1 -> 1.2.2
+19990521
+	- added distr_test tool that can print a histogram for any
+	  distribution recognized by Polygraph
+	- added the "--prn_trace" lx option to print trace stats
+	  rather than totals; not all object values can be computed in
+	  the middle of a log; those that can, will be printed; others
+	  will be silently ignored; log files are not joined when trace
+	  mode is on
+	- added the "--prn_time" lx option to show log time as a first
+	  column of the output (useful together with --prn_trace)
+	- added support for accumulating large sizes (over 2GB);
+	  yet untested; old counters used to overflow leading to 
+	  bogus byte hit ratios; current counters can hold up to
+	  about 4 exabytes which should be enough for a while
+	- timegm is missing on Solaris; Solaris users should add 
+	  -DLACK_TIMEGM to DEFINES in xstd/Makefile to enable a
+	  workaround
+	- several bug fixes in Histogram module; trace stats
+	  (collected at 90 second intervals) that were based on
+	  histograms (e.g., response time percentiles) where not
+	  recorded correctly; aggregate stats (e.g., means) and stats
+	  averaged over entire phase were not affected
+	- Zipf distribution was not generating the value of '1' when
+	  used for persistent connection limits; other zipf fixes
+	- fixed "ambiguous overload for `bool ? Size : int'" compilation
+	  errors
+	- zipf distribution now reports "world size" parameter only to
+	  be consistent with the way zipf is specified on the command
+	  line (used to print alpha=1 as a first parameter)
+	- other minor bug fixes
+
+
+1.2.0 -> 1.2.1
+19990513
+	- added the "--obj_bday" option to specify object creation
+	  times; used to be hard-coded to a randomly (per object) chosen
+	  day in the 70s; negative birthdays are relative to program
+	  start time; non-negative birthdays are relative to 0, UTC;
+	- accept "zipf" distribution on command line
+	- time parsing routines now accept "year" scale
+	  (e.g., const:1.5year)
+	- report Polygraph version in the configuration dump
+	- internal lmt and expires time must be rounded using second
+	  resolution for HTTP date comparisons to work correctly
+	- polished last-modified-time calculations to better handle lmts
+	  that are close to current time
+	- renamed XSTD_INCLUDE to LIB_INCLUDE in xstd/Makefile
+
+
+1.1.0 -> 1.2.0
+19990501
+	- added Object Life Cycle model to simulate object modification and
+	  expiration; the model is controlled by the following server side
+	  options: --obj_life_cycle, --obj_life_cycle_var, --obj_with_lmt,
+	  and --obj_expire
+	- support If-Modified-Since requests on server side
+	- Poly-server now adds the Date: header field to all replies
+	- removed "max-age" option from cachable replies because it had
+	  priority over the more common Expires: header. As a side effect
+	  not all cachable replies have expiration information
+	- Last-Modified header field is now added to replies only if
+	  --obj_life_cycle option is enabled; some proxies will not cache
+	  replies without a Last-Modified header field -- watch out!
+	- Expires header fields are not added to cachable replies by default;
+	  see --obj_expire option to control Expires fields
+	- reordered HTTP reply header fields to follow HTTP recommendations
+	- always use the minimum of FD_SETSIZE and getrlimit(RLIMIT_NOFILE);
+	  warn if FD_SETSIZE is smaller; we got tired of coredumps when
+	  a tester would forget to increase FD_SETSIZE after increasing
+	  kernel limits
+	- date manipulation functions now use "timegm()" call which may
+	  not be portable; portability problems will be fixed on-demand
+	- distinguish between "premature end of msg body" and "premature end
+	  of msg headers"; useful to diagnose proxy connection resets
+	- detect premature end of headers on client side (we probably would
+	  wait forever prior to this fix)
+	- reorganized and optimized HTTP header parsing; parsing speed is
+	  increasingly important as we have to recognize more header fields;
+	  current improvement (on 2.5 fields) is negligible (about 3%).
+	- fixed a bug with HTTP header parsing (a patch was available for
+	  1.1.0)
+
+
+1.0p7 -> 1.1p0
+19990425
+	- added a "--version" option to print package version and (c) info
+	- ident-like routines may extract version info from Poly binaries now
+	- added a "--pconn_use_lmt" option to control the number of
+	  transactions executed over a single [persistent] connection; Poly
+	  generates (and understands) Connection: close/keep-alive headers,
+	  and will honor Proxy-Connection: header as well; mutli-token
+	  Connection: headers are not supported; the option makes sense on
+	  both client and server sides; TCP may need "--nagle off" to utilize
+	  the advantage of pconns
+	- added support for user-defined (tabulated) distributions;
+	  "tab:filename" or "tab(filename)" can be used wherever a
+	   distribution is expected on the command line
+	- changed the default of the "--origin" option to "127.0.0.1:8080"
+	- the "--proxy" option has no default now and implies proxied
+	  connection if present; with no "--proxy" option, a direct connection
+	  is assumed
+	- removed the "--abs_urls" option; absolute (relative) urls are now
+	  generated only for proxied (direct) traffic
+	- added libs target to Makefile to ease re-build of libraries
+	- make will now clean src/xstd directory when making clean in src
+	- the "--rng_seed" option is now honored by all rnd number generators
+	- complain if units (KB, sec, etc.) are specified where none expected
+	- added reporting of source code location in error messages
+	- check for connect errors during first IO on a socket; Poly 1.0 would
+	  do an I/O and only then check for an error leading to imprecise
+	  error diagnostics
+	- set socket options for accept(2)-ed sockets (server side), do not
+	  rely on inheritance; BSD OSes silently suppress inheritance of some
+	  flags like TCP_NODELAY (Nagle algorithm)
+	- response time now includes connection setup time
+	- fixed member initialization bug in StatPhase.cc that caused 
+	  coredumps on Linux
+
+	
+1.0p6 -> 1.0p7
+19990405
+	- added rep_sz_hist, rep_sz_mean, resp_tm_vs_sz, req_bhr, rep_bhr
+	  objects to 'lx' (byte HRs are broken for long experiments)
+	- added --track_rports and --rport_wait_min options to track TCP port
+	  usage on the proxy side; unfortunately tracking is complicated by
+	  known TCP violations of most BSD implementations
+	- fixed 'lx' bug with aggregating reply rate from logs with
+	  different phase durations
+	- applied bake-off mods to bb.pl
+
+
+1.0p5 -> 1.0p6
+19990310
+	- added "lx", a routine to eXtract objects from binary logs; also
+	  mergers logs to support multiple client/server experiments
+	- added "exprep.pl" script to generate reports from binary logs
+	  of several experiments (needs more work)
+	- replaced all ETag: headers with X-ETag (requests and replies); 
+	  ETag is not a request header and gets filtered out on some proxies
+	- added "Last-Modified: Wed, 18 Feb 1998 17:53:58 GMT" reply header 
+	  to cachable replies; some proxies may not cache replies otherwise
+	  (a magic constant value should be eventually eliminated)
+	- changed the default for the "--log_size" option to 10KB
+	  with no logging and 10MB with logging enabled
+	- various fixes to handle log buffer overflows; we now ignore all
+	  new entries if the buffer is full (needs more work)
+	- fixed a lot of bugs in interpreting logged data (recording was OK?)
+	  no program was interpreting logs so bugs stayed undetected
+	- mandatory phases should not stop even when too many errors;
+	  we used to abort if that happens (needs more work to detect
+	  error flood early as we used to)
+	- increased required verbosity level for "got N xactions..." message
+	  to 2; a more detailed but less readable progress/goal message is
+	  printed with a verbose level of 0.
+
+
+1.0p3 -> 1.0p5
+19990223
+	- added "--prefilled_cnt" option
+	- added Uniform Popularity Model
+	- minor polish and bug fixes
+
+
+1.0p3 -> 1.0p4
+19990222
+	- added "--ign_false_hits" option; by default false hits are
+	  now treated as xaction errors
+	- added "--prn_false_misses" option; handy to see what hits
+	  a proxy has "missed"
+	- added the "--tmp_loc_depth" option that specifies a soft limit
+	  on inter-request distances in tmp locality model
+	- added "--tmp_loc_delta" option to specify fuzziness of temporal 
+	  locality choices
+	- added "--cool_phase" option to specify minimal cool-off phase;
+	  handy when you run more than one polyclt and do not want one
+	  of them to stop when others are still in their measurement phase
+	- added "--fd_limit" option to lower FD limit supplied by OS 
+	  (as a safeguard for OSes that crash when we run out of FDs)
+	- added "--phase" option to log reader to show more stats about
+	  a particular phase (needs more work)
+	- added support for error limit (given in the --goal option)
+	- added ETag headers to pass object specific info from the client 
+	  to the server
+	- better facilities for logging and reporting various errors
+	- record ideal (i.e, offered) Hit Ratio
+	- record actual cachability ratio
+	- added lognormal distribution to the list of distributions
+	  available on the command line (logn:mean,sdev)
+	- print number of hits, misses, errors, etc. in lr
+	- enforce a safeguard FD limit of (0.97*rcur - 10), where "rcur"
+	  is the FD limit enforced by OS according to getrlimit(2)
+	  the "--fd_limit" option can be used to lower this value
+	- shutdown nicely on exit or fatal external error
+	- count and report the number of open sockets; the last column
+	  of the console output now shows number of open FDs, not just
+	  pending xactions
+	- revised traffic model operation and simplified the interface
+	  now traffic characteristics are controlled individually rather
+	  than via an ugly --world_oids option
+	- constant hit ratio now works correctly regardless of cachability
+	  ratio and other traffic parameters
+	- moved --rep_cachable option from the server side to the client 
+	  side
+	- changed tmp locality model to use future "plan" instead of past
+	  "history"; old model was emitting too many too close requests;
+	  current model follows the --tmp_loc distribution much better
+	- complain if cachability status of a reply has changed
+	- print various FD limits on start
+	- r.n.g. seed was not properly changed when calculating reply sizes,
+	  resulting in same object ids having different content length if
+	  requested more than once by a proxy
+	
+
+1.0p2 -> 1.0p3
+19990215
+	- added initial support for Constant Hit Ratio; we have several
+	  models (Object Ids distributions) to choose from, see
+	  --world_oids
+	- added --world_oids option to specify Object Ids
+	  "distribution"; currently supported "distributions" meaningful
+	  for --world_oids are:
+	    . sequential ("seq"),
+	    . MemoryLess Zipf ("MLZipf"),
+	    . Hot/Cold ("HoCo");
+	  names will change if we find better ones
+	- changed default behavior when no --world_oids is specified: we
+	  used to generate Zipf-like stream of Object Ids by default,
+	  now the default is Sequential stream (hence, no hits by default)
+	- removed --world_cap option; we no longer need/use World Capacity
+	- added "Expires: Wed, 17 Feb 2000 03:35:25 GMT" header to
+	  cachable responses; this constant should be good enough in
+	  most cases and will be changed to a dynamic value in next
+	  releases
+	- added "Pragma: no-cache" to uncachable responses
+	- better explanation for errors with distribution specs on the
+	  command line
+	- fixed zero Content-Length bug
+	- fixed time accounting bug (visible at least on FreeBSD 3.0)
+	- define _BSD_SIGNALS to make IRIX happy (needs more work)
+
+
+1.0p1 -> 1.0p2
+19990212
+	- added support for specifying distributions on the command line;
+	  currently available distributions: unif, exp, norm, and const
+	- added support for specifying ratios and such on the command line;
+	- "--rep-size" is now of type Size Distribution (default: exp(13KB))
+	- "--xact_think" is now of type Time Distribution
+	- "--rep_cachable" is now of type Ratio (e.g. 80%)
+	- renamed "--users" to "--robots"
+	- value "0" does not require scale any more ("0" == "0sec" == "0min")
+	- report number of outstanding xactions in i-stats (new last column)
+	- increased verbosity level required for i-stats to 2
+	- fixed parsing of floating point values on the command line
+	  (used to be truncated to int)
+	- #warn, not #err if FD_SETSIZE is #defined suspiciously early
+	
+
+1.0p0 -> 1.0p1
+19990207
+	- added time support in goal option
+	- enabled --launch_win support
+	- enabled --xact_think support 
+	  (per xaction think times on both sides)
+	- added constant req submission rate mode (--req_rate)
+	- replaced --req_ccl with --users (just a name change)
+	- added support for absolute/relative urls (--abs_urls option)
+	- added Host: header (all requests)
+	- many binary logs fixes and improvements
+	- many stats fixes
+	- disable SO_LINGER if linger_tout == 0
+	- drastically improved memory management; 
+	  now Poly runs out of filedescriptors before running 
+	  out of memory on high loads
+	- account for BSD select(2)'s magic limit on timeout value
+	- internal alarms now use Heap instead of LinkedList

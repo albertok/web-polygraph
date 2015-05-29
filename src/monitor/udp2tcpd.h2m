@@ -1,0 +1,7 @@
+[DESCRIPTION]
+Polygraph clients and servers can be configured to emit UDP messages
+with current test status. Udp2tcpd daemon listens to such messages and
+forwards them via TCP to udp2tcpd clients. Multiple clients (e.g.,
+multiple polymon instances) can connect to udp2tcpd TCP port and
+receive test updates. This allows multiple testers in different
+locations monitor the same Polygraph test(s).

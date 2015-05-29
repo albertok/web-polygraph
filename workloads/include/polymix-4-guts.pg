@@ -1,0 +1,151 @@
+/*
+ * PolyMix-4 workload (the details)
+ *
+ */
+
+/* modifications in this file cause non-compliance with PolyMix rules
+ * all user-specified parameters are in polymix-4.pg */
+
+
+#include "contents.pg"
+
+
+Server S = { 
+	kind = "PolyMix-4-srv";
+
+	contents      = [ cntImage: 65%, cntHTML: 15%, cntDownload: 0.5%, cntOther ];
+	direct_access = [ cntHTML, cntDownload, cntOther ];
+
+	xact_think = norm(2.5sec, 1sec);
+	pconn_use_lmt = zipf(16);
+	idle_pconn_tout = 15sec;
+	abort_prob = 0.1%;
+
+	addresses = serverAddrs(asPolyMix4, TheBench);
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+};
+
+AddrMap Map = {
+	zone = "bench.tst";
+	addresses = S.addresses;
+	names = ipsToNames(addresses, zone);
+};
+
+// popularity model for the robots
+PopModel popModel = {
+	pop_distr = popUnif();
+	hot_set_frac =  1%;  // fraction of WSS (i.e., hot_set_size / WSS)
+	hot_set_prob = 10%;  // prob. of req. an object from the hot set
+
+	bhr_discrimination = 90%; // revisit smaller files more often
+};
+
+// set DNS resolver timeout (the servers are set by the user)
+Resolver.timeout = 5sec;
+
+// compute fraction of requests that should produce hits if repeated
+// account for cachable basic requests
+float HitIfRepeat = 80%;
+
+// describe PolyMix-4 robot
+Robot R = {
+	kind = "PolyMix-4-rbt";
+
+	recurrence      =  55%/HitIfRepeat; // recurrence is not hit ratio
+	embed_recur     = 100%;
+	pop_model = popModel;
+
+	req_types = [ "Basic", "Ims200": 5%, "Ims304": 10%, "Reload" : 5% ];
+	req_methods = [ "GET", "POST" : 1.5%, "HEAD" : 0.1% ];
+	abort_prob = 0.1%;
+
+	req_rate = TheBench.client_side.max_agent_load;
+	pconn_use_lmt = zipf(64);
+	open_conn_lmt = 4;
+
+	dns_resolver = Resolver;
+	origins = Map.names;
+	addresses = robotAddrs(asPolyMix4, TheBench);
+	http_versions = [ "1.0" ];  // newer agents use HTTP/1.1 by default
+
+	post_contents = [ cntSimpleRequest ];
+};
+
+
+/* phases */
+
+time platDur = 4hour;      // plateau phases duration (except idle phase)
+time rampDur = platDur/12; // ramp phases duration    (and idle phase)
+
+// limit the growth of the URL "working set" size (WSS)
+int clientHostCount = clientHostCount(TheBench);
+float fillable_ratio = HitIfRepeat; // fraction of cachable misses
+rate  peak_fill_rate = TheBench.peak_req_rate * 0.45 * fillable_ratio;
+int wsc = int(peak_fill_rate * platDur); // number of objects in the WS
+working_set_cap(wsc / clientHostCount);
+
+float smallFactor = 1.0/count(R.addresses);
+
+Phase phFRamp = { 
+	name = "framp"; 
+	goal.duration = rampDur; 
+	recur_factor_beg = 5%/55%;
+	special_msg_factor_beg = 0.1;
+	populus_factor_beg = smallFactor;
+	populus_factor_end = FillRate/TheBench.peak_req_rate; 
+};
+
+Phase phFill = { 
+	name = "fill"; 
+	goal.fill_size = 2*ProxyCacheSize / clientHostCount;
+	wait_wss_freeze = yes; // will finish only if WSS is frozen
+};
+
+Phase phFExit = {
+	name = "fexit"; 
+	goal.duration = rampDur; 
+	recur_factor_end = 1;
+	special_msg_factor_end = 1;
+	populus_factor_end = smallFactor;
+};
+
+Phase phInc1 = {
+	name = "inc1";
+	goal.duration = rampDur;
+	populus_factor_end = 1;
+};
+
+Phase phTop1 = { name = "top1"; goal.duration = platDur; };
+Phase phDec1 = { name = "dec1"; goal.duration = rampDur; populus_factor_end = 0.1; };
+
+Phase phIdle = { name = "idle"; goal.duration = rampDur; };
+
+Phase phInc2 = { name = "inc2"; goal.duration = rampDur; populus_factor_end = 1.0; };
+Phase phTop2 = { name = "top2"; goal.duration = platDur; };
+Phase phDec2 = { name = "dec2"; goal.duration = rampDur; populus_factor_end = 0; synchronize = false; };
+
+/* collect stats samples in the middle of plateau phases */
+StatsSample topSample = { capacity = 10000; };
+StatsSample fillSample = { capacity = int(10% * topSample.capacity); };
+
+phFill.stats_samples = [ fillSample ];
+phTop1.stats_samples = [ topSample ];
+phTop2.stats_samples = [ topSample ];
+
+// build schedule using some well-known phases and phases defined above
+schedule(
+	phFRamp, phFill, phFExit,
+	phInc1, phTop1, phDec1,
+	phIdle,
+	phInc2, phTop2, phDec2
+);
+
+
+// commit to using these objects
+use(S, R);
+use(Map);
+use(TheBench);
+
+// do not forget to configure network level delay and packet loss!
+// client side: no delays or packet loss
+// server side: 40msec delay and 0.05% packet loss in both directions

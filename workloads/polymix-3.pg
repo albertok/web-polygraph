@@ -1,0 +1,38 @@
+/*
+ * PolyMix-3 workload
+ *
+ */
+
+#include "benches.pg"
+
+
+Bench TheBench = benchPolyMix3; // start with the default settings
+
+/* If needed, you can specify a different mask for IP aliases.
+ * For example, TheBench.server_side.addr_mask = '10.13.0.0:8080'; */
+
+
+/* All parameters must be set from the proxy point of view.
+ * Polygraph will calculate the required number of client-server
+ * pairs and adjust individual pair configuration accordingly. */
+
+
+/* Set your total peak request rate here. For example: 100/sec.
+ * Polygraph will use TheBench to figure out which IP aliases to use.
+ * You must have the aliases configured before running a test. */
+TheBench.peak_req_rate = undef();
+
+
+/* Set the total cache size (disk + RAM). For example: 30GB.
+ * ProxyCacheSize is used for the cache-filling phase.        */
+size ProxyCacheSize = undef();
+
+
+/* Set request rate for the cache-filling phase. 
+ * This rate must be between 10% and 100% of peak_req_rate above.
+ * For example: (50%*TheBench.peak_req_rate)                  */
+rate FillRate = undef();
+
+
+// include all the boring details
+#include "polymix-3-guts.pg"

@@ -1,0 +1,46 @@
+/*
+ * A simple workload to demonstrare polypxy usage
+ */
+
+
+// we start with defining content properties for our server to generate
+Content SimpleContent = {
+	size = exp(12KB); // response sizes distributed exponentially
+	cachable = 80%;   // 20% of content is uncachable
+};
+
+
+// a primitive server cleverly labeled "S101"
+// normally, you would specify far more properties,
+// but we will mostly rely on defaults for now
+Server S = {
+	kind = "S101"; 
+	contents = [ SimpleContent ];
+	direct_access = [ SimpleContent ];
+	addresses = ['127.0.0.1:8080' ]; // where these agents will be created
+};
+
+// a primitive robot
+Robot R = {
+	kind = "R101";
+	pop_model = { pop_distr = popUnif(); };
+	recurrence = 55% / SimpleContent.cachable;
+	req_rate = 3/sec;
+
+	origins = S.addresses;      // where the origin servers are
+	addresses = [ '127.0.0.1' ** 3 ]; // where these agents will be created
+};
+
+Cache PxyCache = {
+	capacity = 1GB;  // cache size, that is
+};
+
+Proxy P = {
+	client = R; client.req_rate = 0/sec;
+	server = S;
+	cache  = PxyCache;
+	addresses  = ['127.0.0.1:3128' ];
+};
+
+// commit to using these agents
+use(S, R, P);

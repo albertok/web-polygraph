@@ -1,0 +1,9 @@
+[DESCRIPTION]
+Given a zone name, DNS names, and IP addresses, dns-cfg builds
+configuration suitable for use with BIND and, perhaps, other DNS
+servers. Dns-cfg output consists of three parts. The first part is the
+text to cut-and-paste into BIND's named.conf file. This part is sent
+to the standard output. The outer two parts are direct and reverse
+zone files. Those may be quite large and are dumped on disk into the
+appropriately named files. Dns-cfg can use PGL configuration as the
+source of information.

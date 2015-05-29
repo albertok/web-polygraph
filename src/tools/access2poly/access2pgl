@@ -1,0 +1,341 @@
+#!/usr/bin/perl -w
+
+#
+# This script reads Squid access log and computes test configuration
+# values (suitable for use in Polygraph PGL configuration files) to
+# mimic logged traffic
+#
+# NOTE: request interarrival time distribution calculation assumes that
+# the first field in access log is request arrival time (not response departure
+# time recorded in standard Squid logs), and that the log is sorted by that
+# first field; use the following command or equivalent to convert standard
+# access log:
+#
+#  % access2order access.log | sort -t' ' -n +0
+#
+
+use strict;
+
+my $SessionIdleTout = 1*60*1000.; # when a busy session ends
+
+my %Ds = (
+	  InterArrival => &newTimeDistr('my_req_inter_arrival', 'Request interarrival times during busy periods'),
+	  SessionBusyDur => &newTimeDistr('my_session_busy_period', 'Duration of a busy session period'),
+	  SessionBusyCount => &newNumDistr('my_session_busy_count', 'Number of requests per busy session period'),
+	  SessionIdleDur => &newTimeDistr('my_session_idle_period', 'Duration of an idle session period'),
+
+	  Rptm => &newTimeDistr('my_think_time', 'Response times'),
+	  RequestHeaderSize => &newSizeDistr('my_req_header_size', 'Request header sizes'),
+	  RequestBodySize => &newSizeDistr('my_req_content_size', 'Request body sizes'),
+	  ResponseSize => &newSizeDistr('my_resp_size', 'Response sizes'),
+	  StatusCodes => &newEventsDistr('my_resp_codes', 'Response status codes'),
+#	  RequestTypes => &newEventsDistr('my_req_types', 'Request types'),
+	  RequestMethods => &newEventsDistr('my_req_methods', 'Request methods'),
+);
+
+my %Ips = ();
+my ($cntEntry, $cntIp) = (0) x 2;
+$| = 1;
+
+while (<>) {
+	chomp;
+	++$cntEntry;
+	&reportProgress() if $cntEntry % 1000 == 0;
+
+	my @fields = (split);
+	my $rptm = $fields[1];
+	my $time = $fields[0];
+	my $ip = $fields[2];
+	my ($result, $scode) = split(m|/|, $fields[3]);
+
+	if (exists $Ips{$ip}) {
+		my $last = $Ips{$ip}->{last};
+		die("access log not sorted by request time, stopped")
+			if $time < $last;
+
+		&updateDistr($Ds{Rptm}, $rptm) if $scode == 200 || $scode == 304;
+		&updateDistr($Ds{RequestHeaderSize}, $fields[10]);
+		&updateDistr($Ds{RequestBodySize}, $fields[11]);
+		&updateDistr($Ds{ResponseSize}, $fields[4]) if $scode == 200;
+		&updateDistr($Ds{StatusCodes}, $scode);
+		&updateDistr($Ds{RequestMethods}, $fields[5]);
+
+		my $gap = 1000.*($time - $last);
+		if (!defined $SessionIdleTout || $gap < $SessionIdleTout) {
+			&updateDistr($Ds{InterArrival}, $gap);
+		} else {
+			&updateDistr($Ds{SessionBusyCount},
+				$Ips{$ip}->{busy_count});
+			&updateDistr($Ds{SessionBusyDur},
+				1000.*($last - $Ips{$ip}->{busy_start}));
+			&updateDistr($Ds{SessionIdleDur}, 1000.*($time - $last));
+			$Ips{$ip}->{busy_start} = $time;
+			$Ips{$ip}->{busy_count} = 0;
+		}
+		$Ips{$ip}->{last} = $time;
+		$Ips{$ip}->{busy_count}++;
+	} else {
+		++$cntIp;
+		$Ips{$ip} = {
+			last => $time,
+			busy_start => $time,
+			busy_count => 1,
+		}
+	}
+}
+&reportProgress();
+
+map { &reportDistr($_) } sort { $a->{id} cmp $b->{id} } values %Ds;
+
+exit(0);
+
+sub newEventsDistr {
+	my ($id, $name) = @_;
+	return &newDistr($id, $name, [
+		&newArea('all', undef(), undef()),
+	]);
+}
+
+sub newTimeDistr {
+	my ($id, $name) = @_;
+	my $distr = &newDistr($id, $name, [
+		&newArea('frequent', 1000, 1),
+		&newArea('medium', 10*1000, 10),
+		&newArea('occasional', 100*1000, 100),
+	]);
+	$distr->{pgl_type} = 'time_distr';
+	$distr->{report_factor} = 1000.0; # convert to seconds
+	$distr->{report_unit} = 'seconds';
+	return $distr;
+}
+
+sub newSizeDistr {
+	my ($id, $name) = @_;
+	my $distr = &newDistr($id, $name, [
+		&newArea('tiny',        1024,     1),
+		&newArea('small',    10*1024,    10),
+		&newArea('medium',  100*1024,   100),
+		&newArea('large',  1000*1024,  1000),
+		&newArea('huge',  10000*1024, 10000),
+	]);
+	$distr->{pgl_type} = 'size_distr';
+	$distr->{report_unit} = 'bytes';
+	return $distr;
+}
+
+sub newNumDistr {
+	my $distr = &newSizeDistr(@_);
+	$distr->{pgl_type} = 'num_distr';
+	$distr->{report_unit} = 'number';
+	return $distr;
+}
+
+sub newDistr {
+	my ($id, $name, $areas) = @_;
+
+	my $d = {
+		id => $id,
+		name => $name,
+		pgl_type => undef(),
+		report_factor => undef(),
+		report_unit => undef(),
+
+		areas => $areas,
+
+		count => 0,
+		sum => 0,
+		sqSum => 0,
+	};
+
+	# assign minimums
+	my $lastMax;
+	foreach my $area (@{$d->{areas}}) {
+		$area->{min} = $lastMax if defined $lastMax;
+		$lastMax = $area->{max};
+	}
+
+	return $d;
+}
+
+sub newArea {
+	my ($name, $max, $factor) = @_;
+	return {
+		name => $name,
+		min => undef(),
+		max => $max,
+		factor => $factor,
+		values => {},
+	};
+}
+
+sub updateDistr {
+	my ($distr, $value) = @_;
+	return unless defined $value && $value ne '-';
+
+	# find matching area
+	my $area;
+	foreach $a (@{$distr->{areas}}) {
+		if (defined $area) {
+			$area = $a if defined $a->{min} && $value >= $a->{min};
+		} else {
+			$area = $a;
+		}
+	}
+	die("no matching area for $value in ". $distr->{name}. " distro, stopped")
+		unless $area;
+
+	if (defined $area->{factor}) {
+		$distr->{sum} += $value;
+		$distr->{sqSum} += $value * $value;
+
+		$value = int($value / $area->{factor});
+	}
+
+	$distr->{count}++;
+
+	if (defined $area->{values}->{$value}) {
+		$area->{values}->{$value}++;
+	} else {
+		$area->{values}->{$value} = 1;
+	}
+}
+
+sub reportDistr {
+	my ($distr) = @_;
+
+	printf("# %s\n", $distr->{name});
+	printf("#\tcount:   %10d\n", $distr->{count});
+
+	if (defined $distr->{areas}->[0]->{factor}) {
+		&reportNumDistr($distr);
+	} else {
+		&reportEventDistr($distr);
+	}
+
+	printf("\n");
+}
+
+sub reportNumDistr {
+	my ($distr) = @_;
+
+	if ($distr->{count}) {
+		my $mean = $distr->{sum}/$distr->{count};
+		my $dev;
+		if ($distr->{count} > 1) {
+			my $diff = $distr->{sqSum} - 
+				$distr->{sum}*$distr->{sum}/$distr->{count};
+			$dev = sqrt($diff / ($distr->{count}-1));
+		}
+		my $median = &distrPercentile($distr, 50.0);
+
+		printf("#\tmedian:  %s\n", &distrValue($distr, $median));
+		printf("#\tmean:    %s\n", &distrValue($distr, $mean));
+		printf("#\tstd_dev: %s\n", &distrValue($distr, $dev)) if defined $dev;
+		printf("#\trel_dev: %14.3f%%\n", &percent($dev, $mean)) if $mean > 0;
+	}
+	printf("#\tunit:    %10s\n", $distr->{report_unit});
+	
+	printf("%s %s = {\n", $distr->{pgl_type}, $distr->{id});
+
+	my $sum = 0;
+	foreach my $a (@{$distr->{areas}}) {
+		&reportNumArea($distr, $a, \$sum);
+	}
+
+	printf("}\n");
+}
+
+sub reportNumArea {
+	my ($distr, $area, $sumPtr) = @_;
+
+	my @keys = sort { $a <=> $b } keys %{$area->{values}};
+	my $bin = { min => undef(), max => undef(), count => 0 };
+	foreach my $v (@keys) {
+		my $c = $area->{values}->{$v};
+		my $value = int($v * $area->{factor});
+		&nextBin($distr, $bin, ${$sumPtr}) 
+			if ($bin->{count} + $c) >= ($distr->{count}/100.);
+		$bin->{count} += $c;
+		$bin->{min} = $value unless defined $bin->{min};
+		$bin->{max} = $value;
+		${$sumPtr} += $c;
+	}
+	&nextBin($distr, $bin, ${$sumPtr}) if $bin->{count};
+}
+
+sub nextBin {
+	my ($distr, $bin, $sum) = @_;
+	return unless $bin->{count};
+
+	my ($min, $max) = map { &distrValue($distr, $_) }
+		($bin->{min}, $bin->{max});
+
+	printf("\t%s : %s %10.3f # %10.3f\n", $min, $max,
+		&percent($bin->{count}, $distr->{count}),
+		&percent($sum, $distr->{count}));
+
+	$bin->{count} = 0;
+	$bin->{min} = $bin->{max} = undef();	
+}
+
+sub distrPercentile {
+	my ($distr, $level) = @_;
+
+	my $sum = 0;
+	my $last;
+	foreach my $area (@{$distr->{areas}}) {
+		my @keys = sort { $a <=> $b } keys %{$area->{values}};
+		foreach my $v (@keys) {
+			$sum += $area->{values}->{$v};
+			my $value = int($v * $area->{factor});
+			return $value if &percent($sum, $distr->{count}) >= $level;
+			$last = $value;
+		}
+	}
+	return $last;
+}
+
+sub distrValue {
+	my ($distr, $v) = @_;
+	my $value = $distr->{report_factor} ? $v/$distr->{report_factor} : $v;
+	my $f = $distr->{report_factor} ? '%14.3f' : '%10d';
+	return sprintf($f, $value);
+}
+
+sub reportEventDistr {
+	my ($distr) = @_;
+
+	printf("%s = [\n", $distr->{id});
+	my $area = $distr->{areas}->[0];
+
+	my @keys = sort { $area->{values}->{$b} <=> $area->{values}->{$a} }
+		keys %{$area->{values}};
+
+	my $count = 0;
+	foreach my $v (@keys) {
+		if (my $c = $area->{values}->{$v}) {
+			my $value = sprintf('"%s"', $v);
+			if ($count == 0) {
+				printf("\t%-10s", $value); # let most frequent entry absorb cal mistakes
+			} else {
+				printf(",\n") if $count;
+				printf("\t%-10s : %.3f%%", $value, &percent($c, $distr->{count}));
+			}
+			++$count;
+		}
+	}
+
+	printf("\n];\n", $distr->{id});
+}
+
+sub reportProgress {
+	printf(STDERR "#%03dK IPs: %3d\n", $cntEntry/1000, $cntIp);
+}
+
+sub percent {
+	my ($part, $whole) = @_;
+	die() unless defined $whole;
+	return -1 unless $whole > 0 && defined($part);
+	no integer;
+	return 100. * $part/$whole;
+}

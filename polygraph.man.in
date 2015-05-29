@@ -1,0 +1,132 @@
+.TH POLYGRAPH "7" "February 2010" "@PACKAGE_NAME@" "User Commands"
+.nh
+.SH NAME
+Polygraph \- performance benchmark for web intermediaries
+.SH DESCRIPTION
+Web Polygraph is a performance testing tool for caching proxies,
+origin server accelerators, L4/7 switches, content filters, and other
+Web intermediaries. Polygraph's features include:
+
+  * high-performance HTTP clients and servers
+  * realistic HTTP, FTP, and SSL traffic generation
+  * HTTP Basic, NTLM, and Negotiate proxy authentication
+  * LDAP-friendly generation of user credentials
+  * flexible content simulation
+  * ready-to-use standard workloads for benchmarking
+  * powerful domain-specific configuration language
+  * portable open-source implementation
+  * friendly commercial support
+
+Web Polygraph consists of many tools listed below. See individual man
+pages for more information. Detailed documentation is available at
+.BR \%www.web-polygraph.org .
+
+.B \%polygraph-aka
+\- IP aliases manipulation tool
+
+.B \%polygraph-beepmon
+\- forwards BEEP messages to an external program
+
+.B \%polygraph-cdb
+\- content database manipulation tool
+
+.B \%polygraph-client
+\- Web Polygraph client simulator
+
+.B \%polygraph-cmp-lx
+\- log comparison tool
+
+.B \%polygraph-distr-test
+\- distribution test
+
+.B \%polygraph-dns-cfg
+\- DNS server configuration tool
+
+.B \%polygraph-lr
+\- console log extractor
+
+.B \%polygraph-ltrace
+\- trace extractor
+
+.B \%polygraph-lx
+\- stats extractor
+
+.B \%polygraph-pgl2acl
+\- translates PGL access rules into Squid Proxy ACLs
+
+.B \%polygraph-pgl2eng
+\- PGL to English converter
+
+.B \%polygraph-pgl2ips
+\- PGL IP addresses calculator
+
+.B \%polygraph-pgl2ldif
+\- LDIF (and other text-based) configuration generator
+
+.B \%polygraph-pgl-test
+\- PGL validator
+
+.B \%polygraph-pmix2-ips
+\- PolyMix\-2 address calculator
+
+.B \%polygraph-pmix3-ips
+\- PolyMix\-3 address calculator
+
+.B \%polygraph-polymon
+\- interactive test monitoring tool
+
+.B \%polygraph-polyprobe
+\- tests TCP throughput in a full client/server mesh
+
+.B \%polygraph-polyrrd
+\- supplies run-time Polygraph stats to RRDtool
+
+.B \%polygraph-pop-test
+\- predicts cache hit ratios for a given workload
+
+.B \%polygraph-reporter
+\- HTML report generator
+
+.B \%polygraph-rng-test
+\- random number generator test
+
+.B \%polygraph-server
+\- Web Polygraph server simulator
+
+.B \%polygraph-udp2tcpd
+\- converts UDP monitoring messages into a TCP stream read by polymon
+
+.B \%polygraph-webaxe4-ips
+\- WebAxe\-4 address calculator
+.SH COPYRIGHT
+Copyright \(co 2003-2006 The Measurement Factory, Inc.
+.SH "SEE ALSO"
+.BR \%polygraph-aka (1),
+.BR \%polygraph-beepmon (1),
+.BR \%polygraph-cdb (1),
+.BR \%polygraph-client (1),
+.BR \%polygraph-cmp-lx (1),
+.BR \%polygraph-distr-test (1),
+.BR \%polygraph-dns-cfg (1),
+.BR \%polygraph-lr (1),
+.BR \%polygraph-ltrace (1),
+.BR \%polygraph-lx (1),
+.BR \%polygraph-pgl2acl (1),
+.BR \%polygraph-pgl2eng (1),
+.BR \%polygraph-pgl2ips (1),
+.BR \%polygraph-pgl2ldif (1),
+.BR \%polygraph-pgl-test (1),
+.BR \%polygraph-pmix2-ips (1),
+.BR \%polygraph-pmix3-ips (1),
+.BR \%polygraph-polymon (1),
+.BR \%polygraph-polyprobe (1),
+.BR \%polygraph-polyrrd (1),
+.BR \%polygraph-pop-test (1),
+.BR \%polygraph-reporter (1),
+.BR \%polygraph-rng-test (1),
+.BR \%polygraph-server (1),
+.BR \%polygraph-udp2tcpd (1),
+.BR \%polygraph-webaxe4-ips (1)
+
+.B \%http://www.web-polygraph.org/
+\- project web site

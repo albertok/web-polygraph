@@ -1,0 +1,10 @@
+# Valgrind supression file for polyclt and polysrv.
+#
+# Usage: valgrind --suppressions=polygraph.supp polyclt ...
+
+{
+   OpenSSL
+   Memcheck:Addr8
+   fun:AES_cbc_encrypt
+   obj:*
+}

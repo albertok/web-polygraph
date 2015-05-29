@@ -1,0 +1,4 @@
+[DESCRIPTION]
+Polyrrd connects to the udp2tcpd daemon, receives test status
+messages, and stores corresponding stats in the specified RRDTool
+database.
