@@ -451,6 +451,8 @@ String SslCommand::calcKey(const String &cmd) const {
 	const String path = theWrap->sharingPath();
 	Assert(path.len() > 0);
 	xstd::ChecksumAlg alg;
+	const int seed = LclPermut(rndSslSeed);
+	alg.update(reinterpret_cast<const char*>(&seed), sizeof(seed)); // necessary for SMP
 	alg.update(cmd.data(), cmd.len());
 	alg.update(path.data(), path.len());
 	alg.final();
