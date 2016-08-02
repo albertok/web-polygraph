@@ -5,6 +5,7 @@
 
 #include "base/polygraph.h"
 
+#include "xstd/Endian.h"
 #include "xstd/NetAddr.h"
 #include <sys/socket.h>
 #include "runtime/NotifMsg.h"
@@ -78,10 +79,10 @@ void StatusNotifMsg::hton() {
 	::hton(theConnUse);
 	::hton(theErrRatio);
 
-	theXactTotCnt = (int) htonl(theXactTotCnt);
-	theErrTotCnt = (int) htonl(theErrTotCnt);
-	theSockInstCnt = (int) htonl(theSockInstCnt);
-	theCat = (int) htonl(theCat);
+	theXactTotCnt = htobe64(theXactTotCnt);
+	theErrTotCnt = htobe64(theErrTotCnt);
+	theSockInstCnt = htobe64(theSockInstCnt);
+	theCat = htonl(theCat);
 }
 
 void StatusNotifMsg::ntoh() {
@@ -98,10 +99,10 @@ void StatusNotifMsg::ntoh() {
 	::ntoh(theConnUse);
 	::ntoh(theErrRatio);
 
-	theXactTotCnt = (int) ntohl(theXactTotCnt);
-	theErrTotCnt = (int) ntohl(theErrTotCnt);
-	theSockInstCnt = (int) ntohl(theSockInstCnt);
-	theCat = (int) ntohl(theCat);
+	theXactTotCnt = be64toh(theXactTotCnt);
+	theErrTotCnt = be64toh(theErrTotCnt);
+	theSockInstCnt = be64toh(theSockInstCnt);
+	theCat = ntohl(theCat);
 }
 
 

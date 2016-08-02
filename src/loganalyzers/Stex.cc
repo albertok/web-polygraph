@@ -340,7 +340,7 @@ const TmSzHistStat *AllMethodsStex::hist(const PhaseInfo &phase) const {
 }
 
 const TmSzStat *AllMethodsStex::trace(const StatIntvlRec &rec) const {
-	theXactAggr = rec.theHead + rec.thePost + rec.thePut + rec.theConnect;
+	theXactAggr = rec.theHead + rec.thePost + rec.thePut + rec.theConnectStat.doneXacts().misses();
 	return &theXactAggr;
 }
 
@@ -377,51 +377,101 @@ void AllRepsStex::describe(XmlNodes &nodes) const {
 
 /* ContTypeStex */
 
-ContTypeStex::ContTypeStex(const String &aKey, const String &aName, int anIdx, ContTypePtr aContType):
-	Stex(aKey, aName), theIdx(anIdx), theContType(aContType) {
+ContTypeStex::ContTypeStex(const String &aKey, const String &aName, const int anIdx, const ContTypeAggrPtr aContTypeAggr, const ContTypeHistPtr aContTypeHist):
+	Stex(aKey, aName), theIdx(anIdx), theContTypeAggr(aContTypeAggr),
+	theContTypeHist(aContTypeHist) {
+	Must(theContTypeAggr);
+	Must(theContTypeHist);
 }
 
-const TmSzStat *ContTypeStex::aggr(const PhaseInfo &phase) const {
-	if (phase.hasStats() && (phase.stats().*theContType).hasStats(theIdx)) {
-		theXactAggr = TmSzStat(AggrStat(), 
-			(phase.stats().*theContType).stats(theIdx));
-		return &theXactAggr;
-	} else {
-		return 0;
-	}
+const TmSzHistStat *ContTypeStex::hist(const PhaseInfo &phase) const {
+	return phase.hasStats() ?
+		(phase.stats().*theContTypeHist).hasStats(theIdx) : 0;
+}
+
+const TmSzStat *ContTypeStex::trace(const StatIntvlRec &rec) const {
+	static const TmSzStat emptyStats;
+	const TmSzStat *const stats = (rec.*theContTypeAggr).hasStats(theIdx);
+	return stats ? stats : &emptyStats;
 }
 
 void ContTypeStex::describe(XmlNodes &nodes) const {
 	XmlText text;
-	text.buf() << "This object class represents one of the "
-		<< "content types specified in the PGL workload file and labeled "
-		<< "there as " << name() << " content type." << endl;
+	if (theIdx < ContType::NormalContentStart()) {
+		text.buf() << "The " << name() << " object represents one of "
+			"the built-in content kinds used by Polygraph for "
+			"messages that do not match any of the PGL-configured "
+			"Content kinds.";
+		// TODO: Also document this specific built-in kind?
+	} else {
+		text.buf() << "This object class represents the " << name() <<
+			" Content object in the PGL workload.";
+	}
 	nodes << text;
+}
+
+
+/* RepContTypeStex */
+
+RepContTypeStex::RepContTypeStex(const String &aKey, const String &aName, const int idx):
+	ContTypeStex(aKey, aName, idx, &StatIntvlRec::theRepContType, &StatPhaseRec::theRepContTypeHist) {
+}
+
+
+/* ReqContTypeStex */
+
+ReqContTypeStex::ReqContTypeStex(const String &aKey, const String &aName, const int idx):
+	ContTypeStex(aKey, aName, idx, &StatIntvlRec::theReqContType, &StatPhaseRec::theReqContTypeHist) {
 }
 
 
 /* AllContTypesStex */
 
-AllContTypesStex::AllContTypesStex(const String &aKey, const String &aName, ContTypePtr aContType):
-	Stex(aKey, aName), theContType(aContType) {
+AllContTypesStex::AllContTypesStex(const String &aKey, const String &aName, const ContTypeAggrPtr aContTypeAggr, const ContTypeHistPtr aContTypeHist):
+	Stex(aKey, aName), theContTypeAggr(aContTypeAggr),
+	theContTypeHist(aContTypeHist) {
+	Must(theContTypeAggr);
+	Must(theContTypeHist);
 }
 
-const TmSzStat *AllContTypesStex::aggr(const PhaseInfo &phase) const {
-	if (phase.hasStats()) {
-		AggrStat szStat;
-		for (int i = 0; i < ContTypeStat::Kinds().count(); ++i) {
-			if ((phase.stats().*theContType).hasStats(i))
-				szStat += (phase.stats().*theContType).stats(i);
+const TmSzHistStat *AllContTypesStex::hist(const PhaseInfo &phase) const {
+	const StatPhaseRec *const rec = phase.hasStats();
+	if (rec) {
+		theHistStat.reset();
+		for (int i = 0; i < ContType::Count(); ++i) {
+			if ((rec->*theContTypeHist).hasStats(i))
+				theHistStat += (rec->*theContTypeHist).stats(i);
 		}
-		theXactAggr = TmSzStat(AggrStat(), szStat);
-		return &theXactAggr;
-	} else { 
+		return &theHistStat;
+	} else
 		return 0;
+}
+
+const TmSzStat *AllContTypesStex::trace(const StatIntvlRec &rec) const {
+	theAggrStat.reset();
+	for (int i = 0; i < ContType::Count(); ++i) {
+		if ((rec.*theContTypeAggr).hasStats(i))
+			theAggrStat += (rec.*theContTypeAggr).stats(i);
 	}
+	return &theAggrStat;
 }
 
 void AllContTypesStex::describe(XmlNodes &nodes) const {
 	Stex::describe(nodes);
+}
+
+
+/* AllRepContTypeStex */
+
+AllRepContTypesStex::AllRepContTypesStex(const String &aKey, const String &aName):
+	AllContTypesStex(aKey, aName, &StatIntvlRec::theRepContType, &StatPhaseRec::theRepContTypeHist) {
+}
+
+
+/* AllReqContTypeStex */
+
+AllReqContTypesStex::AllReqContTypesStex(const String &aKey, const String &aName):
+	AllContTypesStex(aKey, aName, &StatIntvlRec::theReqContType, &StatPhaseRec::theReqContTypeHist) {
 }
 
 

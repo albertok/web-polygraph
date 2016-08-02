@@ -18,6 +18,7 @@
 
 
 LevelTraceFig::LevelTraceFig(): theStex(0), thePhase(0), theTrace(0) {
+	theAxisY1.label("level, #");
 }
 
 void LevelTraceFig::stats(const LevelStex *const aStex, const PhaseInfo *const aPhase) {
@@ -27,33 +28,21 @@ void LevelTraceFig::stats(const LevelStex *const aStex, const PhaseInfo *const a
 	Assert(theTrace);
 }
 
-void LevelTraceFig::setCtrlOptions() {
-	theLabelY1 = "level, #";
-	ReportTraceFigure::setCtrlOptions();
-}
-
 void LevelTraceFig::compareWith(const LevelStex *const stex) {
 	theComparison.append(stex);
 }
 
-int LevelTraceFig::createCtrlFile() {
-	if (ReportTraceFigure::createCtrlFile() < 0)
-		return -1;
-
+int LevelTraceFig::addPlotData() {
 	// make sure that the most interesting line is on top
 	theComparison.append(theStex);
 
 	// create plot command
 	for (int i = 0; i < theComparison.count(); ++i)
-		addPlotLine(theComparison[i]->name(), theLabelY1);
-	addedAllPlotLines();
+		addPlotLine(theComparison[i]->name());
 
 	int pointCount = 0;
-	for (int s = 0; s < theComparison.count(); ++s) {
-		if (s)
-			*theCtrlFile << 'e' << endl; // note: two empty lines do not work
+	for (int s = 0; s < theComparison.count(); ++s)
 		pointCount += dumpDataLines(theComparison[s]);
-	}
 
 	return pointCount;
 }
@@ -62,15 +51,14 @@ int LevelTraceFig::dumpDataLines(const LevelStex *stex) {
 	int pointCount = 0;
 	for (int i = 0; i < theTrace->count(); ++i)
 		pointCount += dumpDataLine(stex, theTrace->winPos(i), theTrace->winStats(i));
-
+	addedLineData();
 	return pointCount;
 }
 
 int LevelTraceFig::dumpDataLine(const LevelStex *stex, Time stamp, const StatIntvlRec &r) {
 	const LevelStat &stat = stex->level(r);
 	if (stat.known()) {
-		dumpTime(stamp);
-		*theCtrlFile << ' ' << stat.level() << endl;
+		addDataPoint(stamp, stat.level());
 		return 1;
 	}
 	return 0;	

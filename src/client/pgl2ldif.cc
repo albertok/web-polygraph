@@ -13,6 +13,8 @@
 #include "base/opts.h"
 #include "base/polyOpts.h"
 #include "base/CmdLine.h"
+#include "base/macros.h"
+#include "base/AnyToString.h"
 #include "pgl/PglPp.h"
 #include "pgl/PglCtx.h"
 #include "pgl/PglStaticSemx.h"
@@ -33,10 +35,12 @@ class MyOpts: public OptGrp {
 			theCfgName(this,    "config <filename>",  "PGL configuration"),
 			theCfgDirs(this,    "cfg_dirs <dirs>",  "directories for PGL #includes"),
 			avoidDups(this,    "avoid_duplicates <yes|no>", "[slowly] avoid duplicate LDIF records", false),
-			theGlbRngSeed(this, "global_rng_seed <int>","per-test r.n.g. seed", 1)
+			theGlbRngSeed(this, "global_rng_seed <int>","per-test r.n.g. seed", 1),
+			theWorkerId(this,   "worker <int>", "SMP worker ID", 0)
 			{}
 
 		virtual bool validate() const;
+		virtual String ExpandMacros(const Opt &opt, const String &str) const;
 
 		//virtual ostream &printAnonym(ostream &os) const;
 		//virtual bool parseAnonym(const Array<const char *> &opts);
@@ -50,6 +54,7 @@ class MyOpts: public OptGrp {
 		StrArrOpt theCfgDirs;
 		BoolOpt avoidDups;
 		IntOpt theGlbRngSeed;
+		IntOpt theWorkerId;
 };
 
 
@@ -99,6 +104,9 @@ static MyOpts TheOpts;
 /* MyOpt */
 
 bool MyOpts::validate() const {
+	if (theWorkerId.wasSet() && theWorkerId <= 0)
+		cerr << "SMP worker ID must be positive; got: " << theWorkerId << endl;
+	else
 	if (!theTemplate)
 		cerr << "must specify LDIF template file (--template)" << endl;
 	else
@@ -109,6 +117,11 @@ bool MyOpts::validate() const {
 	return false;
 }
 
+String MyOpts::ExpandMacros(const Opt &opt, const String &str) const {
+	if (opt.name() != "worker")
+		return ExpandMacro(str, "%worker", AnyToString(theWorkerId));
+	return str;
+}
 
 /* LdifTemplate */
 
@@ -289,6 +302,8 @@ int main(int argc, char **argv) {
 
 	configureStream(cout, 2);
 	configureStream(clog, 3);
+
+	PglStaticSemx::WorkerId(TheOpts.theWorkerId);
 
 	// set random seeds
 	GlbPermut().reseed(TheOpts.theGlbRngSeed);

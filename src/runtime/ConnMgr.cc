@@ -11,6 +11,7 @@
 #include "runtime/ConnIdx.h"
 #include "runtime/ConnMgr.h"
 #include "runtime/ErrorMgr.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/polyErrors.h"
 #include "runtime/globals.h"
@@ -89,8 +90,8 @@ void ConnMgr::endedIdle(Connection *conn) {
 
 void ConnMgr::closeIdle(Connection *conn, CloseKind ck) {
 	conn->closeKind(ck);
-	endedIdle(conn);
-	delIdle(conn);
+	delIdle(conn); // must go before endedIdle() to sync CltConnMgr::theIdle*
+	endedIdle(conn); // may Broadcast(), end test, and trigger closeAllIdle()
 	closeBeg(conn);
 }
 

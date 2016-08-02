@@ -25,9 +25,6 @@ class NetIface {
 		};
 
 	public:
-		static bool GetAddrs(Array<InetIfReq> &addrs, const String &ifname);
-
-	public:
 		NetIface();
 		~NetIface();
 
@@ -36,17 +33,16 @@ class NetIface {
 		int nextAliasIndex() const; // max alias index + 1 or 0 if no aliases configured
 
 		void name(const String &aName);
-		void netmask(const InAddress &aNetmask);
 
-		bool delAlias(const InAddress &addr, const String &name);
+		bool delAlias(const InAddress &addr, const InAddress &netmask, const String &name);
 		int delAliases(); // returns the number of aliases deleted or -1
 
 		bool addAlias(const InAddress &addrs, int idx, const InAddress &netmask);
 		bool addAliases(const Array<InAddress> &addrs, const InAddress &netmask);
 
 	protected:
-		void getAliases(Array<InetIfReq> &aliases) const;
-		void ejectPrimary(const NetAddr &primary, Array<InetIfReq> &all) const;
+		void getAliases(Array<InetIfReq> &aliases, Array<InAddress> *netmasks = 0) const;
+		static void EjectPrimary(const NetAddr &primary, Array<InetIfReq> &all, Array<InAddress> *netmasks);
 
 	protected:
 		String theName;

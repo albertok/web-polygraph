@@ -5,6 +5,7 @@
 
 #include "base/polygraph.h"
 
+#include "xstd/gadgets.h"
 #include "runtime/Farm.h"
 #include "csm/BodyIter.h"
 #include "csm/ContentCfg.h"
@@ -51,15 +52,6 @@ double EmbedContMdl::compContPerCall(const ContentCfg *cc) const {
 	return 0.0;
 }
 
-void EmbedContMdl::noteNewContProb(ContentCfg *cc, double newProb) {
-	int idx = 0;
-	if (!find(cc->id(), idx))
-		return;
-
-	theNewContProb[idx] = newProb;
-	Assert(cc->newPerOid() > 0);
-}
-
 int EmbedContMdl::embedGoal(RndGen &rng) {
 	if (!theEmbedCount)
 		return 0;
@@ -103,13 +95,9 @@ ObjId EmbedContMdl::embedTypedOid(const ObjId &oid, int oidCount, int etype) {
 	}
 
 	const int off = oidCount + 1;
-	eoid.name(abs((oid.name() << 8) | off));
+	eoid.name(Abs((oid.name() << 8) | off));
 
 	return eoid;
-}
-
-bool EmbedContMdl::findEmbedContType(const Area &category, int &etype) const {
-	return theTypes.findEmbedContType(category, etype);
 }
 
 void EmbedContMdl::configureEmbedCfgs(const ContentSym *cfg) {
@@ -121,9 +109,6 @@ void EmbedContMdl::configureEmbedCfgs(const ContentSym *cfg) {
 		ContentCfg *cfg = TheContentMgr.get(syms[i]);
 		theCfgs.append(cfg);
 	}
-
-	theNewContProb.stretch(syms.count());
-	theNewContProb.count(syms.count());
 
 	theTypes.configure(theCfgs);
 }

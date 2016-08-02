@@ -9,11 +9,15 @@ dist_man1_MANS = \
 EXTRA_PROGRAMS = comparator
 
 if ENABLE_COMPARATOR
-	bin_PROGRAMS += comparator
+bin_PROGRAMS += comparator
 
 comparator_SOURCES = \
 	comparator.cc \
 	CompOpts.cc
+
+comparator_CPPFLAGS = \
+	$(AM_CPPFLAGS) \
+	-I$(top_srcdir)/src/Hapy/src/include
 
 comparator_LDADD = \
 	libloganalyzers.la \
@@ -43,6 +47,9 @@ libloganalyzers_la_SOURCES = \
 	PhaseInfo.cc \
 	PhaseTrace.cc \
 	\
+	Plotter.cc \
+	ImagePlotter.cc \
+	JavascriptPlotter.cc \
 	ReportFigure.cc \
 	TmSzHistFig.cc \
 	RptmHistFig.cc \
@@ -79,9 +86,11 @@ noinst_HEADERS = \
 	BlobIdx.h \
 	CompOpts.h \
 	Formatter.h \
+	ImagePlotter.h \
 	InfoScope.h \
 	InfoScopeDim.h \
 	InfoScopes.h \
+	JavascriptPlotter.h \
 	StexBase.h \
 	PointStex.h \
 	HistStex.h \
@@ -93,6 +102,7 @@ noinst_HEADERS = \
 	Panorama.h \
 	PhaseInfo.h \
 	PhaseTrace.h \
+	Plotter.h \
 	ProcInfo.h \
 	RepOpts.h \
 	RepToHtmlFile.h \
@@ -112,9 +122,7 @@ noinst_HEADERS = \
 	Stex.h \
 	TestInfo.h \
 	TmSzHistFig.h \
-	StatTable.h \
-	\
-	$(top_builddir)/config.h
+	StatTable.h
 
 
 reporter_LDADD = \
@@ -126,11 +134,11 @@ reporter_LDADD = \
 	../xstd/libxstd.a \
 	@LIBOBJS@
 
-INCLUDES = \
-	-I$(top_srcdir)/src \
-	-I$(top_builddir) \
-	-I$(top_builddir)/src \
-	-I$(top_srcdir)/src/Hapy/src/include
+dist_javascripts_DATA = \
+	ReportFigures.js
 
+dist_stylesheets_DATA = \
+	Print.css \
+	ReportFigures.css
 
 include $(top_srcdir)/common.am

@@ -21,8 +21,8 @@ const char *valStr(const String &val) {
 	return val ? val.cstr() : "[none]";
 }
 
-
-bool splitVal(const String &val, String &pref, String &suf, const char del, const bool forward) {
+static
+bool splitVal(const String &val, String &pref, String &suf, const char del = ':', const bool forward = true) {
 	if (val) {
 		if (const char *const h = forward ? val.chr(del) : val.rchr(del)) {
 			pref = val(0, h - val.cstr());
@@ -53,6 +53,7 @@ bool isRatio(const String &str, double &r) {
 	return false;
 }
 
+static
 bool isTime(const char *str, Time &t) {
 	// note: things are set up so that "sec" stands for "1sec" 
 	//       (convenient for rates)
@@ -92,6 +93,7 @@ bool isTime(const char *str, Time &t) {
 	return true;
 }
 
+static
 bool isSize(const char *str, Size &s) {
 	// note: things are set up so that "KB" stands for "1KB" 
 	//       (convenient for rates)
@@ -146,39 +148,33 @@ bool isBigSize(const char *str, BigSize &s) {
 	return true;
 }
 
-// is RightType? converts various types to double if possible
+// converts various types to double if possible
 // XXX: val->double->val conversion/casts are bad, rewrite
 static
-bool isRT(const String &param, double &val, const String &type) {
-	if (type == "num") {
-		const char *p = 0;
-		isNum(param.cstr(), val, &p);
-		return isNum(param.cstr(), val, &p) && p && !*p;
+bool ToDouble(const String &param, double &val) {
+	const char *p = 0;
+	if (isNum(param.cstr(), val, &p) && p && !*p)
+		return true;
+
+	Time t;
+	if (isTime(param.cstr(), t)) {
+		val = t.secd();
+		return true;
 	}
-	if (type == "time") {
-		Time t;
-		if (isTime(param.cstr(), t)) {
-			val = t.secd();
-			return true;
-		}
-		return false;
+
+	Size s;
+	if (isSize(param.cstr(), s)) {
+		val = s;
+		return true;
 	}
-	if (type == "size") {
-		Size s;
-		if (isSize(param.cstr(), s)) {
-			val = s;
-			return true;
-		}
-		return false;
-	}
-	Assert(0); // unknown argument type	
-	return false;
+
+	return false; // unknown param type
 }
 
 // format: type(p1,p2,...) or type:p1,p2,...
-bool isDistr(const char *name, const char *val, RndDistr *&distr, const String &argType) {
+static
+bool isDistr(const char *name, const char *val, RndDistr *&distr) {
 // convenience kludge
-#define isRTX(s,v) isRT((s),(v),argType)
 	if (val) {
 
 		distr = 0;
@@ -199,25 +195,25 @@ bool isDistr(const char *name, const char *val, RndDistr *&distr, const String &
 
 			if (type == "unif") {
 				if (splitVal(params, s[0], s[1], ',') &&
-					isRTX(s[0], p[0]) && isRTX(s[1], p[1]))
+					ToDouble(s[0], p[0]) && ToDouble(s[1], p[1]))
 					distr = new UnifDistr(gen, p[0], p[1]);
 			} else
 			if (type == "exp") {
-				if (isRTX(params, p[0]))
+				if (ToDouble(params, p[0]))
 					distr = new ExpDistr(gen, p[0]);
 			} else
 			if (type == "norm") {
 				if (splitVal(params, s[0], s[1], ',') &&
-					isRTX(s[0], p[0]) && isRTX(s[1], p[1]))
+					ToDouble(s[0], p[0]) && ToDouble(s[1], p[1]))
 					distr = new NormDistr(gen, p[0], p[1]);
 			} else
 			if (type == "logn") {
 				if (splitVal(params, s[0], s[1], ',') &&
-					isRTX(s[0], p[0]) && isRTX(s[1], p[1]))
+					ToDouble(s[0], p[0]) && ToDouble(s[1], p[1]))
 					distr = LognDistr::ViaMean(gen, p[0], p[1]);
 			} else
 			if (type == "const") {
-				if (isRTX(params, p[0]))
+				if (ToDouble(params, p[0]))
 					distr = new ConstDistr(gen, p[0]);
 			} else
 			if (type == "zipf") {
@@ -231,9 +227,22 @@ bool isDistr(const char *name, const char *val, RndDistr *&distr, const String &
 					distr = new SeqDistr(gen, h);
 			} else
 			if (type == "table") {
-				if (splitVal(params, s[0], s[1], ',') && s[1] == argType) {
-					distr = LoadTblDistr(s[0], s[1]);
-					delete gen; gen = 0;
+				// Deal with single- and two-parameter table() calls.
+				// See PglSemx::isDistr() for similar code.
+				String fname;
+				String distrType;
+				if (splitVal(params, s[0], s[1], ',')) { // table(fname,dtype)
+					fname = s[0];
+					distrType = s[1] + "_distr";
+				} else { // table(fname)
+					fname = params;
+				}
+
+				distr = LoadTblDistr(fname, distrType);
+				delete gen; gen = 0;
+				if (!distr) {
+					cerr << "failed to load table distribution from " << valStr(fname) << "'" << endl;
+					return false;
 				}
 			} else {
 				delete gen;
@@ -250,7 +259,7 @@ bool isDistr(const char *name, const char *val, RndDistr *&distr, const String &
 			// fall through to print examples
 		}
 	}
-	cerr << "distribution value (e.g., `exp(13KB)' or `norm:3sec,1sec' or `table:/tmp/t,size') expected for the `" << name << "` option; got `" << valStr(val) << "'" << endl;
+	cerr << "distribution value (e.g., `exp(13KB)' or `norm:3sec,1sec' or `table:/tmp/my.dist') expected for the `" << name << "` option; got `" << valStr(val) << "'" << endl;
 	return false;
 }
 
@@ -512,7 +521,7 @@ DistrOpt::DistrOpt(OptGrp *aGrp, const char *aName, const char *aDescr, RndDistr
 
 // format: type(p1,p2,...) or type:p1,p2,...
 bool DistrOpt::parse(const String &name, const String &val) {
-	return isDistr(name.cstr(), val.cstr(), theVal, theArgType);
+	return isDistr(name.cstr(), val.cstr(), theVal);
 }
 
 

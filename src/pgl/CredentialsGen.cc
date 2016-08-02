@@ -46,9 +46,9 @@ String CredentialsGen::item(int idx) const {
 	RndGen rng(GlbPermut(idx, theId));
 	ostringstream buf;
 	// use 'idx' to ensure uniqueness within the namespace
-	buf << ThePfx << idx << '_' << hex << (rng.ltrial() % 0xFFFF)
+	buf << ThePfx << idx << '_' << hex << (rng.trial32u() % 0xFFFF)
 		<< '@' << theNamespace
-		<< ":pw" << hex << rng.ltrial() << TheSfx << ends;
+		<< ":pw" << hex << rng.trial32u() << TheSfx << ends;
 
 	const String res = buf.str().c_str();
 	streamFreeze(buf, false);
@@ -77,7 +77,7 @@ bool CredentialsGen::find(const Area &member, int &idx) const {
 	return true;
 }
 
-bool CredentialsGen::canMergeSameType(const StringArrayBlock &b) const {
+bool CredentialsGen::canMergeSameType(const StringArrayBlock &) const {
 	return false;
 }
 

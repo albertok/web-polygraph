@@ -16,17 +16,17 @@ class SessionStats: public GoalSubj {
 
 		// finalize GoalSubj interface
 		virtual Time duration() const;
-		virtual int xactCnt() const;
+		virtual Counter xactCnt() const;
 		virtual BigSize fillSz() const;
-		virtual int fillCnt() const;
-		virtual int xactErrCnt() const;
+		virtual Counter fillCnt() const;
+		virtual Counter xactErrCnt() const;
 
 	public:
 		Time theStart;
-		int theXactCnt;
+		Counter theXactCnt;
 		BigSize theFillSz;
-		int theFillCnt;
-		int theXactErrCnt;
+		Counter theFillCnt;
+		Counter theXactErrCnt;
 };
 
 #endif

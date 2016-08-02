@@ -45,6 +45,7 @@ template <class Item>
 class ObjFarm: public Farm<Item> {
 	public:
 		ObjFarm() {}
+		ObjFarm(const int n) { this->limit(n); }
 		virtual ~ObjFarm() { while (!this->empty()) this->destroy(this->get()); }
 
 	protected:

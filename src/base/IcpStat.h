@@ -32,7 +32,7 @@ class IcpStat {
 
 	protected:
 		HRStat theStat;
-		int theToutCnt; // number of ICP timeouts
+		Counter theToutCnt; // number of ICP timeouts
 };
 
 inline OLog &operator <<(OLog &ol, const IcpStat &s) { return s.store(ol); }

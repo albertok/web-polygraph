@@ -7,6 +7,8 @@
 #define POLYGRAPH__XSTD_GADGETS_H
 
 #include "xstd/h/iostream.h"
+#include "xstd/h/stdint.h"
+#include <limits>
 
 // abs, min, and max
 template <class T> inline T Abs(const T &a) { return a > 0 ? a : -a; }
@@ -16,11 +18,14 @@ template <class T> inline T Min(const T &a, const T &b, const T &c) { return Min
 template <class T> inline T Max(const T &a, const T &b, const T &c) { return Max(Max(a,b), c); }
 template <class T> inline T MiniMax(const T &l, const T &v, const T &h) { return Min(Max(l,v), h); }
 
+// equality for floating point numbers
+template <class T> inline bool Equal(const T &x, const T &y) { return Abs(x - y) < std::numeric_limits<T>::epsilon(); }
+
 // safe division
-inline double Ratio(int n, double d) { return d ? (n ? n/d : 0) : -1; }
-inline double Ratio(double n, double d) { return d ? n/d : -1; }
-inline double Percent(int n, double d) { return Ratio(n, d/100); }
-inline double Percent(double n, double d) { return Ratio(n, d/100); }
+template <class T>
+inline double Ratio(const T n, const double d) { return d ? (n ? n/d : 0) : -1; }
+template <class T>
+inline double Percent(const T n, const double d) { return Ratio(n, d/100); }
 
 // try "ceil(700/0.7)" to see why xceil is needed
 extern double xceil(double nom, double denom);
@@ -40,6 +45,8 @@ extern const char *StrBoundRChr(const char *s, char c, const char *eos);
 extern const char *StrBoundSpace(const char *s, const char *eos);
 // finds next white space and skips it
 extern const char *StrBoundAfterSpace(const char *s, const char *eos);
+// finds next non white space
+extern const char *StrNotSpace(const char *s);
 
 // a better atoi, returns def on error
 extern int xatoi(const char *s, int def = 0);
@@ -47,6 +54,7 @@ extern int xatoi(const char *s, int def = 0);
 // similar to strto*-like functions
 // note: isDbl fails on integers, isNum does not
 extern bool isInt(const char *s, int &i, const char **p = 0, int base = 0);
+extern bool isInt64(const char *s, int64_t &i, const char **p = 0, int base = 0);
 extern bool isDbl(const char *s, double &d, const char **p = 0);
 extern bool isNum(const char *s, double &d, const char **p = 0);
 

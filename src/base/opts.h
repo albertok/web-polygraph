@@ -164,7 +164,6 @@ class DistrOpt: public Opt {
 		RndDistr *distr() { Assert(theVal); return theVal; }
 		RndDistr *condDistr() { return theVal; }
 
-		void argType(const String &anArgType) { theArgType = anArgType; }
 		virtual void report(ostream &os) const;
 
 		double trial() { Assert(theVal); return theVal->trial(); }
@@ -174,7 +173,6 @@ class DistrOpt: public Opt {
 		virtual bool parse(const String &name, const String &val);
 
 		RndDistr *theVal;
-		String theArgType; // time/size/etc
 };
 
 
@@ -236,17 +234,7 @@ class StrArrOpt: public ListOpt {
 		virtual bool addItem(const String &item);
 
 	protected:
-		Array<String*> theVal;
+		PtrArray<String*> theVal;
 };
-
-
-/* option parsing routines */
-
-// where do these belong? parser?
-extern bool splitVal(const String &val, String &pref, String &suf, const char del = ':', const bool forward = true);
-extern bool isTime(const char *str, Time &t);
-extern bool isSize(const char *str, Size &s);
-extern bool isDistr(const char *name, const char *val, RndDistr *&distr, const String &argType);
-
 
 #endif

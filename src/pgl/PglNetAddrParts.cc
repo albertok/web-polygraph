@@ -166,7 +166,7 @@ int PglNetAddrParts::port() const {
 		return -1;
 
 	int port = -1;
-	if (isInt(thePorts.cstr()+1, port))
+	if (thePorts.len() > 1 && isInt(thePorts.cstr()+1, port))
 		return port;
 
 	return -1;

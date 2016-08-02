@@ -14,13 +14,13 @@ class HotSet {
 
 		void reset();
 
-		int pos() const { return thePos; }
-		void syncPos(int size, int wss);
+		Counter pos() const { return thePos; }
+		void syncPos(const Counter size, const Counter wss);
 
-		void pos(int aPos) { thePos = aPos; }
+		void pos(const Counter aPos) { thePos = aPos; }
 
 	protected:
-		int thePos;
+		Counter thePos;
 };
 
 #endif

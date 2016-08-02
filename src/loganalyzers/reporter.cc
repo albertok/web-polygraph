@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include "xstd/h/iostream.h"
 #include <fstream>
+#include <memory>
 #include "xstd/h/sstream.h"
 #include "xstd/h/iomanip.h"
 #include "xstd/h/new.h"
@@ -39,7 +40,7 @@
 #include "loganalyzers/BlobDb.h"
 #include "loganalyzers/RepOpts.h"
 
-static TestInfo *TheTest = 0;
+static std::auto_ptr<TestInfo> TheTest;
 
 typedef Map<int> PhaseNames; // raw name -> count
 static PhaseNames ThePhaseNames;
@@ -113,7 +114,7 @@ ProcInfo *scanLog1(LogIter &li) {
 			
 			case lgContTypeKinds: {
 				// should be called only once per log
-				ContTypeStat::Load(li.log());
+				ContType::Load(li.log());
 				break;
 			}
 
@@ -145,8 +146,7 @@ ProcInfo *scanLog1(LogIter &li) {
 
 				if (proc->logCat() == cat) {
 					StatIntvlRec r;
-					r.load(li.log());
-					if (Should(r.sane()))
+					if (r.load(li.log()) && Should(r.sane()))
 						proc->noteIntvl(r, phaseName);
 				}
 				break;
@@ -156,8 +156,7 @@ ProcInfo *scanLog1(LogIter &li) {
 				const int cat = li->theCat;
 				if (proc->logCat() == cat) {
 					StatPhaseRec r;
-					r.load(li.log());
-					if (Should(r.sane()))
+					if (r.load(li.log()) && Should(r.sane()))
 						proc->addPhase(r);
 				}
 				break;
@@ -171,6 +170,11 @@ ProcInfo *scanLog1(LogIter &li) {
 			<< ": error: cannot determine log 'side', skipping" << endl;
 		delete proc;
 		return 0;
+	}
+
+	if (li.log().fail()) {
+		cerr << li.log().fileName() << ": warning: log file appears to "
+			"be truncated" << endl;
 	}
 
 	proc->noteEndOfLog();
@@ -204,8 +208,7 @@ void scanLog2(LogIter &li, ProcInfo *proc) {
 				const int cat = li->theCat;
 				if (Should(trace) && proc->logCat() == cat) {
 					StatIntvlRec r;
-					r.load(li.log());
-					if (Should(r.sane()))
+					if (r.load(li.log()) && Should(r.sane()))
 						trace->addIntvl(li.log().progress().time(), r);
 				}
 				break;
@@ -230,9 +233,7 @@ void scanAll() {
 		LogIter li(&log);
 		if (ProcInfo *proc = scanLog1(li)) {
 			ILog log2;
-			log.stream()->clear();
-			log.stream()->seekg(0, ios::beg);
-			log2.stream(log.fileName(), log.stream());
+			log2.stream(log);
 			LogIter li2(&log2);
 			scanLog2(li2, proc);
 
@@ -261,7 +262,7 @@ String htmlFileName(const String &baseName) {
 
 static
 XmlTag &addTitle(BlobDb &db, XmlTag &ctx, const String &text) {
-    const XmlNode &prefix = db.ptr("summary.front" + TheTest->execScope(),
+	const XmlNode &prefix = db.ptr("summary.front",
 		XmlText(TheTest->label()));
 
 	XmlText suffix;
@@ -310,9 +311,21 @@ void twoColumn(XmlTag &parent, const XmlNodes &lhs, const XmlNodes &rhs) {
 }
 
 static
+void addBaselineReason(BlobDb &db, XmlTag &doc) {
+	XmlParagraph p;
+	p << db.quote("baseline.reason.test");
+	if (!TheTest->execScope()) {
+		if (TheTest->cltSideExists())
+			p << db.quote("baseline.reason.client");
+		if (TheTest->srvSideExists())
+			p << db.quote("baseline.reason.server");
+	}
+	doc << p;
+}
+
+static
 const ReportBlob *buildFrontPage(BlobDb &db) {
-	const InfoScope &scope = TheTest->execScope();
-	ReportBlob blob("summary.front" + scope, ReportBlob::NilTitle);
+	ReportBlob blob("summary.front", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 
@@ -322,20 +335,20 @@ const ReportBlob *buildFrontPage(BlobDb &db) {
 	title << XmlText(String("Web Polygraph report: ") + TheTest->label());
 	chapter << title;
 
-	chapter << db.quote("summary.exec.table" + scope);
-	
-	chapter << XmlTextTag<XmlParagraph>("The following information is available.");
+	chapter << db.quote("summary.exec.table");
+
+	addBaselineReason(db, chapter);
 
 	XmlTag list("ul");
 
 	list << db.ptr("summary.1page", XmlText("One-page summary"));
-	//list << db.ptr("summary.2page" + scope, XmlText("Two-page summary"));
-	list << db.ptr("page.traffic" + scope, XmlText("Traffic rates, counts, and volumes"));
-	list << db.ptr("page.rptm" + scope, XmlText("Response times"));
-	list << db.ptr("page.savings" + scope, XmlText("Hit ratios"));
-	list << db.ptr("page.levels" + scope, XmlText("Concurrency levels and robot population"));
-	list << db.ptr("page.auth" + scope, XmlText("Authentication"));
-	list << db.ptr("page.errors" + scope, XmlText("Errors"));
+	//list << db.ptr("summary.2page", XmlText("Two-page summary"));
+	list << db.ptr("page.traffic", XmlText("Traffic rates, counts, and volumes"));
+	list << db.ptr("page.rptm", XmlText("Response times"));
+	list << db.ptr("page.savings", XmlText("Hit ratios"));
+	list << db.ptr("page.levels", XmlText("Concurrency levels and robot population"));
+	list << db.ptr("page.auth", XmlText("Authentication"));
+	list << db.ptr("page.errors", XmlText("Errors"));
 	list << db.ptr("page.workload", XmlText("Workload"));
 	list << db.ptr("page.everything", XmlText("Details"));
 	list << db.ptr("page.notes", XmlText("Report generation notes"));
@@ -356,23 +369,25 @@ const ReportBlob *buildOnePage(BlobDb &db) {
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "one-page summary");
 
-	const InfoScope &execScope = TheTest->execScope();
-
 	XmlNodes lhs;
-	lhs << db.quote("summary.exec.table" + execScope);
+	lhs << db.quote("summary.exec.table");
 
 	XmlNodes rhs;
-	rhs << db.quote("load.table" + execScope);
+	if (const SideInfo *cltSide = TheTest->cltSideExists()) {
+		if (cltSide->execScope())
+			rhs << db.quote("load.table" + cltSide->execScope());
+	}
 	//rhs << db.quote("hit.ratio.table" + execScope);
 
 	twoColumn(chapter, lhs, rhs);
 
-	chapter << db.quote("summary.exec.phases" + execScope);
+	addBaselineReason(db, chapter);
 
-	if (TheTest->cltSideExists()) {
-		const InfoScope &scope = TheTest->cltSide().scope();
-		chapter << db.quote("load.trace" + scope);
-		chapter << db.quote("rptm.trace" + scope);
+	{
+		const SideInfo &side = TheTest->aSide();
+		const InfoScope &scope = side.scope();
+		side.cmplLoadFigure(db, chapter, scope, true);
+		chapter << db.include(side.cmplRptmFigure(db, scope, true));
 	}
 
 	doc << chapter;
@@ -383,14 +398,14 @@ const ReportBlob *buildOnePage(BlobDb &db) {
 }
 
 static
-const ReportBlob *buildTrafficPage(BlobDb &db, const InfoScope &scope) {
-	ReportBlob blob("page.traffic" + scope, ReportBlob::NilTitle);
+const ReportBlob *buildTrafficPage(BlobDb &db) {
+	ReportBlob blob("page.traffic", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "traffic rates, counts, and volumes");
 
-	chapter << db.quote("traffic" + scope);
+	chapter << db.quote("traffic");
 
 	doc << chapter;
 	blob << doc;
@@ -400,14 +415,14 @@ const ReportBlob *buildTrafficPage(BlobDb &db, const InfoScope &scope) {
 }
 
 static
-const ReportBlob *buildRptmPage(BlobDb &db, const InfoScope &scope) {
-	ReportBlob blob("page.rptm" + scope, ReportBlob::NilTitle);
+const ReportBlob *buildRptmPage(BlobDb &db) {
+	ReportBlob blob("page.rptm", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "response times");
 
-	chapter << db.quote("rptm" + scope);
+	chapter << db.quote("rptm");
 
 	doc << chapter;
 	blob << doc;
@@ -417,14 +432,14 @@ const ReportBlob *buildRptmPage(BlobDb &db, const InfoScope &scope) {
 }
 
 static
-const ReportBlob *buildSavingsPage(BlobDb &db, const InfoScope &scope) {
-	ReportBlob blob("page.savings" + scope, ReportBlob::NilTitle);
+const ReportBlob *buildSavingsPage(BlobDb &db) {
+	ReportBlob blob("page.savings", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "hit ratios");
 
-	chapter << db.quote("savings" + scope);
+	chapter << db.quote("savings");
 
 	doc << chapter;
 	blob << doc;
@@ -434,14 +449,14 @@ const ReportBlob *buildSavingsPage(BlobDb &db, const InfoScope &scope) {
 }
 
 static
-const ReportBlob *buildLevelsPage(BlobDb &db, const InfoScope &scope) {
-	ReportBlob blob("page.levels" + scope, ReportBlob::NilTitle);
+const ReportBlob *buildLevelsPage(BlobDb &db) {
+	ReportBlob blob("page.levels", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "concurrency levels and robot population");
 
-	chapter << db.quote("levels" + scope);
+	chapter << db.quote("levels");
 
 	doc << chapter;
 	blob << doc;
@@ -451,14 +466,14 @@ const ReportBlob *buildLevelsPage(BlobDb &db, const InfoScope &scope) {
 }
 
 static
-const ReportBlob *buildAuthPage(BlobDb &db, const InfoScope &scope) {
-	ReportBlob blob("page.auth" + scope, ReportBlob::NilTitle);
+const ReportBlob *buildAuthPage(BlobDb &db) {
+	ReportBlob blob("page.auth", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "Authentication");
 
-	chapter << db.quote("authentication" + scope);
+	chapter << db.quote("authentication");
 
 	doc << chapter;
 	blob << doc;
@@ -468,14 +483,14 @@ const ReportBlob *buildAuthPage(BlobDb &db, const InfoScope &scope) {
 }
 
 static
-const ReportBlob *buildErrorsPage(BlobDb &db, const InfoScope &scope) {
-	ReportBlob blob("page.errors" + scope, ReportBlob::NilTitle);
+const ReportBlob *buildErrorsPage(BlobDb &db) {
+	ReportBlob blob("page.errors", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "errors");
 
-	chapter << db.quote("errors" + scope);
+	chapter << db.quote("errors");
 
 	doc << chapter;
 	blob << doc;
@@ -485,14 +500,14 @@ const ReportBlob *buildErrorsPage(BlobDb &db, const InfoScope &scope) {
 }
 
 static
-const ReportBlob *buildWorkloadPage(BlobDb &db, const InfoScope &scope) {
+const ReportBlob *buildWorkloadPage(BlobDb &db) {
 	ReportBlob blob("page.workload", ReportBlob::NilTitle);
 
 	XmlTag doc("document");
 	XmlTag chapter("chapter");
 	addTitle(db, chapter, "workload");
 
-	chapter << db.include("workload" + scope);
+	chapter << db.include("workload.test");
 
 	doc << chapter;
 	blob << doc;
@@ -534,10 +549,13 @@ void addScopeRecord(BlobDb &db, const String &name, const String &label,
 		if (scope.image() == ctx) {
 			cell << XmlAttr::Int("emphasized", true);
 			cell << text;
-		} else {
+		} else 
+		if (scope) {
 			XmlNode &ptr = db.ptr(name + scope, text);
 			*ptr.attrs() << XmlAttr::Int("maybe_null", true);
 			cell << ptr;
+		} else {
+			cell << db.nullPtr(text);
 		}
 		tr << cell;
 	}
@@ -641,18 +659,20 @@ void buildEverything(BlobDb &db, Array<const ReportBlob *> &res) {
 		XmlTag doc("document");
 		XmlTag chapter("chapter");
 
-		XmlTag &title = addTitle(db, chapter, "everything (scoped)");
+		addTitle(db, chapter, "everything (scoped)");
+
+		XmlTag center("center");
 		const char *ctx = scopeImage.cstr() + strlen(".scope=");
-		addScopeTable(db, pfx, cltScopes, srvScopes, tstScopes, ctx, title);
+		addScopeTable(db, pfx, cltScopes, srvScopes, tstScopes, ctx, center);
 
 		XmlTable table;
 		XmlTableRec tr1, tr2;
 		tr1 << XmlTableHeading("highlighted cell(s) above show current scope");
 		tr2 << XmlTableHeading("links point to other scopes");
 		table << tr1 << tr2;
-		title << table;
+		center << table;
 
-		chapter << title;
+		chapter << center;
 
 		for (int i = 0; i < names->count(); ++i) {
 			const String key = *names->item(i) + scopeImage;
@@ -704,16 +724,19 @@ void buildReport(BlobDb &db) {
 	/* build first, then render so that all links are defined */
 	Array<const ReportBlob*> blobs;
 
+	// TODO: This adds pages with nothing but "err" as content when page's
+	// content blob is missing. It would be better if the whole page was
+	// missing (but without logging internal errors about missing links).
 	buildEverything(db, blobs);
 	blobs.append(buildFrontPage(db));
 	blobs.append(buildOnePage(db));
-	blobs.append(buildTrafficPage(db, TheTest->execScope()));
-	blobs.append(buildRptmPage(db, TheTest->execScope()));
-	blobs.append(buildSavingsPage(db, TheTest->execScope()));
-	blobs.append(buildLevelsPage(db, TheTest->execScope()));
-	blobs.append(buildAuthPage(db, TheTest->execScope()));
-	blobs.append(buildErrorsPage(db, TheTest->execScope()));
-	blobs.append(buildWorkloadPage(db, TheTest->execScope()));
+	blobs.append(buildTrafficPage(db));
+	blobs.append(buildRptmPage(db));
+	blobs.append(buildSavingsPage(db));
+	blobs.append(buildLevelsPage(db));
+	blobs.append(buildAuthPage(db));
+	blobs.append(buildErrorsPage(db));
+	blobs.append(buildWorkloadPage(db));
 	blobs.append(buildNotesPage(db));
 
 	for (int i = 0; i < blobs.count(); ++i)
@@ -776,56 +799,48 @@ void shutdownAtNew() {
 }
 
 static
+bool makeDir(const String &dir) {
+	const static String cmd = "mkdir -p ";
+	return ::system((cmd + dir).cstr()) == 0;
+}
+
+static
+bool copyFile(const String &from, const String &to) {
+	const static String cmd = "cp -R ";
+	return ::system((cmd + TheRepOpts.theDataDir + '/' + from + ' ' +
+		TheRepOpts.theRepDir + '/' + to).cstr()) == 0;
+}
+
+static
+void copyFiles() {
+	const String dirs[] = {
+		"javascripts",
+		"stylesheets"
+	};
+	const int dirsCount = sizeof(dirs) / sizeof(*dirs);
+	for (int i = 0; i < dirsCount; ++i) {
+		Should(makeDir(TheRepOpts.theRepDir + '/' + dirs[i]));
+		Should(copyFile(dirs[i] + "/*", dirs[i]));
+	}
+}
+
+static
 void configure() {
 	const String label = TheRepOpts.theLabel ?
 		(String)TheRepOpts.theLabel : guessLabel();
 
 	if (!TheRepOpts.theRepDir)
-		TheRepOpts.theRepDir.val(String("/tmp/polyrep/") + label);
+		TheRepOpts.theRepDir.val(String("/tmp/polyrep/") + label); // TODO: use $TEMP
 
-	TheTest = new TestInfo(label);
+	TheTest.reset(new TestInfo(label));
 
 	ReportFigure::TheBaseDir = TheRepOpts.theRepDir + "/figures";
-	Should(::system((String("mkdir -p ") + TheRepOpts.theRepDir).cstr()) == 0);
-	Should(::system((String("mkdir -p ") + ReportFigure::TheBaseDir).cstr()) == 0);
+	Should(makeDir(TheRepOpts.theRepDir));
+	Should(makeDir(ReportFigure::TheBaseDir));
+
+	copyFiles();
 
 	Should(xset_new_handler(&shutdownAtNew));
-}
-
-static
-void configureExecScope() {
-	if (TheRepOpts.thePhases) {
-		InfoScope scope;
-		scope.name("baseline");
-		scope.addSide("client");
-		scope.addSide("server");
-		for (int i = 0; i < TheRepOpts.thePhases.val().count(); ++i) {
-			const String &name = *TheRepOpts.thePhases.val()[i];
-			if (const SideInfo *side = TheTest->cltSideExists()) {
-				if (!side->hasPhase(name)) {
-					cerr
-						<< "warning: ignoring '--phases "
-						<< name << "' because client-side "
-						<< "logs lack the named phase"
-						<< endl;
-					continue;
-				}
-			}
-			if (const SideInfo *side = TheTest->srvSideExists()) {
-				if (!side->hasPhase(name)) {
-					cerr
-						<< "warning: ignoring '--phases "
-						<< name << "' because server-side "
-						<< "logs lack the named phase"
-						<< endl;
-					continue;
-				}
-			}
-			scope.addPhase(*TheRepOpts.thePhases.val()[i]);
-		}
-		if (!scope.phases().empty())
-			TheTest->execScope(scope);
-	}
 }
 
 int main(int argc, char *argv[]) {
@@ -837,7 +852,6 @@ int main(int argc, char *argv[]) {
 
 	configure();
 	scanAll();
-	configureExecScope();
 	checkConsistency();
 
 	BlobDb db;

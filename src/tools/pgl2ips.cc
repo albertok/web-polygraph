@@ -107,11 +107,11 @@ private:
 
 static MyOpts TheOpts;
 
-static Array<HostInfo> TheCltHosts;
-static Array<HostInfo> TheSrvHosts;
+static PtrArray<HostInfo*> TheCltHosts;
+static PtrArray<HostInfo*> TheSrvHosts;
 
-static Array<AgentInfo> TheRobotAgents;
-static Array<AgentInfo> TheServerAgents;
+static PtrArray<AgentInfo*> TheRobotAgents;
+static PtrArray<AgentInfo*> TheServerAgents;
 
 static const HostInfo *TheHostScope(0);
 
@@ -297,17 +297,17 @@ int AgentInfo::agentCount() const {
 
 
 // get unique addresses from AgentInfo array
-static void getAgentAddrs(const Array<AgentInfo> &agentInfos, Array<NetAddr> &addrs, int &totalAgentCount) {
+static void getAgentAddrs(const Array<AgentInfo*> &agentInfos, Array<NetAddr> &addrs, int &totalAgentCount) {
 	// count all addresses to size the lookup table
 	totalAgentCount = 0;
 	for (int i = 0; i < agentInfos.count(); ++i)
-		totalAgentCount += agentInfos[i].totalAgentCount();
+		totalAgentCount += agentInfos[i]->totalAgentCount();
 
 	HostMap seen(totalAgentCount); // lookup table to weed out duplicates
 
 	// append unique IP addresses only
 	for (int i = 0; i < agentInfos.count(); ++i) {
-		const AgentInfo &agentInfo(agentInfos[i]);
+		const AgentInfo &agentInfo(*agentInfos[i]);
 		for (int j = 0; j < agentInfo.addrs().count(); ++j) {
 			const NetAddr addr(agentInfo.addrs()[j]);
 			int idx = -1;
@@ -331,9 +331,9 @@ static String makeName(const String &base, const int n) {
 // collect host info
 static void configureHosts(const String &nameBase,
 	const String &agentType,
-	const Array<AgentInfo> &agentInfos,
+	const Array<AgentInfo*> &agentInfos,
 	const BenchSideSym &benchSide,
-	Array<HostInfo> &hostInfos) {
+	Array<HostInfo*> &hostInfos) {
 	if (TheHostScope)
 		return;
 
@@ -354,18 +354,20 @@ static void configureHosts(const String &nameBase,
 	if (addrsPerHost * hosts.count() != addrs.count())
 		clog <<
 			"the number of agent addresses (" << addrs.count() <<
-			") is not divisible by the number of real " <<
-			"host addresess (" << hosts.count() << ')' << xexit;
+			") is not divisible by the number of real host "
+			"addresess (" << hosts.count() << ')' << endl << xexit;
 
 	for (int i = 0; i < hosts.count(); ++i) {
 		const String name(makeName(nameBase, i+1));
 		if (!TheOpts.theHost ||
 			name == TheOpts.theHost ||
 			hosts[i]->addrA() == TheOpts.theHost) {
-			const HostInfo info(name, *hosts[i], addrs, i*addrsPerHost, addrsPerHost, agentsPerHost);
+			HostInfo *const info = new HostInfo(name, *hosts[i],
+				addrs, i*addrsPerHost, addrsPerHost,
+				agentsPerHost);
 			hostInfos.append(info);
 			if (TheOpts.theHost) {
-				TheHostScope = &hostInfos.last();
+				TheHostScope = info;
 				break;
 			}
 		}
@@ -373,7 +375,7 @@ static void configureHosts(const String &nameBase,
 }
 
 // collect agent info
-static void configureAgents(const String &nameBase, const String &agentType, Array<AgentInfo> &agentInfos) {
+static void configureAgents(const String &nameBase, const String &agentType, Array<AgentInfo*> &agentInfos) {
 	static AgentSymIter::Agents &agents = PglStaticSemx::TheAgentsToUse;
 
 	int n(1);
@@ -383,7 +385,8 @@ static void configureAgents(const String &nameBase, const String &agentType, Arr
 		if (!TheOpts.theAgent ||
 			name == TheOpts.theAgent ||
 			agent.kind() == TheOpts.theAgent) {
-			AgentInfo info(name, agent.kind(), agent.addresses());
+			AgentInfo *const info = new AgentInfo (name,
+				agent.kind(), agent.addresses());
 			agentInfos.append(info);
 		}
 	}
@@ -437,19 +440,19 @@ int main(int argc, char **argv) {
 
 	ostream::pos_type p(cout.tellp());
 	for (int i = 0; i < TheCltHosts.count(); ++i)
-		TheCltHosts[i].print(cout);
+		TheCltHosts[i]->print(cout);
 	for (int i = 0; i < TheSrvHosts.count(); ++i)
-		TheSrvHosts[i].print(cout);
+		TheSrvHosts[i]->print(cout);
 	if (cout.tellp() != p)
 		cout << endl;
 
 	for (int i = 0; i < TheRobotAgents.count(); ++i) {
-		TheRobotAgents[i].calcRanges();
-		TheRobotAgents[i].print(cout);
+		TheRobotAgents[i]->calcRanges();
+		TheRobotAgents[i]->print(cout);
 	}
 	for (int i = 0; i < TheServerAgents.count(); ++i) {
-		TheServerAgents[i].calcRanges();
-		TheServerAgents[i].print(cout);
+		TheServerAgents[i]->calcRanges();
+		TheServerAgents[i]->print(cout);
 	}
 
 	return 0;

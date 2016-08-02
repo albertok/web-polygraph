@@ -1,7 +1,7 @@
 // Web Polygraph configuration language
 
 %tokens
-	ID INT NUM TIME SIZE BOOL_TRUE BOOL_FALSE
+	ID INT NUM TIME_SCALE TIME SIZE_SCALE SIZE BOOL_TRUE BOOL_FALSE
 	SQW_STR DQW_STR BQW_STR
 	NUM_PERC
 	CMNT_LINE CMNT_OPEN CMNT_CLOSE
@@ -89,8 +89,8 @@ Expression =
 Bool = BOOL_TRUE | BOOL_FALSE .
 Int = INT .
 Num = NUM | NUM_PERC.
-Time = TIME .
-Size = SIZE .
+Time = TIME_SCALE | TIME .
+Size = SIZE_SCALE | SIZE .
 Qualif = "lmt" | "now" | "nmt" .
 
 Array = Array ',' Expression |
@@ -99,7 +99,9 @@ Array = Array ',' Expression |
 
 List = List ',' Expression | Expression | .
 
-Call = ID '(' List ')' .
+Name = ID | TIME_SCALE | SIZE_SCALE | BOOL_FALSE | BOOL_TRUE .
+
+Call = Name '(' List ')' .
 
 IfCode = 
 	"if" Expression "then" '{' Code '}' |
@@ -108,7 +110,9 @@ IfCode =
 EveryCode = "every" Expression "do" '{' Code '}' .
 
 TypeName = ID | ID LEFTBRACKET RIGHTBRACKET .
-ObjName = ID | ID '.' ObjName .
+
+ObjNameTail = Name | Name '.' ObjNameTail .
+ObjName = ID | Name '.' ObjNameTail .
 
 %postlude
 // postlude

@@ -13,8 +13,9 @@
 class ContentSel;
 class ServerRep;
 class SslWrap;
-class PubWorld;
+class ObjUniverse;
 class HttpCookies;
+class HostsBasedSym;
 
 // Host configuration record
 class HostCfg {
@@ -26,7 +27,8 @@ class HostCfg {
 		Agent::Protocol theProtocol;
 		ContentSel *theContent;    // can be shared among HostCfgs
 		ServerRep *theServerRep;
-		PubWorld *thePubWorld;     // for visible servers only
+		ObjUniverse *theUniverse; // for visible servers only
+		const HostsBasedSym *theHostsBasedCfg; // Proxy for SSL-to-proxy
 		bool isSslActive; // whether SSL is configured and supported
 };
 
@@ -45,8 +47,8 @@ class HostMap {
 
 		ServerRep *serverRepAt(int idx);
 		bool sslActive(const NetAddr &addr);
-		PubWorld *findPubWorld(const NetAddr &addr);
-		PubWorld *findPubWorldAt(int idx);
+		ObjUniverse *findUniverse(const NetAddr &addr);
+		ObjUniverse *findUniverseAt(int idx);
 
 		HostCfg *find(const NetAddr &addr);
 		HostCfg *find(const NetAddr &addr, int &idx);

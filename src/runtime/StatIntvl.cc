@@ -9,6 +9,7 @@
 
 #include "xstd/Clock.h"
 #include "runtime/Agent.h"
+#include "runtime/CompoundXactInfo.h"
 #include "runtime/Connection.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/Xaction.h"
@@ -39,7 +40,9 @@ StatIntvl::StatIntvl() {
 		TheConnOpenChannel << TheConnEstChannel << TheConnCloseChannel <<
 		TheConnIdleBegChannel << TheConnIdleEndChannel <<
 		TheConnSslActiveChannel << TheConnSslInactiveChannel <<
+		TheConnTunnelEstablishedChannel <<
 		TheXactBegChannel << TheXactEndChannel <<
+		TheCompoundXactBegChannel << TheCompoundXactEndChannel <<
 		TheXactErrChannel << TheXactRetrChannel <<
 		TheIcpXactBegChannel << TheIcpXactEndChannel << TheIcpXactErrChannel <<
 		ThePageEndChannel <<
@@ -89,17 +92,18 @@ void StatIntvl::noteConnEvent(BcastChannel *ch, const Connection *conn) {
 		++rec.theOpenLvl;
 		if (conn->socksProxy())
 			++rec.theSocksStat.connLevel();
-		// only server-side SSL connections counted here
-		if (conn->sslActive()) // TODO: remove if it never happens here
-			++rec.theSslStat.connLevel();
+		if (conn->tunneling()) // TODO: move if an https-proxy is used
+			++rec.theConnectStat.connLevel();
 		if (ProtoIntvlPtr p = conn->protoStat)
 			++(rec.*p).connLevel();
+		// SSL has TheConnSslActiveChannel
 	} else 
 	if (ch == TheConnSslActiveChannel) {
 		Should(conn->sslActive());
 		++rec.theSslStat.connLevel();
 	} else 
 	if (ch == TheConnSslInactiveChannel) {
+		Should(conn->usedSsl);
 		--rec.theSslStat.connLevel();
 	} else 
 	if (ch == TheConnEstChannel) {
@@ -110,8 +114,12 @@ void StatIntvl::noteConnEvent(BcastChannel *ch, const Connection *conn) {
 	} else
 	if (ch == TheConnIdleEndChannel) {
 		--rec.theIdleLvl;
-	} else {
-		Assert(ch == TheConnCloseChannel);
+	} else
+	if (ch == TheConnTunnelEstablishedChannel) {
+		ShouldUs(conn->tunneling());
+		--rec.theConnectStat.connLevel(); // CONNECT, not just tunnel stats
+	} else
+	if (ch == TheConnCloseChannel) {
 		if (!conn->bad()) {
 			rec.theConnLifeTm.record((TheClock - conn->openTime()).msec());
 			rec.theConnUseCnt.record(conn->useCnt());
@@ -126,11 +134,13 @@ void StatIntvl::noteConnEvent(BcastChannel *ch, const Connection *conn) {
 		--rec.theOpenLvl;
 		if (conn->socksProxy())
 			--rec.theSocksStat.connLevel();
-		if (conn->sslActive()) // TODO: remove if it never happens here
-			--rec.theSslStat.connLevel();
 		if (ProtoIntvlPtr p = conn->protoStat)
 			--(rec.*p).connLevel();
-	}
+		if (conn->tunneling() && !conn->tunnelEstablished())
+			--rec.theConnectStat.connLevel();
+		// SSL has TheConnSslInactiveChannel
+	} else
+		Assert(ch == TheConnSslEstablishedChannel);
 
 	checkpoint();
 }
@@ -143,15 +153,22 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 
 	if (ch == TheXactBegChannel) {
 		++rec.theXactLvl;
-		if (x->socksActive())
+		if (x->startedXactSequence())
+			++rec.theBaseLvl;
+		if (x->socksConfigured())
 			++rec.theSocksStat.xactLevel();
-		if (x->sslConfigured())
-			++rec.theSslStat.xactLevel();
 		if (ProtoIntvlPtr p = x->protoStat)
 			++(rec.*p).xactLevel();
+		if (x->oid().connect())
+			++rec.theConnectStat.xactLevel();
+		else // this and similar exclusions do not work for https-proxy
+		if (x->sslConfigured())
+			++rec.theSslStat.xactLevel();
+		// a beginning xact cannot be in the authing state?
 	} else
 	if (ch == TheXactEndChannel) {
 		const ObjId &oid = x->oid();
+		const Size reqSize = x->reqSize().actual();
 		const bool authing = x->authing();
 
 		// stats must be recorded in only one category for totals to work!
@@ -160,7 +177,8 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 		else
 		if (authing) {
 			Assert(x->logCat() == lgcCltSide);
-			rec.theAuth.recordAuthIng(static_cast<AuthPhaseStat::Scheme>(x->proxyAuth()), repTime, repSize);
+			rec.theAuthingStat.recordXact(repTime, repSize, false);
+			rec.theAuth.recordAuthIng(x->proxyStatAuth(), repTime, repSize);
 		} else
 		if (oid.basic()) {
 			// XXX: calculate and use "ideal" time here
@@ -174,7 +192,7 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 			; // do nothing, protoStats handles these
 		} else
 		if (oid.connect())
-			rec.theConnect.record(repTime, repSize);
+			rec.theConnectStat.recordXact(repTime, repSize, false);
 		else
 		if (oid.repToRedir())
 			rec.theRepToRedir.record(repTime, repSize);
@@ -207,32 +225,45 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 			Should(false); // all categories should be accounted for
 		}
 
+		rec.theRepContType.record(x->actualRepType(), repTime, repSize);
+		// XXX: request content type is not determined on server side
+		rec.theReqContType.record(x->reqOid().type(), repTime, reqSize);
+
 		rec.theXactCnt++;
 		--rec.theXactLvl;
 		if (x->logCat() == lgcCltSide && !oid.repeat())
 			++rec.theUniqUrlCnt;
 
-		if (x->socksActive()) {
+		if (x->socksConfigured()) {
 			--rec.theSocksStat.xactLevel();
 
 			// comparison with pure HTTP misses will not be accurate
 			// comparison with pure HTTP hits and not-hits will be accurate
-			rec.theSocksStat.doneXacts().record(repTime, repSize,
+			if (x->usedSocks())
+			rec.theSocksStat.recordXact(repTime, repSize,
 				oid.basic() && oid.hit());
 		}
 
-		if (x->sslConfigured()) {
+		if (x->sslConfigured() && !oid.connect()) {
 			--rec.theSslStat.xactLevel();
 			// see comparison accuracy comment above
-			rec.theSslStat.doneXacts().record(repTime, repSize,
+			if (x->usedSsl())
+			rec.theSslStat.recordXact(repTime, repSize,
 				oid.basic() && oid.hit());
 		}
 
 		if (ProtoIntvlPtr p = x->protoStat) {
 			--(rec.*p).xactLevel();
 			// see comparison accuracy comment above
-			(rec.*p).doneXacts().record(repTime, repSize,
+			(rec.*p).recordXact(repTime, repSize,
 				oid.basic() && oid.hit());
+		}
+
+		if (oid.connect())
+			--rec.theConnectStat.xactLevel();
+		if (authing) {
+			++rec.theAuthingStat.xactLevel();
+			--rec.theAuthingStat.xactLevel();
 		}
 
 		if (x->continueMsgTime() > 0)
@@ -241,17 +272,25 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 		if (x->logCat() == lgcCltSide && !authing) {
 			// record auth stats
 			// Note: authing stats are record above
-			if (x->conn()->tunneling()) {
-				// Assert(x->conn()->sslActive()) may fail here; XXX: why?
+			if (x->conn()->tunneling() && !oid.connect()) {
+				ShouldUs(x->usedSsl());
 				rec.theTunneled.record(repTime, repSize);
 			} else if (x->conn()->socksAuthed())
 				rec.theAuth.recordAuthEd(AuthPhaseStat::sSocksUserPass, repTime, repSize);
-			else if (x->conn()->theProxyNtlmState.state != ntlmNone ||
+			else if (x->proxyStatAuth() != AuthPhaseStat::sNone ||
 				x->conn()->theOriginNtlmState.state != ntlmNone ||
 				oid.authCred())
-				rec.theAuth.recordAuthEd(static_cast<AuthPhaseStat::Scheme>(x->proxyAuth()), repTime, repSize);
+				rec.theAuth.recordAuthEd(x->proxyStatAuth(), repTime, repSize);
 			else
 				rec.theAuthNone.record(repTime, repSize);
+		}
+
+		if (!x->partOf()) {
+			rec.theBaseline.recordCompound(x->lifeTime(), reqSize, repSize, 1);
+			ShouldUs(x->startedXactSequence());
+			--rec.theBaseLvl;
+			if (rec.theSocksStat.updateProgress) // any ProtoIntvlStat would do
+				TheProgress.success();
 		}
 	} else
 	if (ch == TheWaitBegChannel) {
@@ -264,17 +303,34 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 		rec.theXactErrCnt++;
 		if (x && x->started()) {
 			--rec.theXactLvl;
-			if (x->socksActive()) {
+			if (x->socksConfigured()) {
 				--rec.theSocksStat.xactLevel();
+				if (x->usedSocks())
 				rec.theSocksStat.recordXactError();
 			}
-			if (x->sslConfigured()) {
+			if (x->sslConfigured() && !x->oid().connect()) {
 				--rec.theSslStat.xactLevel();
+				if (x->usedSsl())
 				rec.theSslStat.recordXactError();
 			}
 			if (ProtoIntvlPtr p = x->protoStat) {
 				--(rec.*p).xactLevel();
 				(rec.*p).recordXactError();
+			}
+			if (x->oid().connect()) {
+				--rec.theConnectStat.xactLevel();
+				rec.theConnectStat.recordXactError();
+			}
+			if (x->authing()) {
+				++rec.theAuthingStat.xactLevel();
+				--rec.theAuthingStat.xactLevel();
+				rec.theAuthingStat.recordXactError();
+			}
+			if (!x->partOf()) {
+				ShouldUs(x->startedXactSequence());
+				--rec.theBaseLvl;
+				if (rec.theSocksStat.updateProgress)
+					TheProgress.failure();
 			}
 		}
 	} else
@@ -282,12 +338,24 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 		rec.theXactRetrCnt++;
 		if (x && x->started()) {
 			--rec.theXactLvl;
-			if (x->socksActive())
+			if (x->socksConfigured())
 				--rec.theSocksStat.xactLevel();
-			if (x->sslConfigured())
-				--rec.theSslStat.xactLevel();
 			if (ProtoIntvlPtr p = x->protoStat)
 				--(rec.*p).xactLevel();
+			if (x->authing()) {
+				++rec.theAuthingStat.xactLevel();
+				--rec.theAuthingStat.xactLevel();
+			}
+			if (x->oid().connect())
+				--rec.theConnectStat.xactLevel();
+			else
+			if (x->sslConfigured())
+				--rec.theSslStat.xactLevel();
+			if (!x->partOf()) {
+				ShouldUs(x->startedXactSequence());
+				--rec.theBaseLvl;
+			}
+			// TODO: reduce per-channel duplication of level-maintenance code
 		}
 	} else {
 		Assert(false);
@@ -301,6 +369,20 @@ void StatIntvl::noteXactEvent(BcastChannel *ch, const Xaction *x) {
         }
 
 	checkpoint();
+}
+
+void StatIntvl::noteCompoundXactEvent(BcastChannel *ch, const CompoundXactInfo *compound) {
+	if (ch == TheCompoundXactEndChannel) {
+		StatIntvlRec &rec = getRec(compound->logCat);
+
+		// compound->completed() may be false here if the transaction sequence
+		// was aborted prematurely (e.g., our CONNECT attempt was rejected).
+
+		compound->record(rec.theBaseline);
+		--rec.theBaseLvl;
+		if (rec.theSocksStat.updateProgress) // any ProtoIntvlStat would do
+			TheProgress.success();
+	}
 }
 
 void StatIntvl::noteIcpXactEvent(BcastChannel *ch, const IcpXaction *x) {

@@ -11,7 +11,7 @@
 // stores stats about one kind of conn close
 class ConnCloseStatItem: public LogObj {
 	public:
-		ConnCloseStatItem(int aKind);
+		ConnCloseStatItem(int aKind = -1);
 
 		const TimeHist &ttlHist() const;
 		const Log2Hist &useHist() const;
@@ -117,19 +117,6 @@ void ConnCloseStat::add(const ConnCloseStat &s) {
 	Assert(theStats.count() == s.theStats.count());
 	for (int i = 0; i < theStats.count(); ++i)
 		theStats[i]->add(*s.theStats[i]);
-}
-
-static
-OLog &operator <<(OLog &os, const ConnCloseStatItem *i) {
-	Assert(i);
-	return i->store(os);
-}
-
-static
-ILog &operator >>(ILog &is, ConnCloseStatItem *&i) {
-	if (!i)
-		i = new ConnCloseStatItem(-1);
-	return i->load(is);
 }
 
 OLog &ConnCloseStat::store(OLog &ol) const {

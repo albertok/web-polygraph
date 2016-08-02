@@ -14,8 +14,11 @@ using namespace std;
 #include "config.h"
 #endif
 
+#include "xstd/h/stdint.h"
 #include "xstd/Time.h"
 #include "xstd/Size.h"
 #include "xstd/Assert.h"
+
+typedef int64_t Counter;
 
 #endif

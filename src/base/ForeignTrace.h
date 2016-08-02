@@ -25,7 +25,7 @@ class ForeignTrace {
 	protected:
 		String *getUrl(istream &is) const;
 		bool open(istream &is) const;
-		void close(istream &is, int goodCount) const;
+		void close(const int goodCount) const;
 
 	protected:
 		String theName;

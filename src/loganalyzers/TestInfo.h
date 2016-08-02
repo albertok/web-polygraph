@@ -23,13 +23,10 @@ class TestInfo: public SomeInfo {
 		TestInfo(const String &aLabel);
 		~TestInfo();
 
-		// get/set scope for executive summary
+		// executive summary scope; empty if no executive summary is possible
 		const Scope &execScope() const;
-		void execScope(const Scope &aScope);
-		const Scope &guessExecScope();
 
 		const String &label() const;
-		const String &pglCfg() const;
 		Time startTime() const;
 
 		bool twoSided() const { return cltSideExists() && srvSideExists(); }
@@ -43,11 +40,12 @@ class TestInfo: public SomeInfo {
 		const SideInfo &side(int logCat) const;
 		SideInfo &side(int logCat);
 
+		bool hasScope(const Scope &scope) const;
 		int scopes(InfoScopes &res) const;
 
-		int repCount(const Scope &scope) const;
-		int hitCount(const Scope &scope) const;
-		int uselessProxyValidationCount(const Scope &scope) const;
+		Counter repCount(const Scope &scope) const;
+		Counter hitCount(const Scope &scope) const;
+		Counter uselessProxyValidationCount(const Scope &scope) const;
 		BigSize repVolume(const Scope &scope) const;
 		BigSize hitVolume(const Scope &scope) const;
 		BigSize uselessProxyValidationVolume(const Scope &scope) const;
@@ -57,22 +55,20 @@ class TestInfo: public SomeInfo {
 		AggrStat firstRespByteRead(const Scope &scope) const;
 
 		void checkConsistency();
-
+		void compileExecScope(BlobDb &db);
 		void compileStats(BlobDb &db);
 
 	protected:
-		void checkCommonPglCfg();
 		void checkCommonBenchmarkVersion();
 		void checkCommonStartTime();
 
 		void cmplExecSumVars(BlobDb &db);
 		void cmplExecSum(BlobDb &db);
-		void cmplExecSumTable(BlobDb &db, const Scope &cltScope);
-		void cmplExecSumPhases(BlobDb &db, const Scope &cltScope);
+		void cmplExecSumTable(BlobDb &db);
+		void cmplExecSumPhases(BlobDb &db);
 		void cmplWorkload(BlobDb &db);
-		void cmplWorkloadBlob(ReportBlob &blob, const String &side, const String &pglCfg);
+		void cmplWorkloadBlob(ReportBlob &blob, const String &pfx, const String &key, const String &pglCfg);
 
-		void cmplSynonyms(BlobDb &db, const Scope &scope);
 		void cmplHitRatioVars(BlobDb &db, const Scope &scope);
 		void cmplHitRatio(BlobDb &db, const Scope &scope);
 		void cmplHitRatioTable(BlobDb &db, XmlTag &parent, const Scope &scope) ;
@@ -85,19 +81,17 @@ class TestInfo: public SomeInfo {
 		void cmplByteLatencyTable(BlobDb &db, XmlTag &parent, const Scope &scope);
 		void cmplByteLatencyHist(BlobDb &db, XmlTag &parent, const Scope &scope);
 
-		void cmplBaseStats(BlobDb &db, const Scope &scope);
-		void cmplTraffic(BlobDb &db, const Scope &scope);
-		void cmplRptm(BlobDb &db, const Scope &scope);
-		void cmplSavings(BlobDb &db, const Scope &scope);
-		void cmplLevels(BlobDb &db, const Scope &scope);
-		void cmplAuthentication(BlobDb &db, const Scope &scope);
-		void cmplErrors(BlobDb &db, const Scope &scope);
+		void cmplTraffic(BlobDb &db);
+		void cmplRptm(BlobDb &db);
+		void cmplSavings(BlobDb &db);
+		void cmplLevels(BlobDb &db);
+		void cmplAuthentication(BlobDb &db);
+		void cmplErrors(BlobDb &db);
 		void cmplNotes(BlobDb &db);
 
 	protected:
 		String theLabel;
 		String theBenchmarkVersion;
-		String thePglCfg;
 		Time theStartTime;
 
 		Array<SideInfo*> theSides;

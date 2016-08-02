@@ -32,8 +32,7 @@ IcpClient::IcpClient(): theLastReqNum(0) {
 	// use some large number to have enough slots
 	// for most request rates; 
 	// make this configurable if needed
-	theUsers.stretch(8*1024);
-	theUsers.count(theUsers.capacity());
+	theUsers.resize(8*1024);
 }
 
 IcpCltRes IcpClient::expectReply(IcpCltUser *u) {

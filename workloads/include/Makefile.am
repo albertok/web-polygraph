@@ -1,4 +1,4 @@
-winclude_pkgdir = ${prefix}/share/polygraph/workloads/include
+winclude_pkgdir = ${pkgdatadir}/workloads/include
 
 dist_winclude_pkg_DATA = \
 	benches.pg \

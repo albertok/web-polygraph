@@ -32,7 +32,7 @@ int ForeignTrace::gatherUrls(Array<String*> &urls) const {
 			theMemSize += SizeOf(String);  // overhead
 			theMemSize += SizeOf(String*); // overhead
 		}
-		close(is, urls.count());
+		close(urls.count());
 	}
 	return urls.count();
 }
@@ -53,7 +53,7 @@ int ForeignTrace::gatherHosts(Array<NetAddr*> &hosts) const {
 			}
 			delete url;
 		}
-		close(is, hosts.count());
+		close(hosts.count());
 	}
 	return hosts.count();
 }
@@ -109,7 +109,7 @@ bool ForeignTrace::open(istream &is) const {
 	return true;
 }
 
-void ForeignTrace::close(istream &is, int goodCount) const {
+void ForeignTrace::close(const int goodCount) const {
 	if (goodCount > 0)
 		clog << "fyi: loaded trace from ";
 	else

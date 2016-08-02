@@ -83,7 +83,7 @@ Size UriScriptBodyParser::parse(const ParseBuffer &buf) {
 		parseClose(buf);
 
 	if (theState == stBody)
-		parseBody(buf);
+		parseBody();
 
 	if (theState == stDone)
 		return parseAny(buf);
@@ -114,7 +114,7 @@ void UriScriptBodyParser::parseClose(const ParseBuffer &buf) {
 		theState = stBody;
 }
 
-void UriScriptBodyParser::parseBody(const ParseBuffer &buf) {
+void UriScriptBodyParser::parseBody() {
 	if (Should(theScriptBeg) && Should(theScriptEnd))
 		parseVars();
 	theState = stDone;

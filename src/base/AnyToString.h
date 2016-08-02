@@ -27,4 +27,17 @@ String PrintToString(const T &any) {
 	return Stream2String(os);
 }
 
+// same for a container of pointers to printable things
+template <class T>
+inline
+String PointersToString(const T &strings, const String &delimiter) {
+	ostringstream os;
+	for (int i = 0; i < strings.count(); ++i) {
+		if (i)
+			os << delimiter;
+		os << *strings[i];
+	}
+	return Stream2String(os);
+}
+
 #endif

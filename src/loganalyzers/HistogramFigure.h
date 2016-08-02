@@ -22,9 +22,8 @@ class HistogramFigure: public ReportFigure {
 		void compareWith(const HistStex *stex);
 
 	protected:
-		virtual int createCtrlFile();
-		virtual void setCtrlOptions();
-		int dumpDataLine(const HistogramBin &bin, int totCount);
+		virtual int addPlotData();
+		int dumpDataLine(const HistogramBin &bin, const Counter totCount);
 		
 	protected:
 		const PhaseInfo *thePhase;

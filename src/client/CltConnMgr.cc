@@ -21,15 +21,71 @@
 #include "client/Client.h"
 #include "client/CltConnMgr.h"
 
+/* CltConnMgr::SslCache */
+
+CltConnMgr::SslCache::SslCache(): theResumpProb(-1), theLimit(-1) {
+}
+
+CltConnMgr::SslCache::~SslCache() {
+	while (theSessions.count()) delete theSessions.pop();
+}
+
+void CltConnMgr::SslCache::configure(SslCtx *aCtx, const SslWrap *wrap) {
+	// we maintain our own cache, if any
+	aCtx->sessionCacheMode(SSL_SESS_CACHE_OFF);
+
+	theResumpProb = wrap->resumpProb();
+	theLimit = wrap->sessionCacheSize();
+}
+
+SslSession *CltConnMgr::SslCache::getSession() {
+	SslSession *sess = 0;
+	static RndGen rng(LclPermut(rndSslSessionCache));
+	if (theSessions.count() && rng.event(theResumpProb))
+		sess = theSessions.pop();
+	return sess;
+}
+
+bool CltConnMgr::SslCache::needMore() const {
+	return theResumpProb > 0 && (theLimit < 0 ||
+		theSessions.count() < theLimit);
+}
+
+void CltConnMgr::SslCache::closePrep(Connection *conn, bool toProxy) {
+	const Ssl *ssl = toProxy ? conn->sslActiveProxy() : conn->sslActive();
+	if (ssl) {
+		SslSession *sess = toProxy ? conn->sslSessionProxy() : conn->sslSession();
+		Should(!sess || theResumpProb > 0);
+
+		if (sess && (conn->bad() || !ssl->reusedSession())) {
+			// delete sessions of bad connections
+			delete sess;
+			sess = 0;
+			if (toProxy)
+				conn->sslSessionForgetProxy();
+			else
+				conn->sslSessionForget();
+		} else
+		if (!sess && !conn->bad() && needMore()) {
+			// remember sessions of new successful connections
+			sess = ssl->refCountedSession();
+		}
+
+		if (sess)
+			theSessions.push(sess);
+	}
+}
+
+
+/* CltConnMgr */
 
 CltConnMgr::CltConnMgr(): theClient(0), thePortMgr(0), thePipeDepth(0),
-	theSslResumpProb(-1), theSslCacheLimit(-1),
+	theProxySslCtx(0),
 	theMinNewConnProb(-1), theConnLvlLmt(-1)  {
 }
 
 CltConnMgr::~CltConnMgr() {
 	closeAllIdle();
-	while (theSslSessionCache.count()) delete theSslSessionCache.pop();
 }
 
 void CltConnMgr::configure(const SockOpt &anOpt, const Client *aClient, const int srvCnt) {
@@ -64,14 +120,15 @@ PortMgr *CltConnMgr::portMgr() {
 
 void CltConnMgr::configureSsl(SslCtx *aCtx, const SslWrap *wrap) {
 	ConnMgr::configureSsl(aCtx, wrap);
-	if (!theSslCtx)
-		return;
+	if (theSslCtx)
+		theSslCacheOrigin.configure(aCtx, wrap);
+}
 
-	// we maintain our own cache, if any
-	aCtx->sessionCacheMode(SSL_SESS_CACHE_OFF);
-
-	theSslResumpProb = wrap->resumpProb();
-	theSslCacheLimit = wrap->sessionCacheSize();
+void CltConnMgr::configureProxySsl(SslCtx *aCtx, const SslWrap *wrap) {
+	Assert(!theProxySslCtx);
+	theProxySslCtx = aCtx;
+	if (theProxySslCtx)
+		theSslCacheProxy.configure(aCtx, wrap);
 }
 
 // note: idle connections can be closed on-demand
@@ -85,7 +142,8 @@ Connection *CltConnMgr::get(const ObjId &oid, const NetAddr &hopAddr, const NetA
 	Connection *conn = 0;
 
 	bool needsTunnel = false;
-	bool needsSsl = needSsl(oid, hopAddr, destAddr, needsTunnel);
+	bool needsSslProxy = false;
+	bool needsSsl = needSsl(oid, hopAddr, destAddr, needsTunnel, needsSslProxy);
 	const NetAddr &tunnelAddr = needsTunnel ? destAddr : none;
 	
 	ConnHashPos pos;
@@ -99,9 +157,7 @@ Connection *CltConnMgr::get(const ObjId &oid, const NetAddr &hopAddr, const NetA
 		// check if we should close some idle conn first
 		if (theConnLvlLmt >= 0 && theConnLvl >= theConnLvlLmt)
 			closeIdle(theIdleQueue.firstOut(), ConnCloseStat::ckIdleLocal);
-		conn = open(hopAddr, tcpHopAddr, protoStat, needsSsl);
-		if (conn && needsTunnel)
-			conn->tunnelEnd(tunnelAddr);
+		conn = open(hopAddr, tcpHopAddr, protoStat, tunnelAddr, needsSsl, needsSslProxy);
 	}
 
 	if (conn)
@@ -122,18 +178,19 @@ void CltConnMgr::closeAllIdle() {
 		closeIdle(theIdleQueue.firstOut(), ConnCloseStat::ckIdleLocal);
 }
 
-Connection *CltConnMgr::open(const NetAddr &hopAddr, const NetAddr &tcpHopAddr, ProtoIntvlPtr protoStat, bool needsSsl) {
+Connection *CltConnMgr::open(const NetAddr &hopAddr, const NetAddr &tcpHopAddr, ProtoIntvlPtr protoStat, const NetAddr &tunnelAddr, bool needsSsl, bool needsSslProxy) {
 	Connection *conn = TheConnFarm.get();
 	conn->logCat(lgcCltSide);
 	conn->protoStat = protoStat;
 
-	if (needsSsl) {
-		SslSession *sess = 0;
-		static RndGen rng(LclPermut(rndSslSessionCache));
-		if (theSslSessionCache.count() && rng.event(theSslResumpProb))
-			sess = theSslSessionCache.pop();
-		conn->useSsl(theSslCtx, sess); // eventually
-	}
+	if (needsSsl)
+		conn->useSsl(theSslCtx, theSslCacheOrigin.getSession()); // eventually
+
+	if (needsSslProxy)
+		conn->useSslProxy(theProxySslCtx, theSslCacheProxy.getSession());
+
+	// unset for connections that do not need a tunnel
+	conn->tunnelEnd(tunnelAddr);
 
 	const NetAddr &socksProxy = hopAddr != tcpHopAddr ?
 		tcpHopAddr : NetAddr();
@@ -152,18 +209,24 @@ Connection *CltConnMgr::open(const NetAddr &hopAddr, const NetAddr &tcpHopAddr, 
 	}
 }
 
-bool CltConnMgr::needSsl(const ObjId &oid, const NetAddr &hopAddr, const NetAddr &tunnelAddr, bool &needTunnel) const {
+bool CltConnMgr::needSsl(const ObjId &oid, const NetAddr &hopAddr, const NetAddr &tunnelAddr, bool &needTunnel, bool &needSslProxy) const {
 	// need SSL encryption if both source and at least one of the distinations
 	// (hop or tunnel) need it
 	static const String https("https://");
-	if (!theSslCtx)
-		return false; // source cannot do SSL
+	bool proxy = hopAddr != tunnelAddr;
 
-	if (TheHostMap->sslActive(hopAddr))
+	if (proxy && theProxySslCtx && TheHostMap->sslActive(hopAddr))
+		needSslProxy = true;
+
+	// without theSslCtx, the source cannot do SSL, except perhaps ssl-to-proxy handled above
+	if (!theSslCtx)
+		return false;
+
+	if (TheHostMap->sslActive(hopAddr) && !needSslProxy)
 		needTunnel = false; // the next hop does SSL
 	else
 	if (oid.secure())
-		needTunnel = hopAddr != tunnelAddr; // hop does not do SSL, final does
+		needTunnel = proxy; // hop does not do SSL, final does
 	else
 		return false;      // neither hop nor final do SSL
 
@@ -213,30 +276,9 @@ void CltConnMgr::delIdle(Connection *conn) {
 }
 
 void CltConnMgr::closePrep(Connection *conn) {
-	if (const Ssl *ssl = conn->sslActive()) {
-		SslSession *sess = conn->sslSession();
-		Should(!sess || theSslResumpProb > 0);
-
-		if (sess && (conn->bad() || !ssl->reusedSession())) {
-			// delete sessions of bad connections
-			delete sess;
-			sess = 0;
-			conn->sslSessionForget();
-		} else
-		if (!sess && !conn->bad() && needMoreSslSessions()) {
-			// remember sessions of new successful connections
-			sess = ssl->refCountedSession();
-		}
-
-		if (sess)
-			theSslSessionCache.push(sess);
-	}
+	theSslCacheOrigin.closePrep(conn, false);
+	theSslCacheProxy.closePrep(conn, true);
 	ConnMgr::closePrep(conn);
-}
-
-bool CltConnMgr::needMoreSslSessions() const {
-	return theSslResumpProb > 0 && (theSslCacheLimit < 0 ||
-		theSslSessionCache.count() < theSslCacheLimit);
 }
 
 bool CltConnMgr::hasCredentials() const {

@@ -24,8 +24,9 @@ class TmSzStat {
 		OLog &store(OLog &log) const;
 		ILog &load(ILog &);
 		bool sane() const { return time().sane() && size().sane(); }
+		bool known() const { return time().known() || size().known(); }
 
-		int count() const { return theTm.count() ? theTm.count() : theSz.count(); }
+		Counter count() const { return theTm.count() ? theTm.count() : theSz.count(); }
 		const AggrStat &time() const { return theTm; }
 		const AggrStat &size() const { return theSz; }
 

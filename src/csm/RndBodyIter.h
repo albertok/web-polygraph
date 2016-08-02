@@ -13,7 +13,7 @@ class RndBodyIter: public BodyIter {
 		virtual RndBodyIter *clone() const;
 
 	protected:
-		virtual bool pourBody();
+		virtual bool pourMiddle();
 		virtual void calcContentSize() const;
 };
 

@@ -37,7 +37,8 @@ class PglNetAddrRange: public PglStrRange {
 		virtual bool optRangeBeg(char ch) const;
 
 		void currentAddrSym(NetAddrSym &nas) const;
-		
+		void currentNetAddr(NetAddr &addr) const;
+
 	protected:
 		String theIfName;   // interface name
 		String theAddr;     // address:port

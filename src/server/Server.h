@@ -15,10 +15,7 @@
 #include "server/SrvConnMgr.h"
 
 
-class RndDistr;
-class OidRec;
 class PopModel;
-class ContentSel;
 class ServerSym;
 
 
@@ -60,7 +57,6 @@ class Server: public Agent, public FileScanner::User, public SrvConnMgr::User, p
 		PortMgr *portMgr();
 
 	protected:
-		PortMgr *cfgPortMgr();
 		Agent::Protocol protocol() const;
 
 		void configureContents(const ServerSym *cfg);
@@ -72,7 +68,6 @@ class Server: public Agent, public FileScanner::User, public SrvConnMgr::User, p
 	protected:
 		static XactFarm<SrvXact> *TheFtpXacts;
 		static XactFarm<SrvXact> *TheHttpXacts;
-		static PtrArray<PortMgr*> ThePortMgrs;  // port managers for all aliases
 
 		SrvCfg *theCfg;           // server configuration (maybe shared)
 

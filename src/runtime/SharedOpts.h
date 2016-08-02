@@ -15,7 +15,8 @@ class SharedOpts: public OptGrp {
 		SharedOpts(); // defaults
 
 		virtual bool validate() const;
-		
+		virtual String ExpandMacros(const Opt &opt, const String &str) const;
+
 	public:
 		HelpOpt theHelpOpt;
 		VersionOpt theVersOpt;
@@ -30,6 +31,7 @@ class SharedOpts: public OptGrp {
 		StrOpt theRunLabel;
 
 		IntOpt theFDLimit;
+		TwoIntOpt thePorts;
 
 		StrOpt theCfgFileName;
 		StrArrOpt theCfgDirs;
@@ -57,6 +59,7 @@ class SharedOpts: public OptGrp {
 		IntOpt theLclRngSeed;
 		IntOpt theGlbRngSeed;
 		BoolOpt useUniqueWorld;
+		IntOpt theWorkerId;
 
 		TimeOpt theErrorTout;
 };

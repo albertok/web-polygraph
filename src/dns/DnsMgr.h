@@ -17,8 +17,9 @@ class CltXact; // DnsMgr treats this as void
 class DnsXact;
 class DnsResp;
 class DnsResolverSym;
+class DnsCache;
 
-// handles cached asynchronous DNS lookups
+// handles asynchronous DNS lookups, with an optional caching capability
 class DnsMgr: protected Dns, public FileScanUser {
 	public:
 		DnsMgr(Client *anOwner);
@@ -27,9 +28,9 @@ class DnsMgr: protected Dns, public FileScanUser {
 		void configure(const DnsResolverSym *cfg);
 		void start();
 		void stop();
-		void clearCache();
 
-		bool needsLookup(const NetAddr &addr) const;
+		typedef enum { dnsAlreadyAnIp, dnsCacheHit, dnsNeedsAsyncLookup } InstantLookupResult;
+		InstantLookupResult instantLookup(const NetAddr &addr, NetAddr &ip) const;
 
 		bool lookup(const NetAddr &addr, CltXact *x);
 
@@ -50,6 +51,7 @@ class DnsMgr: protected Dns, public FileScanUser {
 		Client *theOwner;
 		Array<NetAddr*> theServers; // DNS server addresses
 		Time theTimeout;            // one for all xactions
+		DnsCache *theCache; // optional lookup cache
 
 		Array<DnsXact*> theXacts;   // pending transactions
 

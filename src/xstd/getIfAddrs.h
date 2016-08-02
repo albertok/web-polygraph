@@ -10,8 +10,11 @@
 #include "xstd/Socket.h"
 
 class InetIfReq;
+class String;
+class InAddress;
 
-// retreives a list of all interface addresses using SIOCGIFCONF
-extern bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname);
+// retreives a list of all interface addresses and, optionally, netmasks
+// using SIOCGIFCONF or an equivalent OS-specific system call
+extern bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname, Array<InAddress> *netmasks = 0);
 
 #endif

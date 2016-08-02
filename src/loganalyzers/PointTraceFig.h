@@ -25,8 +25,7 @@ class PointTraceFig: public ReportTraceFigure {
 		void stats(const Stex *aStex1, const Stex *aStex2, const PhaseInfo *phase);
 
 	protected:
-		virtual int createCtrlFile();
-		virtual void setCtrlOptions();
+		virtual int addPlotData();
 
 		bool hasDataLines(const PointStex *stex) const;
 		int dumpDataLines(const PointStex *stex);

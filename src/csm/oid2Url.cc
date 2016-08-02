@@ -14,15 +14,17 @@
 #include "base/ObjId.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/HostMap.h"
+#include "runtime/LogComment.h"
 #include "csm/ContentCfg.h"
 #include "csm/ContentMgr.h"
 #include "csm/ContentSel.h"
 #include "csm/oid2Url.h"
+#include "csm/RamFiles.h"
 
 static
 void oidDumpHost(const ObjId &oid, const NetAddr &host, const bool forcePortPrint, ostream &os) {
 	if (oid.prefix() > 0)
-		os << 'w' << setw(6) << hex << setfill('0') << oid.prefix() << setw(0) << dec;
+		os << 'w' << setw(16) << hex << setfill('0') << oid.prefix() << setw(0) << dec;
 	bool haveDefaultPort = false;
 	if (oid.secure())
 		haveDefaultPort = host.port() == 443;
@@ -41,14 +43,21 @@ NetAddr Oid2UrlHost(const ObjId &oid) {
 	if (oid.foreignUrl()) {
 		const char *furi = oid.foreignUrl().data();
 		NetAddr host;
-		if (Should(SkipHostInUri(furi, furi+oid.foreignUrl().len(), host)))
+		if (SkipHostInUri(furi, furi+oid.foreignUrl().len(), host))
 			return host;
+
+		// XXX: We should use ReportError() here but we do not know the log
+		// category, and the API sucks in libruntime, which cdb cannot use.
+		Comment(1) << "error: cannot extract host name from a foreign URL: " <<
+			oid.foreignUrl() << endc;
+		return NetAddr();
 	} else
 	if (const HostCfg *const host = TheHostMap->at(oid.viserv())) {
 		if (host->theAddr.isDynamicName()) {
 			Assert(oid.prefix() > 0);
 			// XXX: Poor performance
-			char buf[8 + host->theAddr.addrA().len()];
+			// 18 chars for 'w', 16 digit hex prefix and terminating zero
+			char buf[18 + host->theAddr.addrA().len()];
 			ofixedstream os(buf, sizeof(buf));
 			NetAddr addr(host->theAddr.addrA(), -1); // remove port number
 			oidDumpHost(oid, addr, true, os);
@@ -100,6 +109,9 @@ ostream &Oid2UrlPath(const ObjId &oid, ostream &os) {
 		Assert(ccfg);
 	}
 
+	if (ccfg && ccfg->ramFiles())
+		return os << ccfg->ramFile(oid).name;
+
 	os << '/';
 
 	if (ccfg) {
@@ -116,7 +128,7 @@ ostream &Oid2UrlPath(const ObjId &oid, ostream &os) {
 		const char fill = os.fill('0');
 		os << hex << setfill('0');
 		os << 't' << setw(2) << oid.type() << '/';
-		os << '_' << setw(8) << oid.name();
+		os << '_' << setw(16) << oid.name();
 		os.fill(fill);
 		os.flags(flags);
 	}
@@ -141,15 +153,6 @@ ostream &Oid2Url(const ObjId &oid, ostream &os) {
 	Oid2UrlHost(oid, false, os);
 	Oid2UrlPath(oid, os);
 	return os;
-}
-
-int Oid2ContType(const ObjId &oid) {
-	Assert(!oid.foreignUrl());
-	const HostCfg *hcfg = TheHostMap->at(oid.target());
-	Assert(hcfg);
-	Assert(hcfg->theContent);
-	const ContentCfg *ccfg = hcfg->theContent->getDir(oid);
-	return ccfg->id();
 }
 
 bool OidImpliesMarkup(const ObjId &oid, const ContentCfg *cfg) {

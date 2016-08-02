@@ -8,6 +8,7 @@
 
 #include "xstd/h/iosfwd.h"
 #include "xstd/h/netinet.h"    /* for ntoh and hton */
+#include "xstd/Endian.h"
 
 // perhaps operators for these should be moved into a separate file?
 #include "xstd/Time.h"
@@ -65,6 +66,12 @@ class IBStream: public virtual BinIos {
 		int geti() { int x; return geti(x); }
 		int geti(int &x) { get(&x, SizeOf(x)); return x = ntohl(x); }
 
+		unsigned int getui() { unsigned int x; return getui(x); }
+		unsigned int getui(unsigned int &x) { get(&x, SizeOf(x)); return x = ntohl(x); }
+
+		int64_t geti64() { int64_t x; return geti64(x); }
+		int64_t geti64(int64_t &x) { get(&x, SizeOf(x)); return x = be64toh(x); }
+
 		unsigned short getUsi() { unsigned short x; return getUsi(x); }
 		unsigned short getUsi(unsigned short &x) { get(&x, SizeOf(x)); return x = ntohs(x); }
 		struct sockaddr_storage &geta(struct sockaddr_storage &a);
@@ -96,6 +103,8 @@ class OBStream: public virtual BinIos {
 		void putc(char c) { put(&c, 1); }
 		void putb(bool b) { putc((char)(b ? 1 : 0)); }
 		void puti(int x) { x = htonl(x); put(&x, SizeOf(x)); }
+		void putui(unsigned int x) { x = htonl(x); put(&x, SizeOf(x)); }
+		void puti64(int64_t x) { x = htobe64(x); put(&x, SizeOf(x)); }
 		void putUsi(unsigned short x) { x = htons(x); put(&x, SizeOf(x)); }
 		void puts(const String &s) { puti(s.len()); if (s.len()) put(s.data(), s.len()); }
 		void puta(const struct sockaddr_storage &a);
@@ -114,6 +123,14 @@ class BStream: public IBStream, public OBStream {
 		void configure(iostream *aStream, const String &aName);
 };
 
+// manipulator allowing BStream << and >> operators for containers
+template <class Container>
+class ContainerStreamerT {
+	public:
+		explicit ContainerStreamerT(Container &aContainer): theContainer(aContainer) {}
+
+		Container &theContainer;
+};
 
 
 /* operators for common types */
@@ -133,6 +150,18 @@ IBStream &operator >>(IBStream &is, bool &b) {
 inline
 IBStream &operator >>(IBStream &is, int &x) {
 	is.geti(x);
+	return is;
+}
+
+inline
+IBStream &operator >>(IBStream &is, unsigned int &x) {
+	is.getui(x);
+	return is;
+}
+
+inline
+IBStream &operator >>(IBStream &is, int64_t &x) {
+	is.geti64(x);
 	return is;
 }
 
@@ -199,6 +228,19 @@ IBStream &operator >>(IBStream &is, Array<Item> &a) {
 	return is;
 }
 
+template <class Container>
+inline
+IBStream &operator >>(IBStream &is, ContainerStreamerT<Container> cs) {
+	Container &container = cs.theContainer;
+	container.clear();
+	const int cnt = is.geti();
+	for (int i = 0; is.good() && i < cnt; ++i) {
+		typename Container::value_type item;
+		if ((is >> item).good())
+			container.push_back(item);
+	}
+	return is;
+}
 
 inline
 OBStream &operator <<(OBStream &os, char c) {
@@ -215,6 +257,18 @@ OBStream &operator <<(OBStream &os, bool b) {
 inline
 OBStream &operator <<(OBStream &os, int x) {
 	os.puti(x);
+	return os;
+}
+
+inline
+OBStream &operator <<(OBStream &os, unsigned int x) {
+	os.putui(x);
+	return os;
+}
+
+inline
+OBStream &operator <<(OBStream &os, const int64_t x) {
+	os.puti64(x);
 	return os;
 }
 
@@ -272,6 +326,24 @@ OBStream &operator <<(OBStream &os, const Array<Item> &a) {
 	for (int i = 0; i < a.count(); ++i)
 		os << a[i];
 	return os;
+}
+
+template <class Container>
+inline
+OBStream &operator <<(OBStream &os, const ContainerStreamerT<Container> cs) {
+	const Container &container = cs.theContainer;
+	os.puti(container.size());
+	for (typename Container::const_iterator i = container.begin();
+		i != container.end(); ++i)
+		os << *i;
+	return os;
+}
+
+// convenience wrapper to create ContainerStreamerT objects
+template <class Container>
+inline
+ContainerStreamerT<Container> ContainerStreamer(Container &container) {
+	return ContainerStreamerT<Container>(container);
 }
 
 #endif

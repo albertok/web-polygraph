@@ -14,7 +14,7 @@
 
 CacheEntryHash::CacheEntryHash(int aCapacity): theCount(0) {
 	theCapacity = (aCapacity + aCapacity/3 + 7) | 1;
-	theIndex = new (CacheEntry*[this->theCapacity]);
+	theIndex = new CacheEntry*[theCapacity];
 	memset(theIndex, 0, sizeof(CacheEntry*)*theCapacity);
 }
 

@@ -511,7 +511,7 @@ bool FtpSrvXact::prepareContent() {
 	if (!parseUrl())
 		return false;
 
-	Assert(theOid.type() >= TheContentMgr.normalContentStart());
+	Assert(theOid.type() >= ContType::NormalContentStart());
 	theRepContentCfg = TheContentMgr.get(theOid.type());
 	theBodyIter = theRepContentCfg->getBodyIter(theOid);
 	theWrittenSize.expectMore(theBodyIter->contentSize());
@@ -525,11 +525,7 @@ void FtpSrvXact::makeSimpleResponse(ostream &os, const String &reply) {
 void FtpSrvXact::makeMdtmResponse(ostream &os) {
 	// XXX: hard coded modification time
 	// should be similar to IMS
-	os
-		<< ftpRspMdtm
-		<< "20080714151541"
-		<< crlf
-		;
+	os << ftpRspMdtm << "20080714151541" << crlf;
 }
 
 void FtpSrvXact::makeSizeResponse(ostream &os) {
@@ -598,21 +594,20 @@ bool FtpSrvXact::parseUrl() {
 	return true;
 }
 
-#if POLYGRAPH_NOTES
-
-PASV:
-		start listening, disListening
-
-RETR:
-		=dxsNone
-		!disBusy,
-		if disNone and PORT then start connection, disConnecting
-		if disListen then dxsConnWaiting
-		if disWait then dxsInProgress, write, disBusy
-
-accept:
-		=disListen
-		disWait
-		if dxsConnWaiting then dxsInProgress, write, disBusy
-
-#endif
+/* notes
+ *
+ * PASV:
+ * 		start listening, disListening
+ *
+ * RETR:
+ * 		=dxsNone
+ * 		!disBusy,
+ * 		if disNone and PORT then start connection, disConnecting
+ * 		if disListen then dxsConnWaiting
+ * 		if disWait then dxsInProgress, write, disBusy
+ *
+ * accept:
+ * 		=disListen
+ * 		disWait
+ * 		if dxsConnWaiting then dxsInProgress, write, disBusy
+ */

@@ -14,8 +14,8 @@
 
 /* UnifPopDistr */
 
-int UnifPopDistr::choose(RndGen &rng, int lastOid) {
-	return 1 + rng(0, lastOid);
+int64_t UnifPopDistr::choose(RndGen &rng, int64_t lastOid) {
+	return 1 + rng(static_cast<int64_t>(0), lastOid);
 }
 
 ostream &UnifPopDistr::print(ostream &os) const {
@@ -28,9 +28,9 @@ ostream &UnifPopDistr::print(ostream &os) const {
 ZipfPopDistr::ZipfPopDistr(double aSkew): theSkew(aSkew) {
 }
 
-int ZipfPopDistr::choose(RndGen &rng, int lastOid) {
+int64_t ZipfPopDistr::choose(RndGen &rng, int64_t lastOid) {
 	const double rn = rng();
-	return 1 + lastOid - (int)pow(lastOid+1, pow(rn,theSkew));
+	return 1 + lastOid - static_cast<int64_t>(pow(lastOid+1, pow(rn,theSkew)));
 }
 
 ostream &ZipfPopDistr::print(ostream &os) const {

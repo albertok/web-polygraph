@@ -35,6 +35,9 @@ class StatPhase: public StatIntvl, public GoalSubj {
 			ltWarmup      // waiting for warmup scan
 		};
 
+		// creates a no-logging phase without an explicit PGL configuration
+		static StatPhase *MakeVirtual(const String &aName, const StatPhase *prevPh);
+
 		StatPhase();
 		virtual ~StatPhase();
 
@@ -53,10 +56,10 @@ class StatPhase: public StatIntvl, public GoalSubj {
 
 		// finalize GoalSubj interface
 		virtual Time duration() const;
-		virtual int xactCnt() const;
+		virtual Counter xactCnt() const;
 		virtual BigSize fillSz() const;
-		virtual int fillCnt() const;
-		virtual int xactErrCnt() const;
+		virtual Counter fillCnt() const;
+		virtual Counter xactErrCnt() const;
 
 		TransFactor &populusFactor() { return thePopulusFactor; }
 		TransFactor &loadFactor() { return theLoadFactor; }
@@ -71,12 +74,16 @@ class StatPhase: public StatIntvl, public GoalSubj {
 		void unlock(const LockType lt);
 
 		void start(StatPhaseMgr *aMgr, const StatPhase *prevPhase);
+		void stop();
 		void flush();
+
+		void reachedPositiveGoal(const String &reason);
 
 		virtual void wakeUp(const Alarm &alarm);
 
 		virtual void noteConnEvent(BcastChannel *ch, const Connection *c);
 		virtual void noteXactEvent(BcastChannel *ch, const Xaction *x);
+		virtual void noteCompoundXactEvent(BcastChannel *ch, const CompoundXactInfo *cx);
 		virtual void noteIcpXactEvent(BcastChannel *ch, const IcpXaction *x);
 		virtual void notePageEvent(BcastChannel *ch, const PageInfo *p);
 		virtual void noteInfoEvent(BcastChannel *ch, InfoEvent ev);
@@ -92,16 +99,14 @@ class StatPhase: public StatIntvl, public GoalSubj {
 
 	protected:
 		void configureSamples(const PhaseSym *cfg);
-		void checkFactor(const TransFactor &f, const String &label) const;
 		void finalizeStats();
 
 		virtual bool checkpoint();
 
 		bool locked(const int lt) const;
 		bool locked() const;
-		void stop();
 		void report() const;
-		void printGoalReached(const bool positive) const;
+		void printGoalReached(const bool positive, const String &reason = "") const;
 
 	protected:
 		Array<StatPhaseRec*> theRecs;

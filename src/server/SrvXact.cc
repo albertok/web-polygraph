@@ -174,8 +174,8 @@ void SrvXact::overwriteUrl() {
 	static RndGen rng;
 	theOid.world().create();
 	theOid.target(theOwner->hostIdx());
-	theOid.type(TheContentMgr.normalContentStart());
-	theOid.name(rng.ltrial() | 1);
+	theOid.type(ContType::NormalContentStart());
+	theOid.name(rng.trial32() | 1);
 	theOid.foreignSrc(false);
 	theOid.foreignUrl(0);
 }
@@ -216,7 +216,7 @@ void SrvXact::grokForeignUrl(const String &url, bool &ignoreUrls) {
 				memcpy(&seed, nameStr.data(), Min((int)sizeof(seed), nameStr.size()));
 				rng.seed(LclPermut(seed[0] + seed[2], seed[1] + seed[3]));
 			}
-			theOid.name(rng.ltrial() | 1);
+			theOid.name(rng.trial32() | 1);
 		}
 
 		const Area &category = url.area(10, commaPos - 10);
@@ -235,6 +235,13 @@ void SrvXact::grokForeignUrl(const String &url, bool &ignoreUrls) {
 		}
 
 //		TheEmbedStats.scriptSeen++;
+	} else
+	if (theOwner->cfg()->findRamFile(url, theOid)) {
+		theOid.world().create();
+		theOid.target(theOwner->hostIdx());
+		theOid.foreignSrc(false);
+		theOid.foreignUrl(String());
+		ignoreUrls = true;
 	} else
 	if (TheOpts.acceptForeignMsgs) {
 		static bool informed = false;

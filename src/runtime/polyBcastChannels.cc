@@ -24,11 +24,16 @@ BcastChannel *TheConnIdleBegChannel = 0;
 BcastChannel *TheConnIdleEndChannel = 0;
 BcastChannel *TheConnSslActiveChannel = 0;
 BcastChannel *TheConnSslInactiveChannel = 0;
+BcastChannel *TheConnSslEstablishedChannel = 0;
+BcastChannel *TheConnTunnelEstablishedChannel = 0;
 
 BcastChannel *TheXactBegChannel = 0;
 BcastChannel *TheXactEndChannel = 0;
 BcastChannel *TheXactErrChannel = 0;
 BcastChannel *TheXactRetrChannel = 0;
+
+BcastChannel *TheCompoundXactBegChannel = 0;
+BcastChannel *TheCompoundXactEndChannel = 0;
 
 BcastChannel *TheIcpXactBegChannel = 0;
 BcastChannel *TheIcpXactEndChannel = 0;
@@ -60,24 +65,29 @@ void PolyBcastChannelsInit::init() {
 	TheSessionCntChannel = new BcastChannel("session_cnt");
 	TheSessionEndChannel = new BcastChannel("session_end");
 
-	TheConnOpenChannel = new BcastChannel("conn_open");
-	TheConnEstChannel = new BcastChannel("conn_est");
-	TheConnCloseChannel = new BcastChannel("conn_close");
-	TheConnIdleBegChannel = new BcastChannel("conn_idle_beg");
-	TheConnIdleEndChannel = new BcastChannel("conn_idle_end");
-	TheConnSslActiveChannel = new BcastChannel("conn_ssl_active");
-	TheConnSslInactiveChannel = new BcastChannel("conn_ssl_inactive");
+	TheConnOpenChannel = new BcastChannel("conn_open", true);
+	TheConnEstChannel = new BcastChannel("conn_est", true);
+	TheConnCloseChannel = new BcastChannel("conn_close", true);
+	TheConnIdleBegChannel = new BcastChannel("conn_idle_beg", true);
+	TheConnIdleEndChannel = new BcastChannel("conn_idle_end", true);
+	TheConnSslActiveChannel = new BcastChannel("conn_ssl_active", true);
+	TheConnSslInactiveChannel = new BcastChannel("conn_ssl_inactive", true);
+	TheConnSslEstablishedChannel = new BcastChannel("conn_ssl_established", true);
+	TheConnTunnelEstablishedChannel = new BcastChannel("conn_tunnel_established", true);
 
-	TheXactBegChannel = new BcastChannel("xact_beg");
-	TheXactEndChannel = new BcastChannel("xact_end");
-	TheXactErrChannel = new BcastChannel("xact_err");
-	TheXactRetrChannel = new BcastChannel("xact_retr");
+	TheXactBegChannel = new BcastChannel("xact_beg", true);
+	TheXactEndChannel = new BcastChannel("xact_end", true);
+	TheXactErrChannel = new BcastChannel("xact_err", true);
+	TheXactRetrChannel = new BcastChannel("xact_retr", true);
 
-	TheIcpXactBegChannel = new BcastChannel("icp_xact_beg");
-	TheIcpXactEndChannel = new BcastChannel("icp_xact_end");
-	TheIcpXactErrChannel = new BcastChannel("icp_xact_err");
+	TheCompoundXactBegChannel = new BcastChannel("compound_xact_beg", true);
+	TheCompoundXactEndChannel = new BcastChannel("compound_xact_end", true);
 
-	ThePageEndChannel = new BcastChannel("page_end");
+	TheIcpXactBegChannel = new BcastChannel("icp_xact_beg", true);
+	TheIcpXactEndChannel = new BcastChannel("icp_xact_end", true);
+	TheIcpXactErrChannel = new BcastChannel("icp_xact_err", true);
+
+	ThePageEndChannel = new BcastChannel("page_end", true);
 
 	TheErrChannel = new BcastChannel("error");
 	TheInfoChannel = new BcastChannel("info");
@@ -106,11 +116,16 @@ void PolyBcastChannelsInit::clean() {
 	delete TheConnIdleEndChannel; TheConnIdleEndChannel = 0;
 	delete TheConnSslActiveChannel; TheConnSslActiveChannel = 0;
 	delete TheConnSslInactiveChannel; TheConnSslInactiveChannel = 0;
+	delete TheConnSslEstablishedChannel; TheConnSslEstablishedChannel = 0;
+	delete TheConnTunnelEstablishedChannel; TheConnTunnelEstablishedChannel = 0;
 
 	delete TheXactBegChannel; TheXactBegChannel = 0;
 	delete TheXactEndChannel; TheXactEndChannel = 0;
 	delete TheXactErrChannel; TheXactErrChannel = 0;
 	delete TheXactRetrChannel; TheXactRetrChannel = 0;
+
+	delete TheCompoundXactBegChannel; TheCompoundXactBegChannel = 0;
+	delete TheCompoundXactEndChannel; TheCompoundXactEndChannel = 0;
 
 	delete TheIcpXactBegChannel; TheIcpXactBegChannel = 0;
 	delete TheIcpXactEndChannel; TheIcpXactEndChannel = 0;

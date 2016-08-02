@@ -63,6 +63,10 @@ foreach my $key (@keys) {
 			my $max = $m1 < $m2 ? $m2 : $m1;
 
 			next if $min <= 0 && $max <= 0; # undefined or zero
+
+			# ignore absolute time differences beyond Polygraph precision
+			next if &timeDiff($key, $max - $min) < 1 && $precision > 0;
+
 #warn("$m1 $m2");
 			if ($min <= 0 && $max > 0) {
 				$res = sprintf("%${pctWidth}s %3.2f vs %3.2f", 'inf', $m1, $m2)
@@ -171,7 +175,7 @@ sub loadHistogram($) {
 
 		my $i = 25;
 		my $count = 0;
-		foreach my $bin (sort keys %bins) {
+		foreach my $bin (sort { $a <=> $b } keys %bins) {
 			$count += $bins{$bin};
 			for (; ($count * 100/ $aggr_count >= $i) && ($i < 100); $i += 25) {
 				addMeasurement($meas, "$name.hist.p$i", $bin);
@@ -193,24 +197,35 @@ sub addMeasurement($) {
 sub isImportant($) {
 	my $key = shift;
 
-	# errors are always important
-	return 1 if $key =~ /err/;
-
 	# .last measurements are not important
 	return 0 if $key =~ /\.last$/;
 
-	# not a histogram
-	unless ($key =~ /\.hist\./) {
-		# .min and .max measurements are not important
-		return 0 if ($key =~ /\.min$/) || ($key =~ /\.max$/);
+	# Treat .min and .max measurements as unimportant: If they are important,
+	# the corresponding mean values will be shown as substantially different.
+	return 0 if ($key =~ /\.min$/) || ($key =~ /\.max$/);
 
+	# Treat .rel_dev measurements as unimportant: If they are important, the
+	# corresponding .std_dev values will be shown as substantially different.
+	return 0 if ($key =~ /\.rel_dev$/);
+
+	# Treat .sum measurements as unimportant: If they are important, the
+	# corresponding .count and/or .mean values will be shown as substantially different.
+	return 0 if ($key =~ /\.sum$/);
+
+	if ($key =~ /\.hist\./) {
+		# hist.count lacks min/max bins; ignore it if we can report full count
+		if ($key =~ /^(.+)\.hist\.count$/) {
+			my $otherKey = $1 . '.count';
+			return 0 if exists $Meas1->{$otherKey} && exists $Meas2->{$otherKey};
+		}
+	} else {
 		# .mean blacklisted by .hist.mean
 		if ($key =~ /^(.+)\.mean$/) {
 			return 0 if exists $hists{$1};
 		}
 	}
 
-	return 0 if isRareEvent($key);
+	return 0 if isRareEvent($key); # including rare errors
 
 	return 1;
 }
@@ -219,27 +234,68 @@ sub isRareEvent($) {
 	my $key = shift;
 
 	my @parts = split(/\./, $key);
-	my ($name) = @parts;
-	my $main_key;
+	my $name = $parts[0];
+	my $suffix = pop @parts;
+	my $prefix = join('.', @parts);
 
-	my @events = qw(basic offered hit miss cachable uncachable fill ims
-			reload range head post put abort page ssl ftp
-			100_continue proxy_validations auth tunneled
-			proxy_validation rep req);
-	if (grep {$_ eq $name} @events) {
-		@parts[@parts - 1] = 'count';
-		my $count_key = join('.', @parts);
-		if ((exists $Meas1->{$count_key}) &&
-			(exists $Meas2->{$count_key}) &&
-			(exists $Meas1->{'xact.started'}) &&
-			(exists $Meas2->{'xact.started'})) {
-			my $rate1 = $Meas1->{$count_key} / $Meas1->{'xact.started'};
-			my $rate2 = $Meas2->{$count_key} / $Meas2->{'xact.started'};
-			return 1 if ($rate1 < 0.1) && ($rate2 < 0.1);
-		}
+	my $count_key;
+
+	# use prefix.count measurement for counting events if possible
+	my $tryKey = $prefix . '.count';
+	if (exists $Meas1->{$tryKey} || exists $Meas2->{$tryKey}) {
+		$count_key = $tryKey;
+	} 
+	elsif ($key =~ /\.(started|finished)$/) {
+		# the measurement itself is a counter
+		$count_key = $key;
+	} else {
+		# counts for these measurements should be compared to something other
+		# than xact.started
+		# my %MasterCount = (
+			# TODO: verify and finish implementing
+			# RHS contains xact.started replacement
+			#cookies.purged.fresh => 'cookies.sent.count',
+			#cookies.purged.stale => 'cookies.sent.count',
+			#cookies.updated => 'cookies.sent.count',
+			#rep_status_code => 'rep.size.count',
+			#conn_close => 'conn.open.finished',
+			#ssl.sessions.* => ???,
+			#range_gen.some.* => ???,
+		# );
+		#$count_key = $MasterCount{XXX};
 	}
 
-	return 0;
+	#warn("$key ($prefix $suffix) at") if $key !~ '\b(categories|rate|ratio|level)\b' && !defined $count_key;
+	return 0 unless defined $count_key; # may not be rare if we cannot count it
+
+	# Use 0.1% threshold for errors and 10% for other stats
+	my $cutoff = ($key =~ /err/) ? 0.001 : 0.10;
+
+	# if event stats were never recorded, assume the event occurred 0 times.
+	my $m1 = exists $Meas1->{$count_key} ? $Meas1->{$count_key} : 0;
+	my $m2 = exists $Meas2->{$count_key} ? $Meas2->{$count_key} : 0;
+	my $rate1 = $m1 / $Meas1->{'xact.started'};
+	my $rate2 = $m2 / $Meas2->{'xact.started'};
+
+	return ($rate1 < $cutoff) && ($rate2 < $cutoff);
+}
+
+# Round the difference between two time values 
+# to account for Polygraph millisecond precision
+sub timeDiff($) {
+	my ($key, $rawDiff) = @_;
+
+	my @parts = split(/\./, $key);
+	my $name = $parts[0];
+
+	# not a time-based statistics
+	return $rawDiff unless $name =~ /\b(rptm|ttl|duration)\b/ ||
+		$name =~ /\b(first|last)_.*_(written|read)\b/;
+
+	# not an absolute time value
+	return $rawDiff unless $key =~ /\.(mean|min|max|std_dev|sum|p\d+)$/;
+
+	return int($rawDiff + 0.5);
 }
 
 sub usage {

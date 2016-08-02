@@ -265,26 +265,36 @@ bool Socket::getV4IfAddr(const String &ifname, InAddress &addr) {
 	return false;
 }
 
+// Find the "primary" IPv6 address of an interface.
+// We currently define "primary" as the address added to the interface first.
 bool Socket::getV6IfAddr(const String &ifname, InAddress &addr) {
 #if HAVE_GETIFADDRS
 	struct ifaddrs *ifp = NULL;
-	struct ifaddrs *p = NULL;
 	if (getifaddrs(&ifp) < 0)
 		return false;
-	for (p = ifp; p; p = p->ifa_next) {
+	bool found = false;
+	for (struct ifaddrs *p = ifp; p; p = p->ifa_next) {
 		if (!p->ifa_addr ||
 			p->ifa_addr->sa_family != AF_INET6)
 			continue;
 		if (ifname != p->ifa_name)
 			continue;
 		addr = InAddress(*p->ifa_addr);
-		freeifaddrs(ifp);
-		return true;
+		found = true;
+		// Linux uses LIFO: The address added first is the last in the list.
+		// FreeBSD (and others?) use FIFO; we break on first hit for them.
+#ifndef __linux__
+		break;
+#endif
 	}
 	freeifaddrs(ifp);
-#endif
+	if (!found)
+		Error::Last(ENOENT);
+	return found;
+#else
 	Error::Last(EINVAL);
 	return false;
+#endif
 }
 
 bool Socket::getIfBcastAddr(const String &ifname, struct sockaddr &addr) {
@@ -337,19 +347,19 @@ bool Socket::addV4IfAddr(const InetIfAliasReq &req, int idx) {
 }
 
 bool Socket::addV6IfAddr(const Inet6IfAliasReq &req, int idx) {
-#if defined(SIOCAIFADDR_IN6)
 	Assert(sizeof(idx));
+#if defined(SIOCAIFADDR_IN6)
 	return ioctl(theFD, SIOCAIFADDR_IN6, &req) >= 0;
 #elif defined(SIOCSIFADDR)
 	return ioctl(theFD, SIOCSIFADDR, &req) >= 0;
 #else
-	Assert(sizeof(idx) && sizeof(&req));
+	Assert(sizeof(&req));
 	Error::Last(EINVAL);
 	return false;
 #endif
 }
 
-bool Socket::delIfAddr(const InetIfAliasReq &req, int idx) {
+bool Socket::delV4IfAddr(const InetIfAliasReq &req, int idx) {
 #if !defined(SIOCAIFADDR) && defined(SIOCGIFFLAGS) && defined(IFF_UP)
 	// some OSes use "ifname:alias_idx" format for aliases
 	// linux (and others?) wants us to put the iface down instead
@@ -368,6 +378,18 @@ bool Socket::delIfAddr(const InetIfAliasReq &req, int idx) {
 	return ioctl(theFD, SIOCDIFADDR, &req) >= 0;
 #else
 	Assert(sizeof(idx) && sizeof(&req));
+	Error::Last(EINVAL);
+	return false;
+#endif
+}
+
+bool Socket::delV6IfAddr(const Inet6IfAliasReq &req) {
+#if defined(SIOCDIFADDR_IN6)
+	return ioctl(theFD, SIOCDIFADDR_IN6, &req) >= 0;
+#elif defined(SIOCDIFADDR)
+	return ioctl(theFD, SIOCDIFADDR, &req) >= 0;
+#else
+	Assert(sizeof(&req));
 	Error::Last(EINVAL);
 	return false;
 #endif

@@ -24,6 +24,9 @@ libcsm_a_SOURCES = \
 	EmbedContMdl.cc \
 	ObjLifeCycle.h \
 	ObjLifeCycle.cc \
+	RamFile.h \
+	RamFiles.h \
+	RamFiles.cc \
 	\
 	InjectIter.h \
 	InjectIter.cc \
@@ -34,6 +37,8 @@ libcsm_a_SOURCES = \
 	CdbBodyIter.cc \
 	ContainerBodyIter.h \
 	ContainerBodyIter.cc \
+	RamFileBodyIter.h \
+	RamFileBodyIter.cc \
 	\
 	GzipEncoder.h \
 	GzipEncoder.cc \

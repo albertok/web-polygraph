@@ -17,7 +17,7 @@ class ObjSelector {
 		virtual ~ObjSelector() {}
 
 		// selects oid, adjusts for wss and hot set position
-		virtual void choose(int lastOid, int wsCap, int hotSetPos, ObjId &oid) = 0;
+		virtual void choose(Counter lastOid, Counter wsCap, Counter hotSetPos, ObjId &oid) = 0;
 };
 
 #endif

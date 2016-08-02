@@ -14,7 +14,8 @@ const String AuthPhaseStat::SchemeNames[] = {
 	"ntlm",
 	"negotiate",
 	"ftp",
-	"socks.userpass"
+	"socks.userpass",
+	"kerberos"
 };
 
 AuthPhaseStat::AuthPhaseStat() {

@@ -1,7 +1,7 @@
 
 SUBDIRS = include
 
-workloads_pkgdir = ${prefix}/share/polygraph/workloads
+workloads_pkgdir = ${pkgdatadir}/workloads
 
 dist_workloads_pkg_DATA = \
 	datacomm-1.pg \

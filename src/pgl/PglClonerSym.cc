@@ -84,11 +84,11 @@ const SynSym *ClonerSym::itemProb(int idx, double &prob) const {
 	}
 }
 
-void ClonerSym::forEach(Visitor &v) const {
+void ClonerSym::forEach(Visitor &v, RndGen *const rng) const {
 	if (theSource->isA(strContainer)) {
 		const ContainerSym &c = (const ContainerSym&)theSource->cast(strContainer);
 		for (int i = 0; i < theCount; ++i)
-			c.forEach(v);
+			c.forEach(v, rng);
 	} else {
 		for (int i = 0; i < theCount; ++i)
 			v.visit(*theSource);

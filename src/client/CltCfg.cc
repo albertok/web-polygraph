@@ -23,10 +23,9 @@
 #include "pgl/MultiRangeSym.h"
 #include "runtime/AddrMap.h"
 #include "runtime/HostMap.h"
-#include "runtime/PubWorld.h"
+#include "runtime/ObjUniverse.h"
 #include "runtime/PopModel.h"
 #include "runtime/Goal.h"
-#include "runtime/XactAbortCoord.h"
 #include "runtime/LogComment.h"
 #include "runtime/httpHdrs.h"
 #include "csm/XmlTagIdentifier.h"
@@ -51,8 +50,10 @@ CltCfg::CltCfg(): theRobot(0),
 	theBusyPeriod(0), theIdlePeriodDur(0),
 	theFtpProxyCycleCnt(0), theHttpProxyCycleCnt(0), theSocksProxyCycleCnt(0),
 	thePipelineDepth(0),
-	theRecurRatio(-1), theSpnegoAuthRatio(-1), theEmbedRecurRatio(-1),
-	theAbortProb(0), theAuthError(0),
+	theRecurRatio(-1),
+	theSpnegoAuthRatio(-1),
+	theEmbedRecurRatio(-1),
+	theAuthError(0),
 	theWaitXactLmt(-1), theIcpPort(-1),
 	theCredentialCycleCnt(0), theForeignWorld(0),
 	theContainerTags(0),
@@ -106,7 +107,6 @@ void CltCfg::configure(const RobotSym *aRobot) {
 	theRobot->recurRatio(theRecurRatio);
 	theRobot->spnegoRatio(theSpnegoAuthRatio);
 	theRobot->embedRecurRatio(theEmbedRecurRatio);
-	theRobot->abortProb(theAbortProb);
 	theRobot->authError(theAuthError);
 	theRobot->uniqueUrls(genUniqUrls);
 	theUriThrower = theRobot->rawUriThrower();
@@ -114,11 +114,7 @@ void CltCfg::configure(const RobotSym *aRobot) {
 	theRobot->reqBodyPauseStart(theReqBodyPauseStart);
 	theRobot->reqBodyRecurrence(theReqBodyRecurrence);
 
-	if (PopModelSym *pms = theRobot->popModel()) {
-		thePopModel = new PopModel;
-		thePopModel->configure(pms);
-	}
-
+	configurePopModel();
 	configureInterests();
 	configureReqTypes();
 	configureReqMethods();
@@ -174,6 +170,13 @@ void CltCfg::configure(const RobotSym *aRobot) {
 
 int CltCfg::viservLimit() const {
 	return TheHostMap->iterationCount();
+}
+
+void CltCfg::configurePopModel() {
+	if (PopModelSym *const pms = theRobot->popModel()) {
+		thePopModel = new PopModel;
+		thePopModel->configure(pms);
+	}
 }
 
 void CltCfg::configureInterests() {
@@ -290,8 +293,8 @@ void CltCfg::addOrigName(const NetAddr &oname) {
 	if (!TheHostMap->find(oname, viserv))
 		TheHostMap->addAt(viserv, oname);
 	HostCfg *host = TheHostMap->at(viserv);
-	if (!host->thePubWorld)
-		PubWorld::Add(host, new PubWorld(UniqId::Create()));
+	if (!host->theUniverse)
+		ObjUniverse::Add(host, new ObjUniverse(UniqId::Create()));
 
 	if (!host->theServerRep)
 		host->theServerRep = new ServerRep(oname, viserv);
@@ -757,20 +760,6 @@ bool CltCfg::selectSocksProxy(NetAddr &newAddr, bool &doSocksChaining) {
 	return true;
 }
 
-// XXX: merge this with SrvCfg::selectAbortCoord()
-void CltCfg::selectAbortCoord(XactAbortCoord &coord) {
-	static RndGen rng1, rng2; // uncorrelated unless theAbortProb is 1
-	if (rng1.event(theAbortProb)) {
-		const int whether = rng2.state();
-		(void)rng2.trial();
-		coord.configure(rng2.state(), whether);
-	} else {
-		const int whether = rng1.state();
-		(void)rng1.trial();
-		coord.configure(whether, rng1.state());
-	}
-}
-
 bool CltCfg::selectFtpMode(bool &usePassive) {
 	if (thePassiveFtp < 0)
 		return false;
@@ -800,9 +789,9 @@ bool CltCfg::followAllUris(const RepHdr &rep) const {
 	}
 }
 
-RangeCfg::RangesInfo CltCfg::makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const {
+RangeCfg::RangesInfo CltCfg::makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const {
 	Assert(theRangeSel);
-	return theRanges[theRangeSel->ltrial()]->makeRangeSet(os, oid, contentCfg);
+	return theRanges[theRangeSel->ltrial()]->makeRangeSet(hp, oid, contentCfg);
 }
 
 // may be called multiple times
@@ -813,7 +802,8 @@ void CltCfg::startWarmup() {
 		Comment(7) << "started a warmup plan for Robot '" <<
 			theRobot->kind() << "' with " <<
 			theWarmupPlan->planCount() << " cold servers, out "
-			"of " << PubWorld::Count() << " already visible" << endc;
+			"of " << ObjUniverse::Count() << " already visible" <<
+			endc;
 	}
 }
 
@@ -822,7 +812,17 @@ void CltCfg::stopWarmup() {
 
 	Comment(7) << "stopped warmup plan for Robot '" << theRobot->kind() <<
 		"' with " << theWarmupPlan->planCount() << " cold servers, "
-		"out of " << PubWorld::Count() << " globally visible" << endc;
+		"out of " << ObjUniverse::Count() << " globally visible" <<
+		endc;
+
+	const int visibleCnt = ObjUniverse::Count();
+	static bool didOnce = false;
+	if (!didOnce && WarmupPlan::ReadyCount() >= visibleCnt) {
+		Comment(3) << "fyi: server scan completed with all local robots"
+			<< " ready to hit all " << visibleCnt << " visible "
+			"servers" << endc;
+		didOnce = true;
+	}
 
 	delete theWarmupPlan;
 	theWarmupPlan = 0;

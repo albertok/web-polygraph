@@ -44,7 +44,7 @@ int StringArrayPoint::count() const {
 	return 1;
 }
 
-bool StringArrayPoint::find(const Area &member, int &idx) const {
+bool StringArrayPoint::find(const Area &member, int &) const {
 	return thePoint.len() == member.size() && thePoint.find(member) == 0;
 }
 

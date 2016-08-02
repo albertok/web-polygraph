@@ -24,6 +24,7 @@ class RndDistr;
 class ContentCfg;
 class BodyIter;
 class CompoundXactInfo;
+class HttpPrinter;
 
 class Xaction: public AlarmUser, public FileScanUser {
 	public:
@@ -40,9 +41,10 @@ class Xaction: public AlarmUser, public FileScanUser {
 		int logCat() const { return theLogCat; }
 		bool started() const { return theStartTime > 0; }
 		bool finished() const { return theState == stDone; }
-		bool socksActive() const { return theConn && theConn->socksProxy(); }
+		bool socksConfigured() const { return theConn && theConn->socksProxy(); }
+		bool usedSocks() const { return theConn && theConn->usedSocks; }
 		bool sslConfigured() const { return theConn && theConn->sslConfigured(); }
-		bool sslActive() const { return theConn && theConn->sslActive(); }
+		bool usedSsl() const { return theConn && theConn->usedSsl; }
 
 		void countSuccess();
 		void countFailure();
@@ -58,6 +60,9 @@ class Xaction: public AlarmUser, public FileScanUser {
 		int httpStatus() const { return theHttpStatus; }
 		bool authing() const;
 		bool inCustomStatsScope() const;
+		// This "helper" transaction is only meant to establish a tunnel and/or
+		// authenticate the user before the expected "primary" transaction.
+		bool preliminary() const;
 
 		virtual bool needRetry() const { return false; }
 		virtual void wakeUp(const Alarm &a);
@@ -74,7 +79,8 @@ class Xaction: public AlarmUser, public FileScanUser {
 		void lifeTimeLimit(const Time &lifetime);
 
 		virtual int actualRepType() const { return theOid.type(); }
-		virtual HttpAuthScheme proxyAuth() const { Must(false); return authNone; }
+		virtual AuthPhaseStat::Scheme proxyStatAuth() const { Must(false); return AuthPhaseStat::sNone; }
+		virtual bool startedXactSequence() const { return true; }
 		virtual const CompoundXactInfo *partOf() const { return 0; }
 
 		virtual int cookiesSent() const { return -1; }
@@ -110,11 +116,14 @@ class Xaction: public AlarmUser, public FileScanUser {
 		void printMsg(const char *buf, Size maxSize) const;
 		void printXactLogEntry() const;
 
-		void putChecksum(ContentCfg &ccfg, const ObjId &oid, ostream &os) const;
-		void updatePubWorld(const ObjWorld &newSlice);
+		void putChecksum(ContentCfg &ccfg, const ObjId &oid, HttpPrinter &hp) const;
+		void updateUniverse(const ObjWorld &newWorld);
+
+		void putPhaseSyncPos(HttpPrinter &hp, const int pos) const;
+		virtual void doPhaseSync(const MsgHdr &hdr) const;
 
 	protected:
-		static int TheCount; // to report xaction "position"
+		static Counter TheCount; // to report xaction "position"
 
 	protected:
 		Connection *theConn;

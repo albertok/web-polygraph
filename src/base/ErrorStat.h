@@ -22,13 +22,13 @@ class ErrorStat: public LogObj {
 		virtual ~ErrorStat();
 
 		void reset();
-		int count() const { return theCount; }
-		int count(const Error &e) const;
+		Counter count() const { return theCount; }
+		Counter count(const Error &e) const;
 
 		int index(Index &idx) const;
 
 		// returns whether a report is expected
-		bool record(const Error &e, ErrorRec *&rec, int count = 1);
+		bool record(const Error &e, ErrorRec *&rec, const Counter count = 1);
 
 		void add(const ErrorStat &s);
 		ErrorStat &operator =(const ErrorStat &es);
@@ -43,7 +43,7 @@ class ErrorStat: public LogObj {
 
 	protected:
 		ErrorHash *theHash;
-		int theCount;            // total number of errors
+		Counter theCount; // total number of errors
 };
 
 #endif

@@ -8,7 +8,9 @@
 
 #include "csm/BodyIter.h"
 
+namespace zlib {
 class Deflator;
+}
 
 class GzipEncoder: public BodyIter {
 	public:
@@ -22,12 +24,9 @@ class GzipEncoder: public BodyIter {
 		virtual bool pour();
 
 	protected:
-		virtual bool pourBody();
-
-	protected:
 		const int theLevel;    // compression level: 0-9
 		BodyIter *theProducer; // produces unencoded content
-		Deflator *theEncoder;  // compresses content
+		zlib::Deflator *theEncoder;  // compresses content
 
 		WrBuf theProducerBuf;
 };

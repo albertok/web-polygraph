@@ -8,19 +8,22 @@
 
 #include "xstd/Array.h"
 #include "xstd/String.h"
-#include "runtime/BcastRcver.h"
+
+class BcastRcver;
 
 // event distribution channel
 
-class BcastChannel: protected SchArray<BcastRcver*> {
+class BcastChannel: protected Array<BcastRcver*> {
 	public:
-		BcastChannel(const String &anEvName);
+		explicit BcastChannel(const String &anEvName, const bool willStopTrafficWaiting = false);
 
-		int startBcast() const { if (Debug) showEvent(); return theCount; }
+		int startBcast() const { if (Debug) showEvent(); return count(); }
 		BcastRcver* rcver(int idx) { return item(idx); }
 
 		void subscribe(BcastRcver* rcver);
 		void unsubscribe(BcastRcver* rcver);
+
+		bool stopsTrafficWaiting; // any received event ends the "wait" phase
 
 	protected:
 		void showEvent() const;
@@ -31,13 +34,5 @@ class BcastChannel: protected SchArray<BcastRcver*> {
 	protected:
 		String theName;
 };
-
-template<class EvType>
-inline
-void Broadcast(BcastChannel *ch, EvType ev) {
-	int i = ch->startBcast();
-	while (--i >= 0)
-		ch->rcver(i)->noteEvent(ch, ev);
-}
 
 #endif

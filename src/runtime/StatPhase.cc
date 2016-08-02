@@ -48,6 +48,16 @@ static enum { wssIgnore, wssWaitFreeze, wssFrozen } TheWssState = wssIgnore;
 static const String TheLockNames[] = { "WSS freeze", "phase sync", "warmup" };
 const int NumberOfLocks = sizeof(TheLockNames)/sizeof(*TheLockNames);
 
+StatPhase *StatPhase::MakeVirtual(const String &aName, const StatPhase *prevPh) {
+	PhaseSym *cfg = new PhaseSym;
+	cfg->loc(TokenLoc("-"));
+	cfg->name(aName);
+	StatPhase *phase = new StatPhase;
+	phase->statsLogged(false); // the default is to log stats
+	phase->configure(cfg, prevPh);
+	return phase;
+}
+
 StatPhase::StatPhase(): theRecs(lgcEnd), theMgr(0), 
 	theRptmstat(0), theScript(0),
 	thePopulusFactor(this, "populus"), theLoadFactor(this, "load"), 
@@ -58,13 +68,16 @@ StatPhase::StatPhase(): theRecs(lgcEnd), theMgr(0),
 	readyToStop(false), wasStopped(false), primary(false),
 	reachedPositive(false), reachedNegative(false) {
 
-	for (int i = 0; i < theRecs.capacity(); ++i)
-		theRecs.push(new StatPhaseRec);
+	for (int i = 0; i < theRecs.capacity(); ++i) {
+		StatPhaseRec *rec = new StatPhaseRec;
+		rec->updateProgress(true);
+		theRecs.push(rec);
+	}
 
 	for (int i = 0; i < theLocks.capacity(); ++i)
 		theLocks.push(0);
 
-	theChannels << TheInfoChannel;
+	theChannels << TheInfoChannel << TheConnSslEstablishedChannel;
 }
 
 StatPhase::~StatPhase() {
@@ -74,6 +87,7 @@ StatPhase::~StatPhase() {
 	while (theDutWatchdogs.count()) delete theDutWatchdogs.pop();
 }
 
+// keep in sync with StatPhase::MakeVirtual()
 void StatPhase::configure(const PhaseSym *cfg, const StatPhase *prevPh) {
 	Assert(cfg);
 	Assert(cfg->goal());
@@ -97,29 +111,25 @@ void StatPhase::configure(const PhaseSym *cfg, const StatPhase *prevPh) {
 	double e = -1;
 	cfg->populusFactorBeg(b);
 	cfg->populusFactorEnd(e);
-	thePopulusFactor.configure(b, e, prevPh ? &prevPh->thePopulusFactor : 0);
-	checkFactor(thePopulusFactor, "populus");
+	thePopulusFactor.configure(b, e, !prevPh);
 
 	b = -1;
 	e = -1;
 	cfg->loadFactorBeg(b);
 	cfg->loadFactorEnd(e);
-	theLoadFactor.configure(b, e, prevPh ? &prevPh->theLoadFactor : 0);
-	checkFactor(theLoadFactor, "load");
+	theLoadFactor.configure(b, e, !prevPh);
 
 	b = -1;
 	e = -1;
 	cfg->recurFactorBeg(b);
 	cfg->recurFactorEnd(e);
-	theRecurFactor.configure(b, e, prevPh ? &prevPh->theRecurFactor : 0);
-	checkFactor(theRecurFactor, "recurrence");
+	theRecurFactor.configure(b, e, !prevPh);
 
 	b = -1;
 	e = -1;
 	cfg->specialMsgFactorBeg(b);
 	cfg->specialMsgFactorEnd(e);
-	theSpecialMsgFactor.configure(b, e, prevPh ? &prevPh->theSpecialMsgFactor : 0);
-	checkFactor(theSpecialMsgFactor, "special_req");
+	theSpecialMsgFactor.configure(b, e, !prevPh);
 
 	if (RptmstatSym *s = cfg->rptmstat()) {
 		theRptmstat = new Rptmstat;
@@ -158,28 +168,6 @@ void StatPhase::configureSamples(const PhaseSym *cfg) {
 
 void StatPhase::addWatchdog(DutWatchdog *dog) {
 	theDutWatchdogs.append(dog);
-}
-
-void StatPhase::checkFactor(const TransFactor &f, const String &label) const {
-	if (f.beg() > 1 || f.end() > 1) {
-		cerr << "error: begin or end value of " << label <<
-			" factor for phase '" << theName <<
-			"' is greater than 100%" << endl << xexit;
-	}
-
-	// varying load is possible only if goal is specified
-	const bool varyF = f.beg() != f.end();
-	if (!theGoal && varyF) {
-		cerr << "phase named `" << theName
-			<< "' has " << label
-			<< " factors but has no positive goal" << endl;
-		exit(-2);
-	} else
-	if (f.flat() && varyF) {
-		cerr << "internal error: no change coefficient for " << label
-			<< " factors for the phase named '" << theName << "'" << endl;
-		exit(-2);
-	}
 }
 
 void StatPhase::finalizeStats() {
@@ -237,8 +225,8 @@ Time StatPhase::duration() const {
 		TheClock - theIntvlStart : Time(0,0);
 }
 
-int StatPhase::xactCnt() const {
-	int count = 0;
+Counter StatPhase::xactCnt() const {
+	Counter count = 0;
 	for (int i = 0; i < theRecs.count(); ++i)
 		count += theRecs[i]->xactCnt();
 	return count;
@@ -251,15 +239,15 @@ BigSize StatPhase::fillSz() const {
 	return fill;
 }
 
-int StatPhase::fillCnt() const {
-	int fill = 0;
+Counter StatPhase::fillCnt() const {
+	Counter fill = 0;
 	for (int i = 0; i < theRecs.count(); ++i)
 		fill += theRecs[i]->totFillCount();
 	return fill;
 }
 
-int StatPhase::xactErrCnt() const {
-	int count = 0;
+Counter StatPhase::xactErrCnt() const {
+	Counter count = 0;
 	for (int i = 0; i < theRecs.count(); ++i)
 		count += theRecs[i]->theXactErrCnt;
 	return count;
@@ -273,6 +261,11 @@ void StatPhase::start(StatPhaseMgr *aMgr, const StatPhase *prevPhase) {
 		for (int i = 0; i < theRecs.count(); ++i)
 			theRecs[i]->keepLevels(*prevPhase->theRecs[i]);
 	}
+
+	thePopulusFactor.noteStart(prevPhase ? &prevPhase->thePopulusFactor : 0);
+	theLoadFactor.noteStart(prevPhase ? &prevPhase->theLoadFactor : 0);
+	theRecurFactor.noteStart(prevPhase ? &prevPhase->theRecurFactor : 0);
+	theSpecialMsgFactor.noteStart(prevPhase ? &prevPhase->theSpecialMsgFactor : 0);
 
 	// XXX: will not lock if fill phase finishes before we get ieWssFill
 	if (waitWssFreeze && TheWssState == wssWaitFreeze)
@@ -319,6 +312,19 @@ void StatPhase::noteConnEvent(BcastChannel *ch, const Connection *c) {
 
 		const Time ttl = TheClock - c->openTime();
 		rec.theConnClose.record(c->closeKind(), ttl, c->useCnt());
+	} else
+	if (ch == TheConnSslEstablishedChannel) {
+		StatPhaseRec &rec = *theRecs[c->logCat()];
+		if (Should(c->sslActive())) {
+			if (c->logCat() == lgcCltSide) {
+				const SslPhaseStat::SessionKind offered = c->sslSession() ?
+					SslPhaseStat::skReused : SslPhaseStat::skNew;
+				rec.theSslSessions.offered().record(offered);
+			}
+			const SslPhaseStat::SessionKind measured = c->sslSessionReused() ?
+				SslPhaseStat::skReused : SslPhaseStat::skNew;
+			rec.theSslSessions.measured().record(measured);
+		}
 	}
 	StatIntvl::noteConnEvent(ch, c);
 }
@@ -382,49 +388,17 @@ void StatPhase::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 			Should(false); // all categories should be accounted for
 		}
 
-		rec.theRepContType.record(x->actualRepType(), repSize);
+		rec.theRepContTypeHist.record(x->actualRepType(), repTime, repSize);
 		// XXX: request content type is not determined on server side
-		rec.theReqContType.record(x->reqOid().type(), reqSize);
-
-		// compound stats
-		if (const CompoundXactInfo *const compound = x->partOf()) {
-			if (compound->final)
-				switch (x->proxyAuth()) {
-					case authNone: {
-						// XXX: we should not be here, but it happens
-						static unsigned int errors = 0;
-						Should(errors % 100000 != 0);
-						++errors;
-						compound->record(rec.theIsolated);
-						break;
-					}
-					case authBasic:
-						compound->record(rec.theAuthBasic);
-						break;
-					case authNtlm:
-						compound->record(rec.theAuthNtlm);
-						break;
-					case authNegotiate:
-						compound->record(rec.theAuthNegotiate);
-						break;
-					default:
-						Should(false);
-						compound->record(rec.theIsolated);
-						break;
-				}
-		} else {
-			static CompoundXactInfo &compound2 = *CompoundXactInfo::Create();
-			compound2.exchanges = 1;
-			compound2.reqSize = reqSize;
-			compound2.repSize = repSize;
-			compound2.lifeTime = repTime;
-			compound2.record(rec.theIsolated);
-		}
+		rec.theReqContTypeHist.record(x->reqOid().type(), repTime, reqSize);
 
 		if (x->cookiesSent() > 0)
 			rec.theCookiesSent.record(x->cookiesSent());
 		if (x->cookiesRecv() > 0)
 			rec.theCookiesRecv.record(x->cookiesRecv());
+
+		if (!x->partOf())
+			rec.theSingles.recordCompound(repTime, reqSize, repSize, 1);
 	}
 
 	if (ch == TheXactEndChannel ||
@@ -436,6 +410,39 @@ void StatPhase::noteXactEvent(BcastChannel *ch, const Xaction *x) {
 	}
 
 	StatIntvl::noteXactEvent(ch, x);
+}
+
+void StatPhase::noteCompoundXactEvent(BcastChannel *ch, const CompoundXactInfo *compound) {
+	if (ch == TheCompoundXactEndChannel) {
+		StatPhaseRec &rec = *theRecs[compound->logCat];
+
+		// compound->completed() may be false here if the transaction sequence
+		// was aborted prematurely (e.g., our CONNECT attempt was rejected).
+
+		if (compound->connectState != CompoundXactInfo::opNone)
+			compound->record(rec.theConnected);
+
+		if (compound->proxyAuthState != CompoundXactInfo::opNone) {
+			switch (compound->proxyStatAuth) {
+				case AuthPhaseStat::sBasic:
+					compound->record(rec.theAuthBasic);
+					break;
+				case AuthPhaseStat::sNtlm:
+					compound->record(rec.theAuthNtlm);
+					break;
+				case AuthPhaseStat::sNegotiate:
+					compound->record(rec.theAuthNegotiate);
+					break;
+				case AuthPhaseStat::sKerberos:
+					compound->record(rec.theAuthKerberos);
+					break;
+				default:
+					ShouldUs(false);
+			}
+		}
+	}
+
+	StatIntvl::noteCompoundXactEvent(ch, compound);
 }
 
 void StatPhase::noteIcpXactEvent(BcastChannel *ch, const IcpXaction *x) {
@@ -525,6 +532,14 @@ void StatPhase::flush() {
 		storeAll(TheOLog, lgStatPhaseRec);
 }
 
+void StatPhase::reachedPositiveGoal(const String &reason) {
+	if (!reachedPositive) {
+		reachedPositive = true;
+		printGoalReached(true, reason);
+		checkpoint();
+	}
+}
+
 // the caller should not use the phase if checkpoint returns true
 bool StatPhase::checkpoint()  {
 	if (!reachedPositive) {
@@ -607,16 +622,12 @@ void StatPhase::report() const {
 }
 
 void StatPhase::reportCfg(ostream &os) const {
-	os 
-		<< setw(10) << name()
-		<< ' ' << setw(8) << thePopulusFactor.beg()
-		<< ' ' << setw(8) << thePopulusFactor.end()
-		<< ' ' << setw(8) << theLoadFactor.beg()
-		<< ' ' << setw(8) << theLoadFactor.end()
-		<< ' ' << setw(8) << theRecurFactor.beg()
-		<< ' ' << setw(8) << theRecurFactor.end()
-		<< ' ' << setw(8) << theSpecialMsgFactor.beg()
-		<< ' ' << setw(8) << theSpecialMsgFactor.end()
+	os << setw(10) << name();
+	thePopulusFactor.reportCfg(os);
+	theLoadFactor.reportCfg(os);
+	theRecurFactor.reportCfg(os);
+	theSpecialMsgFactor.reportCfg(os);
+	os
 		<< ' ' << setw(5) << theGoal
 		<< "\t" 
 			<< (logStats ? "" : " !log")
@@ -626,7 +637,7 @@ void StatPhase::reportCfg(ostream &os) const {
 		<< endl;
 }
 
-void StatPhase::printGoalReached(const bool positive) const {
+void StatPhase::printGoalReached(const bool positive, const String &reason) const {
 	ostream &os = Comment(1);
 	if (locked()) {
 		os << "locked (";
@@ -645,6 +656,6 @@ void StatPhase::printGoalReached(const bool positive) const {
 	os
 		<< "phase '" << name() << "' reached local "
 		<< (positive ? "positive" : "negative")
-		<< " goal"
+		<< " goal" << (reason ? ": " + reason : "")
 		<< endc;
 }

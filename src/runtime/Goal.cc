@@ -15,7 +15,7 @@
 
 #include "pgl/GoalSym.h"
 
-int Goal::MinXactForRatios = 1000; // XXX: magic constant
+Counter Goal::MinXactForRatios = 1000; // XXX: magic constant
 
 
 Goal::Goal() {

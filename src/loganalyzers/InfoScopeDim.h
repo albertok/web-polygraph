@@ -26,6 +26,7 @@ class InfoScopeDim {
 		String image() const;
 
 		void add(const String &name);
+		void addFront(const String &name); // a hack for InfoScope::addSide()
 		bool has(const String &name) const;
 
 	protected:

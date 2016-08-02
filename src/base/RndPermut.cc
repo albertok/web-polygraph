@@ -41,14 +41,14 @@ void RndPermutator::configure(int setSize, int seed) {
 void RndPermutator::reseed(int seed) {
 	RndGen rng(seed);
 	for (int j = 0; j < theTableCap; ++j)
-		theTable[j] = rng.ltrial();
+		theTable[j] = rng.trial32();
 	for (int i = 0; i < theTableCap; ++i)
 		swap(i, rng(0, theTableCap));
 }
 
-int RndPermutator::permut(int n, int m) const {
-	const int a = n / theTableCap;
-	const int b = n % theTableCap;
+int RndPermutator::permut(const int64_t n, const int64_t m) const {
+	const int64_t a = n / theTableCap;
+	const int64_t b = n % theTableCap;
 	const int offset = item(a) - item(m);
 	return item(offset + b);
 }

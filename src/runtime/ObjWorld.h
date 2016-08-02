@@ -15,17 +15,19 @@ class ObjSelector;
 class OBStream;
 class IBStream;
 
+// All visible server oids with the same content type.
 class ObjWorld {
 	public:
 		ObjWorld();
 
 		void reset();
 
-		operator void*() const { return id() ? (void*)-1 : 0; }
+		operator void*() const { return id() && theType >= 0 ? (void*)-1 : 0; }
 		const UniqId &id() const { return theId; }
-		int size() const { return theSize; }
-		int wss() const { return theWss; }
-		int hotPos() const { return theHotSet.pos(); }
+		int type() const { return theType; }
+		Counter size() const { return theSize; }
+		Counter wss() const { return theWss; }
+		Counter hotPos() const { return theHotSet.pos(); }
 
 		bool newer(const ObjWorld &w) const;
 
@@ -41,9 +43,10 @@ class ObjWorld {
 		void load(IBStream &is);
 
 		void id(const UniqId &anId) { theId = anId; }
-		void size(int aSize) { theSize = aSize; }
-		void wss(int aWss) { theWss = aWss; }
-		void hotPos(int aPos) { theHotSet.pos(aPos); }
+		void type(const int aType) { theType = aType; }
+		void size(const Counter aSize) { theSize = aSize; }
+		void wss(const Counter aWss) { theWss = aWss; }
+		void hotPos(const Counter aPos) { theHotSet.pos(aPos); }
 
 		ostream &print(ostream &os) const;
 
@@ -56,14 +59,27 @@ class ObjWorld {
 
 	protected:
 		UniqId theId;
-		int theSize;      // number of objects in the world
-		int theWss;       // working set size
+		int theType;      // content ID shared by all objects in the world
+		Counter theSize;  // number of objects in the world
+		Counter theWss;   // working set size
 		HotSet theHotSet; // hot subset of wss
 };
 
 inline
 ostream &operator <<(ostream &os, const ObjWorld &w) {
 	return w.print(os);
+}
+
+inline
+OBStream &operator <<(OBStream &os, const ObjWorld &w) {
+	w.store(os);
+	return os;
+}
+
+inline
+IBStream &operator >>(IBStream &is, ObjWorld &w) {
+	w.load(is);
+	return is;
 }
 
 #endif

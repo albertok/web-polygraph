@@ -13,6 +13,7 @@
 #include "pgl/PglIntSym.h"
 #include "pgl/PglStringSym.h"
 #include "pgl/PglArraySym.h"
+#include "pgl/PglClonerSym.h"
 
 #include "xstd/rndDistrs.h"
 #include "xstd/gadgets.h"
@@ -51,8 +52,11 @@ SynSym *ArraySym::dupe(const String &type) const {
 	String itemType;
 	if (const char *p = type.str("[]"))
 		itemType = type(0, p-type.cstr());
-	else
+	else {
+		if (!isA(type))
+			return 0;
 		itemType = theItemType;
+	}
 
 	ArraySym *clone = create(itemType);
 	clone->warnedBadProbs = warnedBadProbs;
@@ -317,15 +321,56 @@ RndDistr *ArraySym::makeSelector(const String &name) {
 
 // same as ContainerSym::forEach but probably faster because it
 // does not use item()
-void ArraySym::forEach(Visitor &v) const {
+void ArraySym::forEach(Visitor &v, RndGen *const rng) const {
 	for (int i = 0; i < theItems.count(); ++i) {
+		if (rng) {
+			const double p = explProb(i);
+			if (p >= 0 && !rng->event(p))
+				continue;
+		}
+
 		const SynSym *s = theItems[i];
 		if (nested && s->isA(ContainerSym::TheType)) {
 			const ContainerSym &c =
 				(const ContainerSym&)s->cast(ContainerSym::TheType);
-			c.forEach(v);
+			c.forEach(v, rng);
 		} else {
 			v.visit(*s);
 		}
 	}
+}
+
+bool ArraySym::GetNestedArraysFromItem(Array<const ArraySym*> &arrays, const SynSym *item) {
+	if (item->isA(ClonerSym::TheType)) {
+		const ClonerSym &c = (const ClonerSym&)item->cast(ClonerSym::TheType);
+		for (int i = 0; i < c.cloneFactor(); ++i) {
+			if (!GetNestedArraysFromItem(arrays, c.cloneSource()))
+				return false;
+		}
+		return true; // even if added nothing
+	}
+
+	if (item->isA(ArraySym::TheType)) {
+		int nestedContainers = 0;
+		const ArraySym &array = (const ArraySym&)item->cast(ArraySym::TheType);
+
+		for (int i = 0; i < array.theItems.count(); ++i) {
+			if (array.theItems[i]->isA(ArraySym::TheType) || array.theItems[i]->isA(ClonerSym::TheType)) {
+				if (!GetNestedArraysFromItem(arrays, array.theItems[i]))
+					return false;
+				++nestedContainers;
+			}
+		}
+
+		if (!nestedContainers) {
+			// deepest level: no containers inside the item
+			arrays.append(&array);
+			return true;
+		}
+
+		// check that all array elements were appropriate containers
+		return nestedContainers == array.theItems.count();
+	}
+
+	return false; // item of a wrong type
 }

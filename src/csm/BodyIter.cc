@@ -7,6 +7,7 @@
 
 #include "base/ObjId.h"
 #include "base/RndPermut.h"
+#include "runtime/HttpPrinter.h"
 #include "runtime/httpText.h"
 #include "runtime/IOBuf.h"
 #include "csm/ContentCfg.h"
@@ -16,11 +17,16 @@
 BodyIter::BodyIter(): theContentCfg(0), theBuf(0), theContentHash(-1) {
 }
 
-void BodyIter::contentSize(Size aContentSize) {
+void BodyIter::contentSize(Size aContentSize, Size aSuffixSize) {
 	theContentSize = aContentSize;
+	theSuffixSize = aSuffixSize;
 }
 
 Size BodyIter::contentSize() const {
+	if (!theSuffixSize.known()) {
+		theSuffixSize = Should(theContentCfg && theOid) ?
+			theContentCfg->calcContentSuffixSize(theOid) : Size(0);
+	}
 	// assumes response size is always known
 	if (!theContentSize.known())
 		calcContentSize();
@@ -29,6 +35,20 @@ Size BodyIter::contentSize() const {
 
 Size BodyIter::fullEntitySize() const {
 	return contentSize();
+}
+
+Size BodyIter::middleSizeLeft() const {
+	if (!ShouldUs(theContentSize.known()))
+		return theContentSize;
+
+	if (!(ShouldUs(theSuffixSize <= theContentSize)))
+		return 0;
+
+	const Size middleGoal = theContentSize - theSuffixSize;
+	if (theBuiltSize >= middleGoal)
+		return 0;
+
+	return middleGoal - theBuiltSize;
 }
 
 void BodyIter::calcContentSize() const {
@@ -63,10 +83,16 @@ bool BodyIter::pouredAll() const {
 	return theContentSize.known() && theBuiltSize >= theContentSize;
 }
 
+// By default, pour() handles body prefix, middle, and suffix parts.
+// BodyIterators that do not have those parts override this implementation.
 bool BodyIter::pour() {
 	if (theBuiltSize == 0)
 		pourPrefix();
-	return pourBody();
+	if (!pourMiddle())
+		return false;
+	if (canPour() && !middleSizeLeft())
+		pourSuffix();
+	return true;
 }
 
 void BodyIter::pourPrefix() {
@@ -74,15 +100,40 @@ void BodyIter::pourPrefix() {
 		theBuiltSize += theContentCfg->pourContentPrefix(theOid, *theBuf);
 }
 
-void BodyIter::putHeaders(ostream &os) const {
+void BodyIter::pourSuffix() {
+	if (Should(theContentCfg && theBuf))
+		theBuiltSize += theContentCfg->pourContentSuffix(theOid, *theBuf);
+}
+
+// kids must override either this method or pour() that calls this method
+bool BodyIter::pourMiddle() {
+	Assert(false);
+	return false;
+}
+
+bool BodyIter::pourRandom(const Size upToSz) {
+	const Size rndOff = IOBuf::RandomOffset(offSeed(), theBuiltSize);
+	const RndBuf &rndBuf = theContentCfg->rndBuf();
+	const Size poured = theBuf->appendRndUpTo(rndOff, upToSz, rndBuf);
+	theBuiltSize += poured;
+	return poured > 0;
+}
+
+void BodyIter::putHeaders(HttpPrinter &hp) const {
+	if (hp.putHeader(hfpContLength)) {
 	const Size clen = contentSize();
 	Assert(clen.known());
-	os << hfpContLength << (int)clen << crlf;
+	// Debug suffix addition via HTTP headers. TODO: Make this configurable.
+	//if (theSuffixSize.known())
+	// 	hp << "X-Suffix-Length: " << theSuffixSize.byte() << crlf;
+	hp << clen.byte() << crlf;
+	}
 
-	if (theContentCfg->theMimeType)
-		os << hfpContType << theContentCfg->theMimeType << crlf;
+	if (theContentCfg->theMimeType &&
+		hp.putHeader(hfpContType))
+		hp << theContentCfg->theMimeType << crlf;
 	if (theOid.gzipContent())
-		os << hfGzipContentEncoding;
+		hp.putHeader(hfGzipContentEncoding);
 }
 
 void BodyIter::putBack() {

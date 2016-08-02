@@ -68,8 +68,8 @@ const SynSym *NetAddrRangeSym::itemProb(int idx, double &prob) const {
 	return theAddr;
 }
 
-void NetAddrRangeSym::forEach(Visitor &v) const {
-	ContainerSym::forEach(v);
+void NetAddrRangeSym::forEach(Visitor &v, RndGen *const rng) const {
+	ContainerSym::forEach(v, rng);
 }
 
 ostream &NetAddrRangeSym::print(ostream &os, const String &) const {

@@ -18,6 +18,7 @@ class FtpCltXact: public CltXact {
 		// setup and execution
 		virtual PipelinedCxm *getPipeline();
 		virtual void pipeline(PipelinedCxm *aMgr);
+		virtual void freezeProxyAuth() {} // our scheme does not change
 		void exec(Connection *const aConn);
 		void finish(Error err);
 
@@ -32,7 +33,7 @@ class FtpCltXact: public CltXact {
 		virtual bool controlledPostWrite(Size &size, bool &needMore);
 		virtual bool controlledMasterRead();
 
-		virtual HttpAuthScheme proxyAuth() const;
+		virtual AuthPhaseStat::Scheme proxyStatAuth() const;
 
 	protected:
 		virtual void makeReq(WrBuf &buf);

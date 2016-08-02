@@ -74,7 +74,7 @@ bool RecSym::arrayHasElem(const String &array, const String &elem) const {
 
 	if (ArraySym *a = getArraySym(array)) {
 		a->copyProbs(tprobs);
-		ArraySymExportM(StringSym, *a, StringSym::TheType, types);
+		a->exportA(types);
 		for (int i = 0; i < types.count(); ++i)
 			if (types[i]->val() == elem &&
 				tprobs[i] > 0)

@@ -8,11 +8,7 @@
 
 #include "pgl/AgentSym.h"
 
-class RobotSym;
-class ServerSym;
-class CacheSym;
-
-// server side configuration
+// abused to configure Robot side of SSL-to-proxy connections
 class ProxySym: public AgentSym {
 	public:
 		static const String TheType;
@@ -22,11 +18,6 @@ class ProxySym: public AgentSym {
 		ProxySym(const String &aType, PglRec *aRec);
 
 		virtual bool isA(const String &type) const;
-
-		RobotSym *client() const;
-		ServerSym *server() const;
-		AgentSym *side(const String &sideType) const;
-		CacheSym *cache() const;
 
 	protected:
 		virtual SynSym *dupe(const String &dType) const;

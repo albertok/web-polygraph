@@ -1,0 +1,10 @@
+IpSocket.o: IpSocket.cc /usr/include/stdc-predef.h ../../src/xstd/xstd.h \
+ ../../src/config.h ../../src/post-config.h
+
+/usr/include/stdc-predef.h:
+
+../../src/xstd/xstd.h:
+
+../../src/config.h:
+
+../../src/post-config.h:

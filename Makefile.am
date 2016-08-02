@@ -1,16 +1,17 @@
 ## Process this file with automake to produce Makefile.in
 
-SUBDIRS		= . src workloads tools
+SUBDIRS		= . src workloads tools import
 
-noinst_HEADERS = post-config.h
+dist_doc_DATA = \
+	CONTRIBUTORS \
+	LICENSE \
+	NOTICE \
+	README \
+	change.log
 
 EXTRA_DIST = \
 	common.h2m \
-	change.log \
 	INSTALL \
-	README \
-	LICENSE \
-	NOTICE \
 	bootstrap.sh
 
 notrans_dist_man7_MANS = polygraph.man

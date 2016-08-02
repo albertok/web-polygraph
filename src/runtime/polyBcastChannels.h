@@ -26,11 +26,17 @@ extern BcastChannel *TheConnIdleBegChannel;
 extern BcastChannel *TheConnIdleEndChannel;
 extern BcastChannel *TheConnSslActiveChannel;
 extern BcastChannel *TheConnSslInactiveChannel;
+extern BcastChannel *TheConnSslEstablishedChannel;
+
+extern BcastChannel *TheConnTunnelEstablishedChannel;
 
 extern BcastChannel *TheXactBegChannel;
 extern BcastChannel *TheXactEndChannel;
 extern BcastChannel *TheXactErrChannel;
 extern BcastChannel *TheXactRetrChannel;
+
+extern BcastChannel *TheCompoundXactBegChannel;
+extern BcastChannel *TheCompoundXactEndChannel;
 
 extern BcastChannel *TheIcpXactBegChannel;
 extern BcastChannel *TheIcpXactEndChannel;

@@ -61,6 +61,14 @@ String::String(const char *s, int len): theBuf(0) {
 	}
 }
 
+String::String(const Area &a): theBuf(0) {
+	set(String(a.data(), a.size()));
+}
+
+String::String(const std::string &s): theBuf(0) {
+	set(String(s.data(), s.length()));
+}
+
 void String::set(const char *s) {
 	if (theBuf)
 		theBuf = theBuf->abandon();
@@ -176,6 +184,10 @@ bool String::casePrefixOf(const char *buf, int size) const {
 		return l <= size && !strncasecmp(theBuf->theBuf, buf, l);
 	else
 		return true; // empty string is always a prefix?
+}
+
+bool String::endsWith(const String &s) const {
+	return endsWith(s.cstr(), s.len());
 }
 
 bool String::endsWith(const char *buf, int size) const {

@@ -13,7 +13,6 @@
 #include "base/AddrParsers.h"
 #include "base/polyLogCats.h"
 #include "runtime/ErrorMgr.h"
-#include "runtime/XactAbortCoord.h"
 #include "runtime/HostMap.h"
 #include "runtime/HttpCookies.h"
 #include "runtime/HttpDate.h"
@@ -379,10 +378,10 @@ bool MsgHdr::parseXRemWorld(const char *buf, const char *eoh) {
 }
 
 bool MsgHdr::parseXAbort(const char *buf, const char *) {
-	int whether = 0;
-	int where = 0;
+	RndGen::Seed whether = 0;
+	RndGen::Seed where = 0;
 	const char *p = 0;
-	if (isInt(buf, whether, &p) && *p == ' ' &&	isInt(p+1, where)
+	if (isInt64(buf, whether, &p) && *p == ' ' && isInt64(p+1, where)
 		&& whether && where) {
 		theAbortCoord.configure(whether, where);
 		return true;
@@ -461,7 +460,9 @@ void MsgHdr::Configure(MsgHdrParsTab &tab) {
 
 int MsgHdr::AddParser(const String &field, Parser parser, MsgHdrParsTab &where) {
 	Assert(field);
-	const String trimmedField = isspace(field.last()) ? field(0, field.len()-1) : field;
+	// remove trailing space from "Header: " (but not from "METHOD ") fields
+	const String trimmedField = isspace(field.last()) && field.chr(':') ?
+		field(0, field.len()-1) : field;
 	Assert(trimmedField);
 
 	const int id = where.ids->add(trimmedField);
@@ -638,7 +639,7 @@ bool ReqHdr::parseRange(const char *buf, const char *eoh) {
 	return !theRanges.empty();
 }
 
-bool ReqHdr::parseExpect(const char *buf, const char *eoh) {
+bool ReqHdr::parseExpect(const char *buf, const char *) {
 	if (!strncasecmp("100-continue", buf, 12)) {
 		expect100Continue = true;
 		return true;

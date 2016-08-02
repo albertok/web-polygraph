@@ -13,6 +13,7 @@
 #include <fstream>
 
 #include "xstd/Rnd.h"
+#include "xstd/StringIdentifier.h"
 #include "xstd/gadgets.h"
 #include "base/RndPermut.h"
 #include "base/BStream.h"
@@ -23,6 +24,7 @@
 #include "runtime/IOBuf.h"
 #include "runtime/LogComment.h"
 #include "runtime/ErrorMgr.h"
+#include "runtime/MimeHeadersCfg.h"
 #include "runtime/polyErrors.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/httpText.h"
@@ -31,12 +33,14 @@
 #include "csm/EmbedContMdl.h"
 #include "csm/RndBodyIter.h"
 #include "csm/CdbBodyIter.h"
+#include "csm/RamFileBodyIter.h"
 #include "csm/ContainerBodyIter.h"
 #include "csm/InjectIter.h"
 #include "csm/GzipEncoder.h"
 #include "csm/RangeBodyIter.h"
 #include "csm/cdbEntries.h"
 #include "csm/ContentDbase.h"
+#include "csm/RamFiles.h"
 #include "csm/TextDbase.h"
 #include "csm/ObjLifeCycle.h"
 #include "csm/ContentCfg.h"
@@ -52,17 +56,23 @@ ContentCfg::ContentCfg(int anId):
 	theObjLifeCycle(0), theChbRatio(-1), theChecksumRatio(-1),
 	theUniqueRatio(-1), theSize(0),
 	theEmbedCont(0), theCdb(0),
+	theRamFiles(0),
+	theInjectionAlgorithm(ialgNone),
 	theTdb(0), theInjGap(0), theInfProb(-1),
 	theExtSel(0), thePfxSel(0),
-	theNewPerOid(0), theId(anId), 
+	theId(anId),
 	theEncodings(new int[codingEnd]),
-	theClientBehaviorSym(0) {
+	theMimeHeaders(0),
+	theClientBehaviorSym(0),
+	generateText(true) {
 	theObjLifeCycle = new ObjLifeCycle;
 }
 
 ContentCfg::~ContentCfg() {
 	delete theObjLifeCycle;
 	delete[] theEncodings;
+	delete theMimeHeaders;
+	delete theRamFiles;
 }
 
 void ContentCfg::configure(const ContentSym &cfg) {
@@ -70,7 +80,7 @@ void ContentCfg::configure(const ContentSym &cfg) {
 	if (!theKind)
 		theKind = DefaultContentCfgKind;
 
-	ContTypeStat::RecordKind(id(), kind());
+	ContType::Record(id(), kind());
 
 	if (MimeSym *mime = cfg.mime()) {
 		theMimeType = mime->mimeType();
@@ -117,6 +127,24 @@ void ContentCfg::configure(const ContentSym &cfg) {
 		if (!theCdb->count())
 			Comment << "error: no entries in '" << cdbName 
 				<< "' content database" << endc << xexit;
+		if (!theEmbedCont && theCdb->hasLinkOrPage())
+			Comment << "error: content cfg `" << theKind << "': " <<
+				"Content::may_contain is needed but missing" << endc << xexit;
+	}
+
+	if (const String &documentRoot = cfg.documentRoot()) {
+		if (theCdb)
+			Comment(0) << "error: Content document_root and content_db are mutually exclusive" << endc << xexit;
+
+		theRamFiles = new RamFiles(documentRoot);
+		theRamFiles->load();
+		if (!theRamFiles->count()) {
+			Comment(0) << "error: no valid files in Content " << theKind <<
+				" document_root: " << documentRoot << endc << xexit;
+		}
+		Comment(1) << "fyi: loaded " << theRamFiles->count() << " files from " <<
+			"Content " << theKind << " document_root " << documentRoot <<
+			"; approximate RAM used: " << theRamFiles->ramSize() << endc;
 	}
 
 	//if (theEmbedCont && theCdb)
@@ -125,13 +153,45 @@ void ContentCfg::configure(const ContentSym &cfg) {
 	//		<< "do not use may_contain with content_db"
 	//		<< endc << xexit;
 
-	if (!theSize && !theCdb)
+	if (!theSize && !theCdb && !theRamFiles)
 		Comment << "error: content cfg `" << theKind << "': "
 			<< "has neither size distribution nor content_db; "
 			<< "either one or both must be specified for "
 			<< "Polygaph to know what object sizes this content type "
 			<< "should generate"
 			<< endc << xexit;
+
+	configureInjections(cfg);
+
+	configureEncodings(cfg);
+
+	configureRndGeneration(cfg);
+
+	theClientBehaviorSym = cfg.clientBehavior();
+}
+
+void ContentCfg::configureInjections(const ContentSym &cfg) {
+
+	if (const String &objKind = cfg.injectObject()) {
+		// convert external inject_object into internal InjectionAlgorithm
+		static StringIdentifier knownKinds;
+		if (!knownKinds.count()) {
+			knownKinds.add("db_text", ialgTextBetweenMarkup);
+			knownKinds.add("request_uri", ialgUriAtEnd);
+		}
+
+		const int id = knownKinds.lookup(objKind);
+		if (id <= 0) {
+			cerr << cfg.loc() << "unknown inject_object '" << objKind <<
+				"'; known objects are:";
+			for (StringIdentifier::Iter i = knownKinds.iterator(); i; ++i)
+				cerr << ' ' << i.str();
+			cerr << endl;
+			exit(-2);
+		}
+
+		theInjectionAlgorithm = static_cast<InjectionAlgorithm>(id);
+	}
 
 	if (const String &tdbName = cfg.injectDb()) {
 		ifstream f(tdbName.cstr());
@@ -143,22 +203,53 @@ void ContentCfg::configure(const ContentSym &cfg) {
 		if (!theTdb->count())
 			Comment << "error: text database `"
 				<< tdbName << " appears to be empty" << endc << xexit;
+
+		if (!theInjectionAlgorithm)
+			theInjectionAlgorithm = ialgTextBetweenMarkup; // default for tdb
 	}
 
 	theInjGap = cfg.injectGap();
+	
+	const bool explicitProb = cfg.infectProb(theInfProb);
+	configureMimeHeaders(cfg);
 
 	// XXX: we should put all inject* fields into one PGL object
-	if (cfg.infectProb(theInfProb) != (theTdb != 0) || 
-		(theTdb != 0) != (theInjGap != 0)) {
-		Comment << "error: content cfg `" << theKind << "': "
-			<< "`infect_prob' requires `inject_db' requires `inject_gap'"
-			<< " and vice versa" 
-			<< endc << xexit;
+	// does it look like we need to inject?
+	const char *need = 0;
+	if (explicitProb)
+		need = "infect_prob";
+	if (theInjectionAlgorithm)
+		need = "inject_object";
+	if (theTdb)
+		need = "inject_db";
+	if (theInjGap)
+		need = "inject_gap";
+	if (!need)
+		return;
+
+	// do we have what it takes?
+	const char *error = 0;
+	if (!explicitProb)
+		error = "lacks infect_prob";
+	if (!theInjectionAlgorithm && !theTdb)
+		error = "lacks either inject_object or inject_db";
+	if (theTdb && theInjectionAlgorithm != ialgTextBetweenMarkup) {
+		need = "inject_db";
+		error = "uses a conflicting inject_object value";
 	}
+	if (theTdb && !theInjGap) {
+		need = "inject_db";
+		error = "lacks inject_gap";
+	}
+	if (theInjGap && !theTdb) {
+		need = "inject_gap";
+		error = "lacks inject_db";
+	}
+	if (!error)
+		return;
 
-	configureEncodings(cfg);
-
-	theClientBehaviorSym = cfg.clientBehavior();
+	Comment << cfg.loc() << "error: content cfg '" << theKind << "' " <<
+			"has " << need << " but " << error << endc << xexit;
 }
 
 void ContentCfg::configureEncodings(const ContentSym &cfg) {
@@ -172,7 +263,7 @@ void ContentCfg::configureEncodings(const ContentSym &cfg) {
 				theEncodings[codingIdentity] = 0;
 			else
 			if (encoding == "gzip") {
-				if (Deflator::Supported) {
+				if (zlib::Supported) {
 					theEncodings[codingGzip] = 6;
 				} else {
 					Comment << "error: support for 'gzip' content encoding " <<
@@ -189,6 +280,25 @@ void ContentCfg::configureEncodings(const ContentSym &cfg) {
 	}
 }
 
+void ContentCfg::configureMimeHeaders(const ContentSym &cfg) {
+	if (const ArraySym *const a = cfg.mimeHeaders())
+		theMimeHeaders = new MimeHeadersCfg(*a);
+}
+
+void ContentCfg::configureRndGeneration(const ContentSym &cfg) {
+	const String generator = cfg.generator();
+	if (!generator.len() || generator == "random_text")
+		generateText = true;
+	else
+	if (generator == "random_data")
+		generateText = false;
+	else {
+		Comment << "error: unknown content generation method " << generator <<
+			" in content cfg '" << theKind << "'; known methods are " <<
+			"random_text and random_data" << endc << xexit;
+	}
+}
+
 const String &ContentCfg::url_ext(int seed) const {
 	return pickStr(theExtensions, theExtSel, seed);
 }
@@ -198,11 +308,14 @@ const String &ContentCfg::url_pfx(int seed) const {
 }
 
 double ContentCfg::repSizeMean() const {
-	Assert(theSize || theCdb);
+	Assert(theSize || theCdb || theRamFiles);
 	if (theSize)
 		return RndDistrStat(theSize).mean();
 	else
+	if (theCdb)
 		return theCdb->entrySizeMean();
+	else
+		return theRamFiles->fileSizeMean();
 }
 
 bool ContentCfg::multipleContentCodings() const {
@@ -225,24 +338,28 @@ bool ContentCfg::calcContentCoding(ObjId &oid, const ReqHdr &req) const {
 	return true;
 }
 
-Size ContentCfg::calcRawRepSize(const ObjId &oid) const {
-	Assert(theSize || theCdb);
+Size ContentCfg::calcRawRepSize(const ObjId &oid, Size *suffixSizePtr) const {
+	Assert(theSize || theCdb || theRamFiles);
+	// make sure both prefix and suffix fit
+	const Size suffixSize = calcContentSuffixSize(oid);
+	const Size extras = calcContentPrefixSize(oid) + suffixSize;
+	if (suffixSizePtr)
+		*suffixSizePtr = suffixSize;
 	if (theSize) {
 		const int seed = GlbPermut(contentHash(oid), rndRepSize);
 		theSize->rndGen()->seed(seed);
 		const double dh = theSize->trial();
 		// prevent int overflows and leave room for headers
-		// make sure uniquePrefix fits
-		const Size contentPrefixSize = calcContentPrefixSize(oid);
-		Size sz = (int)MiniMax((double)contentPrefixSize, 
+		Size sz = (int)MiniMax((double)extras, 
 			ceil(dh), (double)INT_MAX - 100*1024);
 		// paranoid sanity checks
-		if (!Should(sz >= contentPrefixSize))
-			sz = contentPrefixSize;
+		if (!Should(sz >= extras))
+			sz = extras;
 		if (!Should(sz >= 0))
 			sz = 0;
 		return sz;
-	} else {
+	} else
+	if (theCdb) {
 		const int start = selectCdbStart(oid);
 		CdbEntryPrnOpt opt;
 		// assume that buf, injector, and rng are not needed
@@ -250,7 +367,10 @@ Size ContentCfg::calcRawRepSize(const ObjId &oid) const {
 		opt.embed.container = oid;
 		opt.sizeMax = Size(INT_MAX); // Size::Max();
 		opt.entryOff = 0;
-		return theCdb->entry(start)->size(opt);
+		return theCdb->entry(start)->size(opt) + extras;
+	} else {
+		const Size fileSize = ramFile(oid).body.len();
+		return fileSize + extras;
 	}
 }
 
@@ -289,6 +409,13 @@ xstd::Checksum ContentCfg::calcChecksum(const ObjId &oid) {
 	return checkAlg.sum();
 }
 
+bool ContentCfg::shouldInject(const ObjId &oid) const {
+	if (theInfProb <= 0)
+		return false;
+	RndGen rng(GlbPermut(contentHash(oid), rndInjProb));
+	return rng.event(theInfProb);
+}
+
 Size ContentCfg::calcContentPrefixSize(const ObjId &oid) const {
 	switch (contentUniqueness(oid)) {
 		case cuUnique: {
@@ -304,6 +431,17 @@ Size ContentCfg::calcContentPrefixSize(const ObjId &oid) const {
 	}
 }
 
+Size ContentCfg::calcContentSuffixSize(const ObjId &oid) const {
+	if (theInjectionAlgorithm != ialgUriAtEnd)
+		return 0; // no suffix configured at all
+
+	if (!shouldInject(oid))
+		return 0; // this object does not need a suffix
+
+	WrBuf buf;
+	return pourContentSuffix(oid, buf);
+}
+
 Size ContentCfg::pourContentPrefix(const ObjId &oid, IOBuf &buf) const {
 	switch (contentUniqueness(oid)) {
 		case cuUnique:
@@ -317,6 +455,28 @@ Size ContentCfg::pourContentPrefix(const ObjId &oid, IOBuf &buf) const {
 		default:
 			return 0;
 	}
+}
+
+// A simpler implementation would overwrite the tail of the poured response,
+// but that does not work for tiny responses, may malform some cdb entries,
+// and may even overwrite already buffered headers.
+Size ContentCfg::pourContentSuffix(const ObjId &oid, IOBuf &buf) const {
+	if (theInjectionAlgorithm != ialgUriAtEnd)
+		return 0; // OK, no suffix configured at all
+
+	if (!shouldInject(oid))
+		return 0; // OK, this object does not need a suffix
+
+	// will need to be larger if we want to accomodate "long" foreign URIs
+	char sfx[8*1024];
+	ofixedstream os(sfx, sizeof(sfx));
+	const Size size = pourUri(oid, os);
+	if (size <= buf.spaceSize()) {
+		buf.append(sfx, size);
+		return size;
+	}
+	Should(size <= buf.capacity());
+	return 0; // and wait for the buffer to drain
 }
 
 int ContentCfg::contentUniqueness(const ObjId &oid) const {
@@ -336,16 +496,33 @@ int ContentCfg::contentUniqueness(const ObjId &oid) const {
 Size ContentCfg::pourUniqueContentPrefix(const ObjId &oid, IOBuf &buf) const {
 	// mimic Oid2Url() but do not use TheViservs and such, just indeces
 	ofixedstream os(buf.space(), buf.spaceSize());
-	os << 'u' << hex << setfill('0') <<
-		'v' << setw(3) << oid.viserv() << '/' <<
-		'w' << oid.world() << '/' <<
-		't' << setw(2) << oid.type() << '/' <<
-		'_' << setw(8) << ' ';
-	os.flush();
-	const Size size = (std::streamoff)os.tellp();
+	const Size size = pourUri(oid, os);
 	Should(size < buf.spaceSize()); // otherwise may be too big
 	buf.appended(size);
 	return size;
+}
+
+Size ContentCfg::pourUri(const ObjId &oid, ostream &os) const {
+	// mimic Oid2Url() but do not use TheViservs and such, just indeces
+	// if we need to allow truncated URIs, we can start with oid.hash()
+
+	os.write(" u:", 3); // a prefix to ease debugging/tracing
+	if (oid.foreignUrl()) {
+		os << oid.foreignUrl();
+	} else {
+		os << hex << setfill('0');
+		if (oid.secure())
+			os.write("s/", 2);
+		else
+			os << oid.scheme() << '/';
+		os << 'v' << setw(3) << oid.viserv() << '/' <<
+			'w' << oid.world() << '/' <<
+			't' << setw(2) << oid.type() << '/' <<
+			'_' << setw(16) << oid.name();
+	}
+	os << ' ';
+	os.flush();
+	return static_cast<std::streamoff>(os.tellp()); // poured size
 }
 
 int ContentCfg::contentHash(const ObjId &oid) const {
@@ -359,6 +536,12 @@ int ContentCfg::selectCdbStart(const ObjId &oid) const {
 	Assert(theCdb);
 	RndGen rng(GlbPermut(contentHash(oid), rndCdbStart));
 	return rng(0, theCdb->count());
+}
+
+const RamFile &ContentCfg::ramFile(const ObjId &oid) const {
+	Assert(theRamFiles && oid);
+	const int index = (oid.name() - 1) % theRamFiles->count();
+	return theRamFiles->fileAt(index);
 }
 
 const String &ContentCfg::pickStr(const Strings &strings, RndDistr *sel, int seed) const {
@@ -382,17 +565,8 @@ double ContentCfg::compContPerCall(const ContentCfg *cc) const {
 	return 0.0;
 }
 
-void ContentCfg::noteNewContProb(ContentCfg *cc, double newProb) {
-	if (cc->id() == id())
-		return;
-
-	if (theEmbedCont)
-		theEmbedCont->noteNewContProb(cc, newProb);
-}
-
-void ContentCfg::newPerOid(double aNewPerOid) {
-	Assert(aNewPerOid > 0);
-	theNewPerOid = aNewPerOid;
+const RndBuf &ContentCfg::rndBuf() const {
+	return generateText ? RndText() : RndBinary();
 }
 
 // XXX: iterators should be farmed, but it is hard because they
@@ -408,9 +582,7 @@ BodyIter *ContentCfg::getBodyIter(const ObjId &oid, const RangeList *const range
 		i->startPos(selectCdbStart(oid));
 
 		if (theTdb) {
-			RndGen rng(GlbPermut(contentHash(oid), rndInjProb));
-			// should we inject this object?
-			if (rng.event(theInfProb)) {
+			if (shouldInject(oid)) {
 				InjectIter *inj = new InjectIter; // XXX: Farm these!
 				inj->creator(this);
 				inj->textDbase(theTdb);
@@ -419,6 +591,11 @@ BodyIter *ContentCfg::getBodyIter(const ObjId &oid, const RangeList *const range
 			}
 		}
 
+		res = i;
+	} else
+	if (theRamFiles) {
+		RamFileBodyIter *i = new RamFileBodyIter;
+		i->file(ramFile(oid));
 		res = i;
 	} else
 	if (theEmbedCont) {
@@ -434,7 +611,9 @@ BodyIter *ContentCfg::getBodyIter(const ObjId &oid, const RangeList *const range
 		// keep in sync with GzipEncoder ctor
 		res->contentCfg(this);
 		res->oidCfg(oid, contentHash(oid));
-		res->contentSize(calcRawRepSize(oid));
+		Size suffixSize;
+		const Size rawRepSize = calcRawRepSize(oid, &suffixSize);
+		res->contentSize(rawRepSize, suffixSize);
 		if (oid.gzipContent())
 			res = new GzipEncoder(theEncodings[codingGzip], res);
 		if (oid.range() && ranges)

@@ -10,6 +10,8 @@
 #include "xstd/Epoll.h"
 #include "runtime/SharedOpts.h"
 #include "runtime/globals.h"
+#include "base/macros.h"
+#include "base/AnyToString.h"
 
 SharedOpts TheOpts;
 
@@ -27,6 +29,7 @@ SharedOpts::SharedOpts():
 	theRunLabel(this,     "label <str>",        "run label"),
 
 	theFDLimit(this,      "fd_limit <int>",     "decrease default fd limit"),
+	thePorts(this,        "ports <port_range>", "TCP port range for explicit binding"),
 
 	theCfgFileName(this,  "config <file>",		"configuration file name"),
 	theCfgDirs(this,      "cfg_dirs <list>",    "directories to search for cfg files"),
@@ -54,12 +57,16 @@ SharedOpts::SharedOpts():
 	theLclRngSeed(this,   "local_rng_seed <int>", "per-process r.n.g. seed", 1),
 	theGlbRngSeed(this,   "global_rng_seed <int>","per-test r.n.g. seed", 1),
 	useUniqueWorld(this,  "unique_world <bool>","use URL set that is unique across runs", true),
+	theWorkerId(this,     "worker <int>", "SMP worker ID", 0),
 	theErrorTout(this,    "hushed_error_tout <time>", "hush frequent error reporting for that long", Time::Sec(60))
 {
 	theDumpFlags.setFlag(dumpErr, dumpAny);
 }
 
 bool SharedOpts::validate() const {
+	if (theWorkerId.wasSet() && theWorkerId <= 0)
+		cerr << ThePrgName << ": SMP worker ID must be positive; got: " << theWorkerId << endl;
+	else
 	if (theLclRngSeed <= 0)
 		cerr << ThePrgName << ": local r.n.g. seed must be positive; got: " << theLclRngSeed << endl;
 	else
@@ -80,4 +87,10 @@ bool SharedOpts::validate() const {
 	else
 		return OptGrp::validate();
 	return false;
+}
+
+String SharedOpts::ExpandMacros(const Opt &opt, const String &str) const {
+	if (opt.name() != "worker")
+		return ExpandMacro(str, "%worker", AnyToString(theWorkerId));
+	return str;
 }

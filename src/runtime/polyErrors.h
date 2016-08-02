@@ -109,6 +109,7 @@ extern const Error errProxyAuthAfterAuth;
 extern const Error errOriginAuthAfterAuth;
 extern const Error errProxyAuthAllowed;
 extern const Error errOriginAuthAllowed;
+extern const Error errAuthHeaderClash;
 extern const Error errAuthBug;
 
 extern const Error errSocksRead;
@@ -160,7 +161,26 @@ extern const Error errFtpBadPasv;
 extern const Error errFtpBadPort;
 extern const Error errFtpNoDataXfer;
 
+extern const Error errGssContextCreate;
+
+extern const Error errNegotiateOrigin;
+
+extern const Error errKerberosAllSrvsFailed;
+extern const Error errKerberosAuthFailed;
+extern const Error errKerberosCredsWithMacros;
+extern const Error errKerberosCredsInit;
+extern const Error errKerberosAsInit;
+extern const Error errKerberosKdcTimeout;
+extern const Error errKerberosPrincipal;
+extern const Error errKerberosTicket;
+extern const Error errKerberosCtxState;
+extern const Error errKerberosTgt;
+extern const Error errKerberosNoTgt;
+extern const Error errKerberosTcpPfx;
+extern const Error errKerberosKdcEof;
+
 extern const Error errNegativePhase;
+extern const Error errPglScript;
 extern const Error errOther;
 
 #endif

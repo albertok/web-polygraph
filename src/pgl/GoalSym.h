@@ -23,9 +23,9 @@ class GoalSym: public RecSym {
 		virtual bool isA(const String &type) const;
 
 		Time duration() const;
-		bool xactCount(int &count) const;
+		bool xactCount(Counter &count) const;
 		bool fillSize(BigSize &sz) const;
-		bool errs(double &ratio, int &count) const;
+		bool errs(double &ratio, Counter &count) const;
 
 	protected:
 		virtual SynSym *dupe(const String &dType) const;

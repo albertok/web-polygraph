@@ -37,11 +37,19 @@ class ArraySym: public ContainerSym {
 		bool cadd(const SynSym &s, double prob = -1);
 		bool append(const ArraySym &arr);
 
+		// flattens and exports Items
+		template <class Item>
+		int exportA(Array<Item*> &arr) const;
+
+		// exports Arrays of Items
+		template <class Item>
+		bool exportNestedArrays(Array< Array<Item*> > &arr) const;
+
 		// rnd distr of array idxes that matches item probabilities
 		RndDistr *makeSelector(const String &name);
 		void copyProbs(Array<double> &res) const;
 
-		virtual void forEach(Visitor &v) const;
+		virtual void forEach(Visitor &v, RndGen *const rng = 0) const;
 
 		virtual ExpressionSym *bnOper(const Oper &op, const SynSym &exp) const;
 
@@ -58,9 +66,12 @@ class ArraySym: public ContainerSym {
 		double actualProb(double p) const;
 		double explProb(int firstLevelOff) const;
 
+		// a helper for the exportNestedArrays() template; does no type casting
+		static bool GetNestedArraysFromItem(Array<const ArraySym*> &arrays, const SynSym *item);
+
 	protected:
 		Array<SynSym*> theItems;   // array [top-level] members
-		String theItemType;        // set when known
+		const String theItemType;  // set when known
 
 		Array<double> theProbs;     // explicit probs for each item
 		bool nested; // this array contains other containers
@@ -70,51 +81,38 @@ class ArraySym: public ContainerSym {
 
 /* template to transform array symbol into arrays of symbols/items
  * the only reason to use a template is to avoid a[i] casting
- * think: maybe the array symbol should be a template instead??
- */
+ * think: maybe the array symbol should be a template instead?? */
+template <class Item>
+int ArraySym::exportA(Array<Item*> &arr) const {
+	arr.stretch(count());
+	for (int i = 0; i < count(); ++i) {
+		Item *const item = &((Item&)(*this)[i]->cast(Item::TheType));
+		arr.append(item);
+	}
+	return arr.count();
+}
 
-#ifdef COMPILER_CAN_HANDLE_NONTRIVIAL_TEMPLATES
+template <class Item>
+bool ArraySym::exportNestedArrays(Array< Array<Item*> > &arr) const {
+	if (!nested)
+		return false;
 
-	template <class Item>
-	int ArraySymExportT(const ArraySym &as, const char *typeName, 
-		Array<Item*> &arr, Array<double> *probs = 0) {
+	Array<const ArraySym*> arrays;
+	for (int i = 0; i < theItems.count(); ++i) {
+		if (!GetNestedArraysFromItem(arrays, theItems[i]))
+			return false;
+	}
 
-		arr.stretch(as.count());
-		if (probs)
-			as.copyProbs(*probs);
-		for (int i = 0; i < as.count(); ++i) {
-			Item *item = &((Item&)as[i]->cast(typeName));
-			arr.append(item);
+	for (int i = 0; i < arrays.count(); ++i) {
+		const ArraySym &a = *arrays[i];
+		Array<Item*> arrItem(a.count());
+		for (int j = 0; j < a.count(); ++j) {
+			Item *const item = &((Item&)a[j]->cast(Item::TheType));
+			arrItem.append(item);
 		}
-		return arr.count();
+		arr.append(arrItem);
 	}
-
-#else
-
-	/* macro for template-challanged compilers */
-#	define ArraySymExportM(Item, as, typeName, arr) {          \
-		                                                       \
-		(arr).stretch((as).count());                           \
-		for (int i = 0; i < (as).count(); ++i) {               \
-			Item *item = &((Item&)(as)[i]->cast(typeName));    \
-			(arr).append(item);                                \
-		}                                                      \
-	}
-
-	/* macro for template-challanged compilers */
-#	define ArraySymExportMP(Item, as, typeName, arr, probs)  { \
-		                                                       \
-		(arr).stretch((as).count());                           \
-		if (probs)                                             \
-			(probs)->stretch((as).count());                    \
-		for (int i = 0; i < (as).count(); ++i) {               \
-			Item *item = &((Item&)(as)[i]->cast(typeName));    \
-			(arr).append(item);                                \
-			if (probs)                                         \
-				(probs)->append((as).prob(i));                 \
-		}                                                      \
-	}                                                          
-
-#endif /* COMPILER_CAN_HANDLE_NONTRIVIAL_TEMPLATES */
+	return true;
+}
 
 #endif

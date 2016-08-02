@@ -14,8 +14,8 @@ RepOpts::RepOpts():
 	theVersOpt(this, "version",            "package version info"),
 	theLabel(this,   "label <str>",        "test label"),
 	thePhases(this,  "phases <list>",      "names of phases for executive summary"),
+	theDataDir(this, "data_dir <dir>",     "data directory where stylesheets and scripts are installed", DATA_DIR),
 	theRepDir(this,  "report_dir <dir>",   "report's root directory"),
-	theTmpDir(this,  "tmp_dir <dir>",      "temporary dir", "/tmp"),
 	thePlotter(this, "plotter <exe_file>", "gnuplot location", "gnuplot")
 {
 }

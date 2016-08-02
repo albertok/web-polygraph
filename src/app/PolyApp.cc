@@ -7,9 +7,7 @@
 
 #include "xstd/h/signal.h"
 
-#include <sys/stat.h>
 #include <fstream>
-#include <map>
 #include <memory>
 
 #include "xstd/h/new.h"
@@ -17,10 +15,13 @@
 #include "xstd/h/net/if.h"
 #include "xstd/h/iostream.h"
 #include "xstd/h/iomanip.h"
+#include "xstd/h/os_std.h"
 #include "xstd/h/process.h"  /* for _getpid() on W2K */
+#include "xstd/h/sys/stat.h"
 
 #include "xstd/Socket.h"
 #include "xstd/AlarmClock.h"
+#include "xstd/CpuAffinitySet.h"
 #include "xstd/FileScanner.h"
 #include "xstd/ResourceUsage.h"
 #include "xstd/Rnd.h"
@@ -35,6 +36,7 @@
 #include "base/IpRange.h"
 #include "base/polyLogTags.h"
 #include "base/polyLogCats.h"
+#include "base/PatchRegistry.h"
 #include "runtime/AddrMap.h"
 #include "runtime/HostMap.h"
 #include "runtime/AddrSubsts.h"
@@ -53,6 +55,7 @@
 #include "runtime/PersistWorkSetMgr.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/FtpMsg.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyErrors.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/globals.h"
@@ -73,10 +76,13 @@
 #include "pgl/PhaseSym.h"
 #include "pgl/BenchSym.h"
 #include "pgl/BenchSideSym.h"
+#include "pgl/ProxySym.h"
+#include "runtime/ProxyCfg.h"
 #include "app/DebugSwitch.h"
 #include "app/PolyApp.h"
 #include "app/BeepDoorman.h"
 #include "app/shutdown.h"
+#include "app/WorkersRunner.h"
 #include "server/SrvCfg.h"
 
 
@@ -89,7 +95,7 @@ static void DebugMemSignal(int s);
 /* PolyApp */
 
 PolyApp::PolyApp(): theBeepDoorman(0),
-	isIdle(false), theStateCount(0) {
+	isIdle(false), theStateCount(0), theWorkerCount(0) {
 	theChannels.append(ThePhasesEndChannel);
 }
 
@@ -208,7 +214,7 @@ void PolyApp::checkProgressReport() const {
 void PolyApp::noteMsgStrEvent(BcastChannel *ch, const char *msg) {
 	Assert(ch == ThePhasesEndChannel);
 	// quit now unless we need to wait for inactivity timeout
-	if (TheOpts.theIdleTout < 0)
+	if (TheOpts.theIdleTout < 0 || TheStatPhaseMgr.reachedNegative())
 		ShutdownReason(msg);
 }
 
@@ -232,6 +238,9 @@ bool PolyApp::handleCmdLine(int argc, char *argv[]) {
 	for (int i = 0; i < opts.count(); ++i)
 		if (!opts[i]->validate())
 			return false;
+
+	if (!TheOpts.theLclRngSeed.wasSet() && TheOpts.theWorkerId.wasSet())
+		TheOpts.theLclRngSeed.set(TheOpts.theWorkerId);
 
 	return true;
 }
@@ -286,7 +295,7 @@ void PolyApp::configureRnd() {
 	// set random seeds
 	GlbPermut().reseed(TheOpts.theGlbRngSeed);
 	LclPermut().reseed(TheOpts.theLclRngSeed);
-	RndGen::TheDefSeed = LclPermut(TheOpts.theLclRngSeed);
+	RndGen::DefSeed(LclPermut(TheOpts.theLclRngSeed));
 
 	// use the seed as uid "space" index for non-unique worlds
 	if (!TheOpts.useUniqueWorld)
@@ -317,10 +326,8 @@ void PolyApp::configureHosts() {
 
 	// create selectors for each server configuration symbol
 	// note: we stretch for all agents, not just servers
-	theContentSels.stretch(agents.count());
 	// preset with nil pointers: proxies and robots have no ContentSel
-	theContentSels.count(agents.count());
-	theContentSels.memset(0);
+	theContentSels.resize(agents.count());
 	for (AgentSymIter i(agents, ServerSym::TheType, false); i; ++i) {
 		ContentSel *sel = new ContentSel;
 		sel->configure(static_cast<const ServerSym*>(i.agent())); // XXX:cast()
@@ -348,12 +355,7 @@ void PolyApp::configureHosts() {
 				host << endl << xexit;
 		}
 
-		if (TheHostMap->find(host, idx)) {
-			cerr << here << "server address " << host << 
-				" repeated/use()d twice!" << endl << xexit;
-		}
-
-		HostCfg *hostCfg = TheHostMap->addAt(idx, host);
+		HostCfg *hostCfg = addToHostMap(host, idx);
 
 		if (ContentSel *sel = theContentSels[i.agentIdx()])
 			hostCfg->theContent = sel;
@@ -388,6 +390,20 @@ void PolyApp::configureHosts() {
 				"and/or servers" << endc;
 	}
 
+	for (AgentAddrIter i(agents, ProxySym::TheType); i; ++i) {
+		int idx = -1;
+		const NetAddr &host = i.address();
+		HostCfg *hostCfg = addToHostMap(host, idx);
+
+		const ProxySym *proxy =
+			&dynamic_cast<const ProxySym&>(i.agent()->cast(ProxySym::TheType));
+		ProxyCfg *const proxyCfg = TheProxySharedCfgs.getConfig(proxy);
+		if (proxyCfg->sslActive()) {
+			hostCfg->theHostsBasedCfg = proxy;
+			hostCfg->isSslActive = true;
+		}
+	}
+
 	// add collected addresses to AddrMap
 	for (int i = 0; i < forAddrMap.count(); ++i) {
 		const int hostIdx = forAddrMap[i];
@@ -405,6 +421,15 @@ void PolyApp::configureHosts() {
 		// we do not create public world by default to save RAM if
 		// it happens to be not-needed
 	}
+}
+
+HostCfg *PolyApp::addToHostMap(const NetAddr &host, int &idx) {
+	if (TheHostMap->find(host, idx)) {
+		cerr << here << "server/proxy address " << host <<
+			" repeated/use()d twice!" << endl << xexit;
+	}
+
+	return TheHostMap->addAt(idx, host);
 }
 
 void PolyApp::configureRobotContent(const RobotSym &clt, const String &fieldName) {
@@ -455,8 +480,8 @@ void PolyApp::getFakeIfaces() {
 
 // creates IP addresses for agents to bind to
 void PolyApp::makeAddresses() {
-	Array<NetAddr*> hosts; // host addresses
-	Array<NetAddrSym*> agents; // agent addresses
+	PtrArray<NetAddr*> hosts; // global host addresses
+	PtrArray<NetAddrSym*> agents; // global agent addresses needing IP aliases
 	getHostAddrs(hosts);
 	getAgentAliasAddrs(agents);
 
@@ -468,11 +493,6 @@ void PolyApp::makeAddresses() {
 			<< "; will not attempt to create agent addresses" << endc;
 		streamFreeze(err, false);
 	}
-
-	// cleanup
-	while (hosts.count()) delete hosts.pop();
-	while (agents.count()) delete agents.pop();
-	theIfaces.reset();
 }
 
 // hosts are all host addresses; agents are unique agent addresses
@@ -497,6 +517,8 @@ ostream &PolyApp::makeAddresses(Array<NetAddr*> &hosts, AddrSyms &agents, ostrea
 
 	// create aliases for each local host address
 	int createCount = 0;
+	AliasIndexes aliasIndexes;
+
 	for (int h = 0; h < hosts.count(); ++h) {
 		const NetAddr &host = *hosts[h];
 
@@ -506,7 +528,7 @@ ostream &PolyApp::makeAddresses(Array<NetAddr*> &hosts, AddrSyms &agents, ostrea
 			found = theIfaces[l] == host.addrN();
 
 		if (found)
-			createCount += makeAddresses(h, agents, agentsPerHost);
+			createCount += makeAddresses(h, agents, agentsPerHost, aliasIndexes);
 	}
 
 	if (!createCount) {
@@ -525,30 +547,28 @@ ostream &PolyApp::makeAddresses(Array<NetAddr*> &hosts, AddrSyms &agents, ostrea
 		cerr << xexit;
 	}
 
+	theIfaces.reset(); // no longer complete if we created aliases
+
 	Comment(6) << "fyi: created " << createCount << " agent addresses total" << endc;
+
+	// Give some time for aliases to be created, otherwise we may
+	// get socket binding errors later.  Needed on FreeBSD at least.
+	sleep(1);
+	Clock::Update(false);
+
 	return err;
 }
 
-int PolyApp::makeAddresses(int hidx, AddrSyms &agents, int agentsPerHost) {
-	typedef std::map<String, int> AliasIndexes; // map iface : next free alias index
-	AliasIndexes aliasIndexes;
+int PolyApp::makeAddresses(int hidx, AddrSyms &agents, int agentsPerHost, AliasIndexes& aliasIndexes) {
 	int aliasCount = 0;
 	for (int i = hidx*agentsPerHost; i < agents.count() && aliasCount < agentsPerHost; ++i) {
-
 		const String &ifName = agents[i]->ifName();
 		const NetAddr &addr = agents[i]->val();
 
-		InAddress netmask;
-		if (addr.addrN().family() == AF_INET6) {
-			// fake netmask that is never really used
-			struct in6_addr s6;
-			inet_pton(AF_INET6, "ffff:ffff:ffff:ffff:0:0:0:0", &s6);
-			netmask = InAddress(s6);
-		} else {
-			int subnet;
-			Assert(agents[i]->subnet(subnet));
-			netmask = InAddress::NetMask(subnet);
-		}
+		++aliasCount;
+		int subnet;
+		Assert(agents[i]->subnet(subnet));
+		const InAddress netmask = InAddress::NetMask(addr.addrN().family(), subnet);
 
 		NetIface iface;
 		iface.name(ifName);
@@ -567,8 +587,6 @@ int PolyApp::makeAddresses(int hidx, AddrSyms &agents, int agentsPerHost) {
 				<< ": failed to create new alias (", "")
 				<< ')' << endl << xexit;
 		}
-
-		++aliasCount;
 	}
 	Assert(aliasCount == agentsPerHost);
 	return aliasCount;
@@ -608,6 +626,11 @@ void PolyApp::addUniqueAddrs(AddrSyms *const addrs, const NetAddrSym &s, HostMap
 void PolyApp::getHostAddrs(Array<NetAddr*> &hosts) const {
 	if (PglStaticSemx::TheBench && PglStaticSemx::TheBench->side(sideName()))
 		PglStaticSemx::TheBench->side(sideName())->hosts(hosts);
+}
+
+void PolyApp::getCpuCores(Array< Array<int> > &cpuCores) const {
+	if (PglStaticSemx::TheBench && PglStaticSemx::TheBench->side(sideName()))
+		PglStaticSemx::TheBench->side(sideName())->cpuCoresArray(cpuCores);
 }
 
 // Find unique IP addresses to avoid creation of duplicate aliases on different
@@ -701,7 +724,11 @@ void PolyApp::getAgentAliasAddrs(AddrSyms &addrs) const {
 void PolyApp::makeAgents() {
 	// PglCtx::RootCtx()->report(cout, "");
 
-	makeAddresses(); Clock::Update(false);
+	// workers do not create aliases; the master process does that
+	if (!TheOpts.theWorkerId.wasSet())
+		makeAddresses();
+	Clock::Update(false);
+
 	getIfaces();
 
 	// create and configure agents that are assigned to our host
@@ -724,17 +751,94 @@ void PolyApp::makeAgents() {
 		(void)ifaceMap.addAt(idx, addr);
 	}
 
+	int agentCount = 0; // global
+	Array<const AgentSym*> localAgents;
+	PtrArray<const NetAddr*> localAgentAddreses;
 	AgentSymIter::Agents &agents = PglStaticSemx::TheAgentsToUse;
 	for (AgentAddrIter i(agents, theAgentType); i; ++i) {
+		++agentCount;
 		const NetAddr addr(i.address().addrN(), -1);
 		if (ifaceMap.find(addr)) {
-			makeAgent(*i.agent(), i.address());
-			Clock::Update(false);
-			if (TheClock.time() >= cfgNextReport) {
-				Comment(5) << "created " << setw(6) << theLocals.count() <<
-					" agents so far" << endc;
-				cfgNextReport = TheClock + cfgReportGap; // drift is OK
-			}
+			localAgents.append(i.agent());
+			localAgentAddreses.append(new NetAddr(i.address()) );
+		}
+	}
+
+	PtrArray<NetAddr*> hosts; // global host addresses
+	getHostAddrs(hosts);
+	if (!hosts.empty() && (agentCount % hosts.count())) {
+		Comment(5) << "warning: the number of agent addresses (" <<
+			agentCount << ") is not divisible by the number of real " <<
+			"host addresess (" << hosts.count() << ')'<< endc;
+	}
+
+	Array< Array<int> > cpuCores;
+	getCpuCores(cpuCores);
+
+	Array< Array<int> > localCpuCores;
+	int localHostCount = 0;
+	for (int h = 0; h < hosts.count(); ++h) {
+		const NetAddr &host = *hosts[h];
+		if (ifaceMap.find(host)) {
+			++localHostCount;
+			if (cpuCores.count() > h)
+				localCpuCores.append(cpuCores[h]);
+		}
+	}
+
+	// do not start workers without agents, even if there are cores available
+	const int workerCount = min(localAgents.count(), localHostCount);
+
+	if (workerCount > 1 && !TheOpts.theWorkerId.wasSet()) {
+		// check and warn about the worker load problem in the master process
+		if (const int busierWorkers = localAgents.count() % localHostCount) {
+			Comment(5) << "warning: the number of local agent addresses (" <<
+				localAgents.count() << ") is not divisible by the number " <<
+				"of local host addresess (" << localHostCount << "); " <<
+				"the first " << busierWorkers << " out of " << workerCount <<
+				" workers will host an extra agent" << endc;
+		}
+
+		// the master process does not create agents; workers do that
+		theWorkerCount = workerCount;
+		return;
+	}
+
+	if (!cpuCores.empty() && cpuCores.count() != hosts.count()) {
+		Comment << "error: number of Bench cpu_cores (" << cpuCores.count() <<
+			") differs from the number of Bench hosts (" << hosts.count() <<
+			")" << endc << xexit;
+	}
+
+	int agentBegin = 0; // the first agent that belongs to this worker
+	int agentEnd = 0; // the first agent that belongs to the next worker
+	if (workerCount <= 1)
+		agentEnd = localAgents.count();
+	else
+	if (1 <= TheOpts.theWorkerId && TheOpts.theWorkerId <= workerCount) {
+		// all hosts will get at least that many agents (could be zero)
+		const int agentsPerHost = localAgents.count() / workerCount;
+		// that many hosts will get a single extra agent (could be zero)
+		const int hostsWithExtra = localAgents.count() % workerCount;
+		const bool thisHostNeedsExtra = TheOpts.theWorkerId <= hostsWithExtra;
+		const int hostsToTheLeft = TheOpts.theWorkerId - 1;
+		agentBegin = thisHostNeedsExtra ?
+			(hostsToTheLeft * (agentsPerHost + 1)) :
+			(hostsToTheLeft * agentsPerHost + hostsWithExtra);
+		agentEnd = agentBegin + agentsPerHost + (thisHostNeedsExtra ? 1 : 0);
+	} else {
+		Comment << "error: --worker value " << TheOpts.theWorkerId <<
+			" exceeds the number of local agents " << localAgents.count() <<
+			"; no agents will be started for this worker" << endc;
+	}
+
+	for (int agentIdx = agentBegin; agentIdx < agentEnd; ++agentIdx) {
+		makeAgent(*localAgents[agentIdx], *localAgentAddreses[agentIdx]);
+		Clock::Update(false);
+		if (TheClock.time() >= cfgNextReport) {
+			Comment(5) << "created " << setw(6) << theLocals.count() <<
+				" agents so far" << endc;
+			cfgNextReport = TheClock + cfgReportGap; // drift is OK
 		}
 	}
 
@@ -766,6 +870,33 @@ void PolyApp::makeAgents() {
 
 		cerr << xexit;
 	}
+
+	if (localCpuCores.count()) {
+		const int cpuCoresIndex = TheOpts.theWorkerId.wasSet() ? TheOpts.theWorkerId - 1 : 0;
+		if (cpuCoresIndex < 0 || cpuCoresIndex >= localCpuCores.count()) {
+			Comment(1) << "warning: --worker value " << TheOpts.theWorkerId <<
+				" exceeds the number of local hosts " << localCpuCores.count() <<
+				"; ignoring CPU affinity for this worker" << endc;
+		} else if (localCpuCores[cpuCoresIndex].count()) {
+			CpuAffinitySet cpuAffinitySet;
+			for (int i = 0; i < localCpuCores[cpuCoresIndex].count(); ++i)
+				cpuAffinitySet.reset(localCpuCores[cpuCoresIndex][i], true);
+			ostringstream err;
+			const bool success = cpuAffinitySet.apply(err);
+			if (!success || err.tellp()) {
+				const char *label = success ? "warning: " : "error: ";
+				Comment(1) << label << "problems with setting CPU affinity";
+				if (TheOpts.theWorkerId.wasSet())
+					Comment << " for worker " << TheOpts.theWorkerId;
+				Comment << ':' << std::endl << err.str() << endc;
+				if (!success)
+					Comment << xexit;
+				streamFreeze(err, false);
+			}
+		}
+	}
+
+	theIfaces.reset();
 }
 
 void PolyApp::describeLocals() const {
@@ -832,6 +963,8 @@ void PolyApp::configure() {
 		Socket::TheMaxLevel = TheOpts.theFDLimit;
 	TheOpts.theFDLimit.set(Socket::TheMaxLevel);
 
+	TheContentMgr.configure();
+
 	configureHosts();
 
 	/* statistics */
@@ -868,6 +1001,7 @@ void PolyApp::getOpts(Array<OptGrp*> &opts) {
 
 void PolyApp::parseConfigFile(const String &fname) {
 	Assert(fname);
+	PglStaticSemx::WorkerId(TheOpts.theWorkerId);
 	TheOpts.theCfgDirs.copy(PglPp::TheDirs);
 	// save PGL configuration to log it later
 	thePglCfg = PglStaticSemx::Interpret(fname);
@@ -884,6 +1018,11 @@ void PolyApp::reportCfg() {
 
 	theCmdLine.reportRaw(Comment(1)); Comment << endc;
 	theCmdLine.reportParsed(Comment(2)); Comment << endc;
+
+	if (CountPatches()) {
+		ReportPatches(Comment(0));
+		Comment << endc;
+	}
 
 	// report server configs
 	Comment(7) << "Server content distributions:" << endl;
@@ -921,7 +1060,7 @@ void PolyApp::logCfg() {
 
 void PolyApp::logGlobals() {
 	TheOLog << bege(lgContTypeKinds, lgcAll);
-	ContTypeStat::Store(TheOLog);
+	ContType::Store(TheOLog);
 	TheOLog << ende;
 }
 
@@ -933,7 +1072,7 @@ void PolyApp::flushState() {
 
 // except for random seeds
 void PolyApp::loadPersistence() {
-	ThePersistWorkSetMgr.loadPubWorlds();
+	ThePersistWorkSetMgr.loadUniverses();
 
 	// load per-agent data like private worlds
 	if (IBStream *is = ThePersistWorkSetMgr.loadSideState()) {
@@ -964,7 +1103,7 @@ void PolyApp::loadPersistence() {
 
 // except for random seeds
 void PolyApp::storePersistence() {
-	ThePersistWorkSetMgr.storePubWorlds();
+	ThePersistWorkSetMgr.storeUniverses();
 	// store per-agent data like private worlds
 	if (OBStream *os = ThePersistWorkSetMgr.storeSideState()) {
 		*os << theLocals.count();
@@ -983,10 +1122,22 @@ void PolyApp::logState(OLog &log) {
 	Broadcast(TheLogStateChannel, &log);
 }
 
+int PolyApp::runWorkers(const int argc, char *argv[]) {
+	try {
+		WorkersRunner wr;
+		wr.start(theWorkerCount, argc, argv);
+		wr.monitor();
+		return wr.sawError ? -1 : 0;
+	}
+	catch (const char *reason) {
+		ShutdownReason(reason);
+		return -1;
+	}
+}
+
 void PolyApp::startServices() {
 	TheStatPhaseMgr.start();
 	TheStatCycle->start(); 
-	TheStatsSampleMgr.start();
 	if (theBeepDoorman)
 		theBeepDoorman->start();
 }
@@ -1020,6 +1171,10 @@ int PolyApp::run(int argc, char *argv[]) {
 	reportCfg(); Clock::Update(false);
 	logCfg(); Clock::Update(false);
 	makeAgents(); Clock::Update(false);
+	if (theWorkerCount) {
+		ThePersistWorkSetMgr.close();
+		return runWorkers(argc, argv);
+	}
 
 	loadPersistence();
 	ThePersistWorkSetMgr.closeInput();

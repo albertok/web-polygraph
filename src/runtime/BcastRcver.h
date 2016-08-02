@@ -13,6 +13,7 @@ class Agent;
 class Client;
 class Connection;
 class Xaction;
+class CompoundXactInfo;
 class IcpXaction;
 class PageInfo;
 class OLog;
@@ -30,6 +31,7 @@ class BcastRcver {
 		inline void noteEvent(BcastChannel *ch, const Client *c);
 		inline void noteEvent(BcastChannel *ch, const Connection *c);
 		inline void noteEvent(BcastChannel *ch, const Xaction *x);
+		inline void noteEvent(BcastChannel *ch, const CompoundXactInfo *cx);
 		inline void noteEvent(BcastChannel *ch, const IcpXaction *x);
 		inline void noteEvent(BcastChannel *ch, const PageInfo *p);
 		inline void noteEvent(BcastChannel *ch, const char *msg);
@@ -45,6 +47,7 @@ class BcastRcver {
 		virtual void noteClientEvent(BcastChannel *ch, const Client *c);
 		virtual void noteConnEvent(BcastChannel *ch, const Connection *c);
 		virtual void noteXactEvent(BcastChannel *ch, const Xaction *x);
+		virtual void noteCompoundXactEvent(BcastChannel *ch, const CompoundXactInfo *x);
 		virtual void noteIcpXactEvent(BcastChannel *ch, const IcpXaction *x);
 		virtual void notePageEvent(BcastChannel *ch, const PageInfo *p);
 		virtual void noteMsgStrEvent(BcastChannel *ch, const char *msg);
@@ -77,6 +80,11 @@ void BcastRcver::noteEvent(BcastChannel *ch, const Connection *c) {
 inline
 void BcastRcver::noteEvent(BcastChannel *ch, const Xaction *x) {
 	noteXactEvent(ch, x);
+}
+
+inline
+void BcastRcver::noteEvent(BcastChannel *ch, const CompoundXactInfo *cx) {
+	noteCompoundXactEvent(ch, cx);
 }
 
 inline

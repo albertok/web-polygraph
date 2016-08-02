@@ -14,20 +14,18 @@
 template <class Item>
 class Heap: protected Array<Item> {
 	public:
-		Heap(int aCapacity = 2): Array<Item>(aCapacity), theCnt(0) { this->theCount = 1; }
+		inline Heap(const int capacity = 2);
 
 		int count() const { return theCnt; }
 		bool empty() const { return theCnt <= 0; }
 
-		Item &top() { return this->theItems[1]; }
-		const Item &top() const { return this->theItems[1]; }
-		Item &at(int idx) { return this->theItems[idx+1]; }
+		Item &top() { return this->item(1); }
+		const Item &top() const { return this->item(1); }
+		Item &at(int idx) { return this->item(idx+1); }
 
 		void add(Item v) { this->append(v); floatUp(++theCnt); }
-		void skip() { this->theItems[1] = this->theItems[theCnt--]; this->theCount--; sinkDown(1); }
-		Item shift() { const Item v = this->theItems[1]; skip(); return v; }
-
-		void resize(int aCap) { Array<Item>::stretch(aCap); }
+		void skip() { top() = this->pop(); --theCnt; sinkDown(1); }
+		Item shift() { const Item v = top(); skip(); return v; }
 
 	protected:
 		inline void floatUp(int k);
@@ -42,29 +40,38 @@ class Heap: protected Array<Item> {
 
 template <class Item>
 inline
+Heap<Item>::Heap(const int capacity): Array<Item>(capacity), theCnt(0) {
+	this->resize(1);
+}
+
+template <class Item>
+inline
 void Heap<Item>::floatUp(int k) {
-	const Item v = this->theItems[k];
-	for (int p = k/2; p && this->theItems[p] > v; k = p, p /= 2)
-		this->theItems[k] = this->theItems[p];
-	this->theItems[k] = v;
+	const Item v = this->item(k);
+	for (int p = k/2; p && this->item(p) > v; k = p, p /= 2)
+		this->item(k) = this->item(p);
+	this->item(k) = v;
 }
 
 template <class Item>
 inline
 void Heap<Item>::sinkDown(int k) {
+	if (empty())
+		return;
+
 	const int half = theCnt/2;
-	const Item v = this->theItems[k];
+	const Item v = this->item(k);
 	while (k <= half) {
 		// smallest of the (at most) two kids
 		int j = k*2;
-		if (j < theCnt && this->theItems[j+1] < this->theItems[j])
+		if (j < theCnt && this->item(j+1) < this->item(j))
 			j++;
-		if (v < this->theItems[j])
+		if (v < this->item(j))
 			break;
-		this->theItems[k] = this->theItems[j];
+		this->item(k) = this->item(j);
 		k = j;
 	}
-	this->theItems[k] = v;
+	this->item(k) = v;
 }
 
 #endif

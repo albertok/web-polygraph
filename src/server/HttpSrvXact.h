@@ -35,27 +35,29 @@ class HttpSrvXact: public SrvXact {
 		Error setTarget(const NetAddr &target);
 		void normalizeRanges();
 
-		void make100Continue(ostream &os);
-		void make2xxContent(ostream &os);
+		void make100Continue(HttpPrinter &hp);
+		void make2xxContent(HttpPrinter &hp);
 		bool canMake302Found(ObjId &oid) const;
-		bool make302Found(ostream &os);
+		bool make302Found(HttpPrinter &hp);
 		bool shouldMake302Found() const;
-		void make304NotMod(ostream &os);
+		void make304NotMod(HttpPrinter &hp);
 		bool shouldMake304NotMod() const;
-		void make406NotAcceptable(ostream &os);
-		void make416RequestedRangeNotSatisfiable(ostream &os);
+		void make406NotAcceptable(HttpPrinter &hp);
+		void make416RequestedRangeNotSatisfiable(HttpPrinter &hp);
 		bool shouldMake416RequestedRangeNotSatisfiable() const;
-		void make417ExpectationFailed(ostream &os);
+		void make417ExpectationFailed(HttpPrinter &hp);
 
 		void putResponseLine(ostream &os, const String &suffix);
-		void putStdFields(ostream &os) const;
-		void putXFields(ostream &os) const;
-		void put2xxContentHead(ostream &os);
-		void putRemWorld(ostream &os, const ObjWorld &oldSlice) const;
+		void putStdFields(HttpPrinter &hp) const;
+		void putXFields(HttpPrinter &hp) const;
+		void put2xxContentHead(HttpPrinter &hp);
+		void putRemWorld(HttpPrinter &hp, const ObjWorld &oldWorld) const;
 		void putCookies(ostream &os);
 
-		void openSimpleMessage(ostream &os, const int status, const String &header, const String *const body);
+		void openSimpleMessage(HttpPrinter &hp, const int status, const String &header, const String *const body);
 		void closeSimpleMessage(ostream &os, const String *const body);
+
+		virtual void doPhaseSync(const MsgHdr &hdr) const;
 
 	protected:
 		ReqHdr theReqHdr;
@@ -72,7 +74,7 @@ class HttpSrvXact: public SrvXact {
 			csNone, // no request yet or no Expect: 100-continue request header
 			csAllowed, // we plan to send 100 Continue control message
 			csDenied, // we plan to send 417 Expectation Failed response
-			csDone, // we sent or do not plan on sending a 100 or 417 response
+			csDone // we sent or do not plan on sending a 100 or 417 response
 		} the100ContinueState;
 
 		int theCookiesSentCount; // number of cookies sent in response

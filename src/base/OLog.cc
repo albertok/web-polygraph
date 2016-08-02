@@ -13,9 +13,10 @@
 
 #include "base/OLog.h"
 #include "xstd/gadgets.h"
+#include "xstd/ZFStream.h"
 
 
-OLog::OLog(): theStream(0), theBuf(0), theEntry(0), theEntryTag(-1) {
+OLog::OLog(): theStream(0), theZStream(0), theEntry(0), theEntryTag(-1) {
 	theCapacity = Size::KB(64); // default
 	theBuf = new char[theCapacity];
 	theSize = 0;
@@ -32,6 +33,10 @@ void OLog::stream(const String &aName, ostream *aStream) {
 	Assert(!theStream && aStream);
 	theName = aName;
 	theStream = aStream;
+
+	// make theStream unbuffered
+	theStream->flush();
+	theStream->rdbuf()->pubsetbuf(0, 0);
 
 	putHeader();
 }
@@ -78,6 +83,8 @@ void OLog::close() {
 
 		putTrailer();
 		flush();
+		delete theZStream;
+		theZStream = 0;
 		delete theStream;
 		theStream = 0;
 	}
@@ -91,7 +98,7 @@ void OLog::flush(Size maxSize) {
 	const Size readySz = Min(maxSize,
 		theEntry ? (Size)(theEntry - theBuf) : theSize);
 	if (readySz > 0) {
-		Should(theStream->write(theBuf, readySz));
+		write(theBuf, readySz);
 		if (theSize > readySz) {
 			// move leftovers to the beginning of a buffer
 			theSize -= readySz;
@@ -103,6 +110,14 @@ void OLog::flush(Size maxSize) {
 		if (theEntry)
 			theEntry -= readySz;
 	}
+}
+
+void OLog::write(const char *const buf, const Size size) {
+	Must(theStream);
+	if (theZStream)
+		Should(theZStream->write(buf, size));
+	else
+		Should(theStream->write(buf, size));
 }
 
 void OLog::overflow(const void *buf, Size size) {
@@ -157,9 +172,24 @@ void OLog::endEntry() {
 }
 
 void OLog::putHeader() {
-	puti(21); // current version
-	puti(21); // required min version to support
-	puti(0);  // size of extra headers
+	puti(26); // current version
+	puti(26); // required min version to support
+	bool doCompression = false;
+	if (zlib::Supported) {
+		const int zlibHdrSz = 32;
+		char zlibHdr[zlibHdrSz];
+		memset(zlibHdr, 0, zlibHdrSz);
+		strcpy(zlibHdr, "zlib");
+		puti(zlibHdrSz); // size of extra headers
+		put(zlibHdr, zlibHdrSz);
+		doCompression = true;
+	} else
+		puti(0); // size of extra headers
+
+	if (doCompression) {
+		flush();
+		theZStream = new zlib::OFStream(*theStream);
+	}
 }
 
 void OLog::putTrailer() {

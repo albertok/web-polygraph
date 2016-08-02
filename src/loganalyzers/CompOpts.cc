@@ -14,8 +14,7 @@ CompOpts::CompOpts():
 	theVersOpt(this, "version",            "package version info"),
 	theDelta(this,   "delta <double>",     "maximum value difference to ignore", 0.0),
 	thePhases(this,  "phases <list>",      "names of phases for executive summary"),
-	theCompDir(this, "report_dir <dir>",   "report's root directory"),
-	theTmpDir(this,  "tmp_dir <dir>",      "temporary dir", "/tmp")
+	theCompDir(this, "report_dir <dir>",   "report's root directory")
 {
 }
 

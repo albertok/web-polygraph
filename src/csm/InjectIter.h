@@ -14,6 +14,8 @@ class CdbBodyIter;
 class TextDbase;
 class WrBuf;
 
+// We currently conflate injection object and injection location.
+typedef enum { ialgNone, ialgTextBetweenMarkup, ialgUriAtEnd } InjectionAlgorithm;
 
 class InjectIter {
 	public:
@@ -24,6 +26,8 @@ class InjectIter {
 		void creator(ContentCfg *aCreator) { theCreator = aCreator; }
 		ContentCfg *creator() { return theCreator; }
 
+		void algorithm(const InjectionAlgorithm alg) { theAlgorithm = alg; }
+
 		void textDbase(TextDbase *aTdb) { theTdb = aTdb; }
 		void gap(RndDistr *aGap) { theInjGap = aGap; }
 
@@ -32,6 +36,7 @@ class InjectIter {
 
 	protected:
 		ContentCfg *theCreator;
+		InjectionAlgorithm theAlgorithm;
 		TextDbase *theTdb;
 		CdbBodyIter *theBodyIter;
 

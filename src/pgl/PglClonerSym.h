@@ -23,9 +23,12 @@ class ClonerSym: public ContainerSym {
 		virtual bool probsSet() const;
 		virtual const SynSym *itemProb(int offset, double &prob) const;
 
-		virtual void forEach(Visitor &v) const;
+		virtual void forEach(Visitor &v, RndGen *const rng = 0) const;
 
 		virtual ostream &print(ostream &os, const String &pfx) const;
+
+		const SynSym *cloneSource() const { return theSource; }
+		int cloneFactor() const { return theCount; }
 
 	protected:
 		virtual SynSym *dupe(const String &type) const;

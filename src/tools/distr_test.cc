@@ -35,8 +35,7 @@ class MyOpts: public OptGrp {
 			theGlbRngSeed(this, "global_rng_seed <int>", "per-test r.n.g. seed", 1),
 			theWorldCount(this, "world_count <int>", "number of simulated worlds", 1),
 			useUniqueWorld(this, "unique_world <bool>", "use URL set that is unique across runs", true)
-
-			{ theDistr.argType("num"); }
+			{}
 
 		virtual bool validate() const;
 

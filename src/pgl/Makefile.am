@@ -124,12 +124,16 @@ libpgl_a_SOURCES = \
 	CredentialsGen.cc \
 	CredArrSym.h \
 	CredArrSym.cc \
+	DnsCacheSym.h \
+	DnsCacheSym.cc \
 	EveryCodeSym.h \
 	EveryCodeSym.cc \
 	AddrMapSym.h \
 	AddrMapSym.cc \
 	DnsResolverSym.h \
 	DnsResolverSym.cc \
+	KerberosWrapSym.h \
+	KerberosWrapSym.cc \
 	SslWrapSym.h \
 	SslWrapSym.cc \
 	DumperSym.h \
@@ -140,6 +144,8 @@ libpgl_a_SOURCES = \
 	HostsBasedSym.cc \
 	IpsToNames.h \
 	IpsToNames.cc \
+	MimeHeaderSym.h \
+	MimeHeaderSym.cc \
 	MimeSym.h \
 	MimeSym.cc \
 	NetPipeSym.h \
@@ -162,8 +168,6 @@ libpgl_a_SOURCES = \
 	RobotSym.cc \
 	RptmstatSym.h \
 	RptmstatSym.cc \
-	DutStateSym.h \
-	DutStateSym.cc \
 	ServerSym.h \
 	ServerSym.cc \
 	SessionSym.h \
@@ -185,7 +189,9 @@ libpgl_a_SOURCES = \
 	MultiRangeSym.h \
 	MultiRangeSym.cc \
 	DynamicNameSym.h \
-	DynamicNameSym.cc
+	DynamicNameSym.cc \
+	ZoneFile.h \
+	ZoneFile.cc
 
 
 bin_PROGRAMS = \

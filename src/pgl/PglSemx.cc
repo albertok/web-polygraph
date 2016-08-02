@@ -3,9 +3,13 @@
  * Copyright 2003-2011 The Measurement Factory
  * Licensed under the Apache License, Version 2.0 */
 
+#include "base/polygraph.h"
 #include "pgl/pgl.h"
 
+#include <memory>
+
 #include "xstd/h/sstream.h"
+#include "xstd/CommandToBuffer.h"
 #include "xstd/Ring.h"
 #include "xstd/RegEx.h"
 #include "xstd/rndDistrs.h"
@@ -14,6 +18,7 @@
 #include "base/RndPermut.h"
 #include "base/ForeignTrace.h"
 #include "base/loadTblDistr.h"
+#include "base/AnyToString.h"
 
 #include "xparser/TokenSym.h"
 #include "xparser/ParsSym.h"
@@ -50,16 +55,17 @@
 
 #include "pgl/AclSym.h"
 #include "pgl/CacheSym.h"
+#include "pgl/DnsCacheSym.h"
 #include "pgl/ClientBehaviorSym.h"
 #include "pgl/ContentSym.h"
 #include "pgl/EveryCodeSym.h"
 #include "pgl/CredArrSym.h"
 #include "pgl/DumperSym.h"
-#include "pgl/DutStateSym.h"
 #include "pgl/GoalSym.h"
 #include "pgl/RptmstatSym.h"
 #include "pgl/AddrMapSym.h"
 #include "pgl/DnsResolverSym.h"
+#include "pgl/KerberosWrapSym.h"
 #include "pgl/SslWrapSym.h"
 #include "pgl/BenchSym.h"
 #include "pgl/BenchSideSym.h"
@@ -86,8 +92,12 @@
 #include "pgl/SingleRangeSym.h"
 #include "pgl/MultiRangeSym.h"
 #include "pgl/DynamicNameSym.h"
+#include "pgl/ZoneFile.h"
+#include "pgl/MimeHeaderSym.h"
 
 static const String strAddrArr = "addr[]";
+int PglSemx::TheWorkerId = 1;
+String PglSemx::TheWorkerIdStr = "1";
 
 
 template<class T>
@@ -337,9 +347,9 @@ void PglSemx::assignCode(const ParsSym &name, const ParsSym &code) {
 
 ExpressionSym *PglSemx::makeFuncCall(const ParsSym &pgl) {
 	if (pgl.rhsCount() == 4 &&
-		isToken(pgl.rhs(0), ID_TOKEN) && isRule(pgl.rhs(2))) {
-		// Call = ID LEFTPARENT List RIGHTPARENT .
-		const String &cname = pgl.rhsToken(0).spelling();
+		isRule(pgl.rhs(0), "Name") && isRule(pgl.rhs(2))) {
+		// Call = Name LEFTPARENT List RIGHTPARENT .
+		const String &cname = pgl.rhsRule(0).rhsToken(0).spelling();
 		const ListSym *args = makeList(pgl.rhsRule(2));
 		ExpressionSym *res = callFunc(cname, *args);
 		delete args;
@@ -351,9 +361,9 @@ ExpressionSym *PglSemx::makeFuncCall(const ParsSym &pgl) {
 
 void PglSemx::interpProcCall(const ParsSym &pgl) {
 	if (pgl.rhsCount() == 4 && 
-		isToken(pgl.rhs(0), ID_TOKEN) && isRule(pgl.rhs(2))) {
-		// Call = ID LEFTPARENT List RIGHTPARENT .
-		const String &cname = pgl.rhsToken(0).spelling();
+		isRule(pgl.rhs(0), "Name") && isRule(pgl.rhs(2))) {
+		// Call = Name LEFTPARENT List RIGHTPARENT .
+		const String &cname = pgl.rhsRule(0).rhsToken(0).spelling();
 		const ListSym *args = makeList(pgl.rhsRule(2));
 		callProc(cname, *args);
 		delete args;
@@ -459,6 +469,14 @@ ExpressionSym *PglSemx::callFunc(const String &cname, const ListSym &args) {
 			extractArg(cname, 1, args, StringSym::TheType);
 		return IpsToNames(ips, domain.val());
 	} else
+	if (cname == "zoneDomains") {
+		checkArgs(cname, 2, args);
+		const StringSym &fname = (const StringSym&)
+			extractArg(cname, 0, args, StringSym::TheType);
+		const ContainerSym &ips = (const ContainerSym&)
+			extractArg(cname, 1, args, strAddrArr);
+		return ZoneDomains(args.loc(), fname.val(), ips);
+	} else
 	if (cname == "tracedHosts") {
 		return tracedHosts(cname, args);
 	} else
@@ -519,6 +537,20 @@ ExpressionSym *PglSemx::callFunc(const String &cname, const ListSym &args) {
 			extractArg(cname, 1, args, NumSym::TheType);
 		return dynamize(cname, items, prob);
 	} else
+	if (cname == "system") {
+		checkArgs(cname, 1, args);
+		const StringSym &cmd = (const StringSym&)
+			extractArg(cname, 0, args, StringSym::TheType);
+		if (const stringstream *const sbuf =
+			xstd::CommandToBuffer(cmd.val()))
+			return new StringSym(String(sbuf->str()));
+		cerr << args.loc() << "system() command " << cmd <<
+			" probably failed" << endl << xexit;
+	} else
+	if (cname == "Worker") {
+		checkArgs(cname, 0, args);
+		return new IntSym(TheWorkerId);
+	} else
 	if (DistrSym *ds = isDistr(cname, args)) {
 		return ds;
 	} else
@@ -532,6 +564,11 @@ ExpressionSym *PglSemx::callFunc(const String &cname, const ListSym &args) {
 
 // default implementation complaints and exits
 void PglSemx::callProc(const String &cname, const ListSym &args) {
+	if (cname == "print") {
+		print(cout, args) << endl;
+		return;
+	}
+
 	noCall(cname, args);
 }
 
@@ -807,6 +844,8 @@ StrRangeSym *PglSemx::makeStringRange(const TokenSym &s) {
 ExpressionSym *PglSemx::makeQuotedConstant(const TokenSym &s) {
 	Should(s.id() == SQW_STR_TOKEN);
 
+	if (s.spelling().str(": "))
+		return makeMimeHeader(s);
 	const char *p = s.spelling().chr('/');
 	if (p && strchr(p+1, '/'))
 		return makeTime(s);
@@ -902,7 +941,7 @@ NumSym *PglSemx::makeNum(const TokenSym &s) {
 }
 
 SizeSym *PglSemx::makeSize(const TokenSym &s) {
-	Assert(s.id() == SIZE_TOKEN);
+	Assert(s.id() == SIZE_TOKEN || s.id() == SIZE_SCALE_TOKEN);
 	BigSize v;
 	Assert(pglIsSize(s.spelling(), v));
 	return Place(new SizeSym(v), s.loc());
@@ -921,12 +960,21 @@ QualifSym *PglSemx::makeQualif(const TokenSym &s) {
 
 TimeSym *PglSemx::makeTime(const TokenSym &s) {
 	Time v;
-	if (s.id() == TIME_TOKEN)
+	if (s.id() == TIME_TOKEN || s.id() == TIME_SCALE_TOKEN)
 		Assert(pglIsRelTime(s.spelling(), v));
 	else
 	if (!pglIsAbsTime(s.spelling(), v))
 		cerr << s.loc() << "malformed time constant: '" << s.spelling() << "'" << endl << xexit;
 	return Place(new TimeSym(v), s.loc());
+}
+
+MimeHeaderSym *PglSemx::makeMimeHeader(const TokenSym &s) {
+	if (MimeHeaderSym *const sym = MimeHeaderSym::Parse(s.spelling()))
+		return Place(sym, s.loc());;
+
+	cerr << s.loc() << "malformed MIME header constant: '" <<
+		s.spelling() << "'" << endl << xexit;
+	return 0;
 }
 
 RegExSym *PglSemx::makeRegEx(const TokenSym &scopeName, const TokenSym &reSym) {
@@ -1088,7 +1136,7 @@ String PglSemx::typeName(const ParsSym &pgl) const {
 			return pgl.rhsToken(0).spelling();
 		} else
 		if (pgl.rhsCount() == 3 && isToken(pgl.rhs(0), ID_TOKEN)) {
-			// ObjName = ID LEFTBRACKET RIGHTBRACKET .
+			// TypeName = ID LEFTBRACKET RIGHTBRACKET .
 			return pgl.rhsToken(0).spelling() + "[]";
 		}
 	}
@@ -1100,15 +1148,22 @@ String PglSemx::objName(const ParsSym &pgl) const {
 	if (isRule(pgl, "Expression") && pgl.rhsCount() == 1) {
 		return objName(pgl.rhsRule(0));
 	} else
-	if (isRule(pgl, "ObjName")) {
-		if (pgl.rhsCount() == 1 && isToken(pgl.rhs(0), ID_TOKEN)) {
-			// ObjName = ID .
-			return pgl.rhsToken(0).spelling();
-		} else
-		if (pgl.rhsCount() == 3 && isToken(pgl.rhs(0), ID_TOKEN)) {
-			// ObjName = ID '.' ObjName .
-			return pgl.rhsToken(0).spelling() + '.' + objName(pgl.rhsRule(2));
-		}
+	if (isRule(pgl, "ObjName") && pgl.rhsCount() == 1 &&
+		isToken(pgl.rhs(0), ID_TOKEN)) {
+		// ObjName = ID .
+		return pgl.rhsToken(0).spelling();
+	} else
+	if (isRule(pgl, "ObjNameTail") && pgl.rhsCount() == 1 &&
+		isRule(pgl.rhs(0), "Name")) {
+		// ObjNameTail = Name .
+		return pgl.rhsRule(0).rhsToken(0).spelling();
+	} else
+	if ((isRule(pgl, "ObjName") || isRule(pgl, "ObjNameTail")) &&
+		pgl.rhsCount() == 3 && isRule(pgl.rhs(0), "Name")) {
+		// ObjName = Name '.' ObjNameTail .
+		// ObjNameTail = Name '.' ObjNameTail .
+		const String &name = pgl.rhsRule(0).rhsToken(0).spelling();
+		return name + '.' + objName(pgl.rhsRule(2));
 	}
 	unknownRhs(pgl);		
 	return String();
@@ -1253,6 +1308,16 @@ int PglSemx::anyToInt(const SynSym &s) const {
 		return res;
 	}
 
+	if (s.isA(StringSym::TheType)) {
+		const StringSym &ss =
+			(const StringSym&)s.cast(StringSym::TheType);
+		int res;
+		const char *ptr = 0;
+		if (isInt(ss.val().cstr(), res, &ptr) && !StrNotSpace(ptr))
+			return res;
+		failedCast(s, IntSym::TheType, ss.val());
+	}
+
 	if (IntSym *i = (IntSym*)s.clone(IntSym::TheType)) { // default casts
 		const int res = i->val();
 		delete i;
@@ -1265,6 +1330,16 @@ int PglSemx::anyToInt(const SynSym &s) const {
 
 
 double PglSemx::anyToDouble(const SynSym &s) const {
+	if (s.isA(StringSym::TheType)) {
+		const StringSym &ss =
+			(const StringSym&)s.cast(StringSym::TheType);
+		double res;
+		const char *ptr = 0;
+		if (isNum(ss.val().cstr(), res, &ptr) && !StrNotSpace(ptr))
+			return res;
+		failedCast(s, NumSym::TheType, ss.val());
+	}
+
 	if (NumSym *f = (NumSym*)s.clone(NumSym::TheType)) { // default casts
 		const double res = f->val();
 		delete f;
@@ -1277,6 +1352,11 @@ double PglSemx::anyToDouble(const SynSym &s) const {
 void PglSemx::noCast(const SynSym &s, const String &totype) const {
 	cerr << s.loc() << "no conversion from '" << s.type()
 		<< "' to '" << totype << "'" << endl << xexit;
+}
+
+void PglSemx::failedCast(const SynSym &s, const String &totype, const String &str) const {
+	cerr << s.loc() << "conversion from '" << s.type() << "' to '" << totype
+		<< "' failed near \"" << str << "\"" << endl << xexit;
 }
 
 ArraySym *PglSemx::calcAgentAddrs(const String &cname, const ListSym &args, AddrSchemeSym::AddrCalc calc) {
@@ -1427,7 +1507,7 @@ DynamicNameSym *PglSemx::dynamicName(const NetAddrSym &addr, const NumSym &prob)
 }
 
 // create dynamic names from static addresses
-ContainerSym *PglSemx::dynamize(const String &cname, const ContainerSym &items, const NumSym &prob) {
+ContainerSym *PglSemx::dynamize(const String &, const ContainerSym &items, const NumSym &prob) {
 	ArraySym *res = new ArraySym;
 	const int inCount = items.count();
 	res->reserve(inCount);
@@ -1446,21 +1526,40 @@ ContainerSym *PglSemx::dynamize(const String &cname, const ContainerSym &items, 
 	return res;
 }
 
+ostream &PglSemx::print(ostream &os, const ListSym &args, const unsigned int skip) {
+	os << "script output: ";
+	for (int i = skip; i < args.count(); ++i) {
+		const SynSym *s = args[i];
+		if (s->isA(StringSym::TheType)) // remove quotes
+			os << ((const StringSym&)s->cast(StringSym::TheType)).val();
+		else
+			s->print(os);
+	}
+	return os;
+}
+
 ExpressionSym *PglSemx::calcExtreme(const String &cname, const ListSym &args, int dir) {
 	if (!args.count()) {
 		cerr << args.loc() << cname << "() function call needs " <<
 			"at least one argument" << endl << xexit;
 	}
 
-	// find position of an extreme
-	double extreme = anyToDouble(*args.item(0));
-	int pos = 0;
-	for (int p = 1; p < args.count(); ++p) {
-		if (dir*anyToDouble(*args.item(p)) > dir*extreme)
-			pos = p;
+	// find extreme
+	const ExpressionSym *result = &(ExpressionSym&)
+		args.item(0)->cast(ExpressionSym::TheType);
+	const std::auto_ptr<const TokenSym> op(Place(dir > 0 ?
+		new TokenSym("<", LT_TOKEN) : new TokenSym(">", GT_TOKEN),
+		args.loc()));
+	for (int i = 1; i < args.count(); ++i) {
+		const ExpressionSym &arg = (ExpressionSym&)
+			args.item(i)->cast(ExpressionSym::TheType);
+		const std::auto_ptr<const BoolSym> check(&(BoolSym&)
+			makeBinExpr(*result, *op, arg)->cast(BoolSym::TheType));
+		if (check->val())
+			result = &arg;
 	}
 
-	return (ExpressionSym*)anyToAny(*args.item(pos), ExpressionSym::TheType);
+	return (ExpressionSym*)anyToAny(*result, ExpressionSym::TheType);
 }
 
 // check argument type
@@ -1511,7 +1610,7 @@ void PglSemx::argsToDouble(const String &cname, const ListSym &argsIn, Array<dou
 }
 
 // convert all arguments to int
-void PglSemx::argsToInt(const String &cname, const ListSym &argsIn, Array<int> &outa) {
+void PglSemx::argsToInt(const String &, const ListSym &argsIn, Array<int> &outa) {
 	Assert(!outa.count());
 	for (int i = 0; i < argsIn.count(); ++i)
 		outa.append(anyToInt(*argsIn.item(i)));
@@ -1546,16 +1645,26 @@ DistrSym *PglSemx::isDistr(const String &cname, const ListSym &args) {
 
 	// table distribution requires exceptional handling, others are below
 	if (cname == "table") {
-		checkArgs(cname, 2, args);
+		// two call formats: table(filename) and table(filename, valueType)
+		const bool withTypeArgument = (args.count() == 2);
+		checkArgs(cname, withTypeArgument ? 2 : 1, args);
+
 		const StringSym &fName = (const StringSym&)
 			extractArg(cname, 0, args, StringSym::TheType);
-		const StringSym &aType = (const StringSym&)
-			extractArg(cname, 1, args, StringSym::TheType);
-		RndDistr *d = LoadTblDistr(fName.val(), aType.val());
-		if (d)
-			return new DistrSym(aType.val() + "_distr", d);
-		cerr << args.loc() << cname << "() failed to load the table with '"
-			<< aType << "' distribution from '" << fName << "'" << xexit;
+
+		String distrType;
+
+		if (withTypeArgument) {
+			const StringSym &aType = (const StringSym&)
+				extractArg(cname, 1, args, StringSym::TheType);
+			distrType = aType.val() + "_distr";
+		}
+			
+		if (RndDistr *d = LoadTblDistr(fName.val(), distrType))
+			return new DistrSym(distrType, d);
+
+		cerr << args.loc() << cname << "() failed to load a " <<
+			"distribution table from " << fName << xexit;
 	}
 	
 	// by default, guess type of values by the type of the first argument
@@ -1647,6 +1756,9 @@ void PglSemx::setDefault(SynSymTblItem *i) {
 	if (i->type() == AddrMapSym::TheType)
 		i->sym(new AddrMapSym);
 	else
+	if (i->type() == KerberosWrapSym::TheType)
+		i->sym(new KerberosWrapSym);
+	else
 	if (i->type() == SslWrapSym::TheType)
 		i->sym(new SslWrapSym);
 	else
@@ -1686,6 +1798,9 @@ void PglSemx::setDefault(SynSymTblItem *i) {
 	if (i->type() == CacheSym::TheType)
 		i->sym(new CacheSym);
 	else
+	if (i->type() == DnsCacheSym::TheType)
+		i->sym(new DnsCacheSym);
+	else
 	if (i->type() == MimeSym::TheType)
 		i->sym(new MimeSym);
 	else
@@ -1718,8 +1833,12 @@ void PglSemx::setDefault(SynSymTblItem *i) {
 	else
 	if (i->type() == SingleRangeSym::TheType)
 		i->sym(new SingleRangeSym);
+	else
 	if (i->type() == MultiRangeSym::TheType)
 		i->sym(new MultiRangeSym);
+	else
+	if (i->type() == MimeHeaderSym::TheType)
+		i->sym(new MimeHeaderSym);
 	else
 	if (i->type() == ClientBehaviorSym::TheType)
 		i->sym(new ClientBehaviorSym);
@@ -1749,7 +1868,7 @@ bool PglSemx::knownType(const String &type) {
 			DnsResolverSym::TheType.cstr(), AddrMapSym::TheType.cstr(),
 			EveryCodeSym::TheType.cstr(), 
 			GoalSym::TheType.cstr(),
-			SslWrapSym::TheType.cstr(),
+			KerberosWrapSym::TheType.cstr(), SslWrapSym::TheType.cstr(),
 			MimeSym::TheType.cstr(), ObjLifeCycleSym::TheType.cstr(),
 			ContentSym::TheType.cstr(), PhaseSym::TheType.cstr(),
 			StatSampleSym::TheType.cstr(),
@@ -1757,7 +1876,9 @@ bool PglSemx::knownType(const String &type) {
 			NetPipeSym::TheType.cstr(), MembershipMapSym::TheType.cstr(),
 			AclSym::TheType.cstr(), DynamicNameSym::TheType.cstr(),SingleRangeSym::TheType.cstr(),
 			SingleRangeSym::TheType.cstr(), MultiRangeSym::TheType.cstr(),
+			MimeHeaderSym::TheType.cstr(),
 			ClientBehaviorSym::TheType.cstr(),
+			DnsCacheSym::TheType.cstr(),
 			0 // eof
 		};
 		for (int i = 0; kts[i]; ++i)
@@ -1777,4 +1898,13 @@ bool PglSemx::knownType(const String &type) {
 	}
 
 	return false;
+}
+
+void PglSemx::WorkerId(int wokerId) {
+	TheWorkerId = wokerId;
+	TheWorkerIdStr = AnyToString(TheWorkerId);
+}
+
+const char* PglSemx::WorkerIdStr() {
+	return TheWorkerIdStr.cstr();
 }

@@ -1,0 +1,13 @@
+RangeCfg.o: RangeCfg.cc /usr/include/stdc-predef.h \
+ ../../src/client/RangeCfg.h ../../src/xstd/Size.h \
+ ../../src/xstd/h/iostream.h ../../src/xstd/h/iosfwd.h
+
+/usr/include/stdc-predef.h:
+
+../../src/client/RangeCfg.h:
+
+../../src/xstd/Size.h:
+
+../../src/xstd/h/iostream.h:
+
+../../src/xstd/h/iosfwd.h:

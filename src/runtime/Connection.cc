@@ -16,6 +16,7 @@
 #include "runtime/LogComment.h"
 #include "runtime/Connection.h"
 #include "runtime/ConnMgr.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/polyErrors.h"
 #include "runtime/globals.h"
@@ -58,36 +59,128 @@ void Connection::HalfPipe::changeUser(FileScanUser *uOld, FileScanUser *uNew) {
 }
 
 
+/* Connection::NtlmAuth */
+
+void Connection::NtlmAuth::reset() {
+	state = ntlmNone;
+	useSpnegoNtlm = false;
+	hdrRcvdT2 = String();
+	gssContext.free();
+}
+
+/* Connection::LayeredSsl */
+
+bool Connection::LayeredSsl::addSsl(Ssl *ssl) {
+	Should(ssl);
+	if (!theSsl[lastLayer])
+		theSsl[lastLayer] = ssl;
+	else if (!lastLayer)
+		theSsl[++lastLayer] = ssl;
+	else
+		return false;
+	return true;
+}
+
+bool Connection::LayeredSsl::dataPending() const {
+	return theSsl[0]->dataPending() || (lastLayer && theSsl[1]->dataPending());
+}
+
+Size Connection::LayeredSsl::read(char *buf, Size sz) {
+	return netLayer()->read(buf, sz);
+}
+
+Size Connection::LayeredSsl::write(const char *buf, Size sz) {
+	return netLayer()->write(buf, sz);
+}
+
+bool Connection::LayeredSsl::resumeSession(SslSession *session) {
+	return netLayer()->resumeSession(session);
+}
+
+bool Connection::LayeredSsl::reusedSession() const {
+	return netLayer()->reusedSession();
+}
+
+// XXX: Needs more work to identify the original error
+// because the other layer may be the true cause of an error.
+int Connection::LayeredSsl::getError(int e) {
+	return netLayer()->getError(e);
+}
+
+// XXX: Needs more work to identify the original error
+// because the other layer may be the true cause of an error.
+const char *Connection::LayeredSsl::getErrorString(int e) {
+	return netLayer()->getErrorString(e);
+}
+
+bool Connection::LayeredSsl::shutdown(int &res) {
+	int i = lastLayer;
+	do {
+		if (!theSsl[i]->shutdown(res))
+			return false;
+	} while (i--);
+	return true;
+}
+
+void Connection::LayeredSsl::reset() {
+	theSsl[0] = 0;
+	theSsl[1] = 0;
+	lastLayer = 0;
+}
+
+void Connection::LayeredSsl::close() {
+	do {
+		delete theSsl[lastLayer];
+	} while (lastLayer--);
+	reset();
+}
+
+bool Connection::LayeredSsl::setIO(int fd) {
+	Should(netLayer()->enablePartialWrite());
+	Should(netLayer()->acceptMovingWriteBuffer()); // just in case
+
+	return lastLayer ? theSsl[lastLayer]->setBIO(theSsl[lastLayer - 1]) :
+	               theSsl[lastLayer]->setFd(fd);
+}
+
+
 /* Connection */
 
 Connection::Connection():
 	protoStat(0),
 	theRd(*this, theRdBuf, dirRead),
 	theWr(*this, theWrBuf, dirWrite),
-	theSocks(0), theSsl(0) {
+	usedSsl(false),
+	usedSocks(false),
+	theSocks(0), theSsl() {
 	reset();
 }
 
 void Connection::reset() {
 	protoStat = 0;
 
-	theProxyNtlmState = theOriginNtlmState = NtlmAuth();
+	theProxyNtlmState.reset();
+	theOriginNtlmState.reset();
 
 	if (theSock || theSsl)
 		closeNow();
 
+	usedSsl = usedSocks = false;
+
 	theAddr = NetAddr();
 	theMgr = 0;
 	thePortMgr = 0;
-	theSslCtx = 0;
-	theSslSession = 0;
-	theSsl = 0;
+	theSslCtxOrigin = 0;
+	theSslCtxProxy = 0;
+	theSslSessionOrigin = 0;
+	theSslSessionProxy = 0;
+	theSsl.reset();
 	theRd.reset();
 	theWr.reset();
 	theCloseKind = ConnCloseStat::ckNone;
 	theLogCat = lgcAll;
 	isBad = isAtEof = isLastUse = isFirstUse = isSocksAuthed =
-		wasAnnounced = false;
+		isSslEstablished = wasAnnounced = isTunnelEstablished = false;
 
 	theSocksProxy = theTunnel = NetAddr();
 	theLocPort = theRemPort = -1;
@@ -104,8 +197,13 @@ void Connection::reset() {
 }
 
 void Connection::useSsl(const SslCtx *aCtx, SslSession *aSession) {
-	theSslCtx = aCtx;
-	theSslSession = aSession;
+	theSslCtxOrigin = aCtx;
+	theSslSessionOrigin = aSession;
+}
+
+void Connection::useSslProxy(const SslCtx *aCtx, SslSession *aSession) {
+	theSslCtxProxy = aCtx;
+	theSslSessionProxy = aSession;
 }
 
 NetAddr Connection::laddr() const {
@@ -160,15 +258,28 @@ bool Connection::connect(const NetAddr &addr, const SockOpt &opt, PortMgr *aPort
 
 	if (theSocksProxy)
 		socksStart();
+	else if (theSslCtxProxy)
+		sslActivateProxy();
 
-	// SSL is not activated implicitly, call sslActivate() when needed
+	// SSL to origin is not activated implicitly, call sslActivate() when needed
 	return true; 
 }
 
+const Ssl *Connection::sslActive() const {
+	return theSslCtxProxy && theSslCtxOrigin ? theSsl.activeSecond() : theSsl.activeFirst();
+}
+
+const Ssl *Connection::sslActiveProxy() const {
+	return theSslCtxProxy ? theSsl.activeFirst() : 0;
+}
+
 bool Connection::sslActivate() {
-	if (Should(theSslCtx) && sslConnect()) {
-		if (Should(sslActive()))
-			Broadcast(TheConnSslActiveChannel, this);
+	return Should(theSslCtxOrigin) && sslConnect(false);
+}
+
+bool Connection::sslActivateProxy() {
+	if (Should(theSslCtxProxy) && sslConnect(true)) {
+		Should(theSsl.active());
 		return true;
 	}
 	return false;
@@ -194,7 +305,7 @@ bool Connection::accept(Socket &s, const SockOpt &opt, bool &fatal) {
 	theOpenTime = TheClock;
 
 	// now that we are connected, maybe associate the socket with SSL state
-	if (theSslCtx && !sslAccept())
+	if (theSslCtxOrigin && !sslAccept())
 		return false;
 
 	Broadcast(TheConnOpenChannel, this);
@@ -300,55 +411,58 @@ bool Connection::closeAsync(FileScanUser *u, bool &fatal) {
 		return true;
 }
 
-SslSession *Connection::sslSession() {
-	return theSslSession; 
+bool Connection::sslSessionReused() const {
+	return Should(theSsl) && theSsl.reusedSession();
 }
 
-void Connection::sslSessionForget() {
-	theSslSession = 0;
-}
-
-void Connection::sslStart(int role) {
-	Should(!theSsl);
-	theSsl = theSslCtx->makeConnection();
-	theSsl->playRole(role); // // must set mode before setting fd
-	if (theSslSession) {
-		if (!theSsl->resumeSession(theSslSession) &&
+void Connection::sslStart(int role, const bool toProxy) {
+	const SslCtx *sslCtx = toProxy ? theSslCtxProxy : theSslCtxOrigin;
+	SslSession *sslSession = toProxy ? theSslSessionProxy : theSslSessionOrigin;
+	usedSsl = true;
+	Ssl *ssl = sslCtx->makeConnection();
+	ssl->playRole(role); // // must set mode before setting fd
+	if (sslSession) {
+		if (!ssl->resumeSession(sslSession) &&
 			ReportError(errSslSessionResume)) {
-			Comment << "peer address: " << theAddr << endc;
-			SslWrap::ReportErrors();
+			print(Comment << "on connection ");
+			SslWrap::PrintErrors(Comment) << endc;
 		}
 	}
-	// XXX: should not these be set for SslCtx instead?
-	Should(theSsl->enablePartialWrite());
-	Should(theSsl->acceptMovingWriteBuffer()); // just in case
-	Should(theSsl->setFd(theSock.fd()));
+	Should(theSsl.addSsl(ssl));
+	Should(theSsl.setIO(theSock.fd()));
+
+	if (sslToOrigin() && Should(theSsl.active()))
+		Broadcast(TheConnSslActiveChannel, this);
 }
 
-bool Connection::sslConnect() {
-	sslStart(Ssl::rlClient);
+bool Connection::sslConnect(const bool toProxy) {
+	sslStart(Ssl::rlClient, toProxy);
 	return true;
 }
 
 bool Connection::sslAccept() {
-	sslStart(Ssl::rlServer);
+	sslStart(Ssl::rlServer, false);
 	return true;
 }
 
 // zero read does not mean EOF
 Size Connection::sslRead(Size ioSz) {
 	Should(!isAtEof);
-	const Size sz = theSsl->read(theRdBuf.space(), ioSz);
+	const Size sz = theSsl.read(theRdBuf.space(), ioSz);
 	//clog << here << "ssl read: " << sz << " ? " << theSsl->dataPending() << endl;
 
 	if (sz > 0) {
-		if (theSsl->dataPending())
+		if (theSsl.dataPending())
 			TheFileScanner->forceReady(theSock.fd());
+		if (!isSslEstablished && sslToOrigin()) {
+			Broadcast(TheConnSslEstablishedChannel, this);
+			isSslEstablished = true;
+		}
 		return sz;
 	}
 	//clog << here << this << "ssl err fd: " << theSock.fd() << ' ' << theSsl->getErrorString(sz) << endl;
 
-	switch (theSsl->getError(sz)) {
+	switch (theSsl.getError(sz)) {
 		case SSL_ERROR_ZERO_RETURN:
 			isAtEof = true;
 			break;
@@ -374,14 +488,19 @@ Size Connection::sslRead(Size ioSz) {
 }
 
 Size Connection::sslWrite(Size ioSz) {
-	const Size sz = theSsl->write(theWrBuf.content(), ioSz);
+	const Size sz = theSsl.write(theWrBuf.content(), ioSz);
 	//clog << here << "ssl wrote: " << sz << endl;
 
-	if (sz > 0)
+	if (sz > 0) {
+		if (!isSslEstablished && sslToOrigin()) {
+			Broadcast(TheConnSslEstablishedChannel, this);
+			isSslEstablished = true;
+		}
 		return sz;
+	}
 	//clog << here << this << "ssl err fd: " << theSock.fd() << ' ' << theSsl->getErrorString(sz) << endl;
 
-	switch (theSsl->getError(sz)) {
+	switch (theSsl.getError(sz)) {
 		case SSL_ERROR_ZERO_RETURN:
 			// not a connection-level error; XXX: caller must handle!
 			isAtEof = true;
@@ -408,7 +527,7 @@ Size Connection::sslWrite(Size ioSz) {
 bool Connection::sslCloseNow() {
 	// assume bi-directional shutdown is not needed
 	int err;
-	const bool res = theSsl->shutdown(err) || err == 0;
+	const bool res = theSsl.shutdown(err) || err == 0;
 	if (!res)
 		sslError(err, "close");
 
@@ -419,13 +538,13 @@ bool Connection::sslCloseNow() {
 bool Connection::sslCloseAsync(FileScanUser *u, bool &fatal) {
 	int err;
 	// assume bi-directional shutdown is not needed
-	if (theSsl->shutdown(err) || err == 0) {
+	if (theSsl.shutdown(err) || err == 0) {
 		sslForget();
 		return true;
 	}
 
 	Should(err < 0);
-	switch (theSsl->getError(err)) {
+	switch (theSsl.getError(err)) {
 		case SSL_ERROR_WANT_WRITE:
 			theRd.stop(0);
 			if (!theWr.theReserv)
@@ -455,20 +574,20 @@ bool Connection::sslCloseAsync(FileScanUser *u, bool &fatal) {
 
 
 void Connection::sslForget() {
-	Broadcast(TheConnSslInactiveChannel, this);
-	delete theSsl;
-	theSsl = 0;
+	if (theSslCtxOrigin)
+		Broadcast(TheConnSslInactiveChannel, this);
+	theSsl.close();
 }
 
 void Connection::sslError(int err, const char *operation) {
 	if (ReportError(errSslIo)) {
 		Comment << "error: SSL " << operation
 			<< " failure with err=" << err
-			<< '/' << theSsl->getErrorString(err)
+			<< '/' << theSsl.getErrorString(err)
 			<< '/' << Error::Last().no()
-			<< endc;
-		SslWrap::ReportErrors();
-		reportErrorLoc();
+			<< std::endl;
+		SslWrap::PrintErrors(Comment);
+		print(Comment << "on connection ") << endc;
 	}
 	isBad = true;
 }
@@ -476,6 +595,7 @@ void Connection::sslError(int err, const char *operation) {
 void Connection::socksStart() {
 	if (!Should(!theSocks))
 		socksEnd();
+	usedSocks = true;
 	theSocks = new Socks(*this);
 	TheFileScanner->setReadNeedsWrite(theSock.fd());
 }
@@ -579,19 +699,23 @@ bool Connection::rawCloseNow() {
 
 void Connection::rawError(const char *operation) {
 	if (ReportError(Error::Last())) {
-		Comment(3) << "error: raw " << operation << " failed" << endc;
-		reportErrorLoc();
+		print(Comment(3) << "error: raw " << operation <<
+			" failed on connection ") << endc;
 	}
 	isBad = true;
 }
 
-void Connection::reportErrorLoc() const {
-	Comment << "connection between " << laddr() << " and " << raddr();
+std::ostream &Connection::print(std::ostream &os) const {
+	if (const NetAddr local = laddr())
+		os << "between " << local << " and " << raddr();
+	else
+		os << "with " << raddr();
 	if (theSocksProxy)
-		Comment << " through SOCKS proxy " << theSocksProxy;
-	Comment << " failed at " << theRd.theIOCnt << " reads, "
+		os << " through SOCKS proxy " << theSocksProxy;
+	os << " at " << theRd.theIOCnt << " reads, "
 		<< theWr.theIOCnt << " writes, and "
-		<< useCnt() << " xacts" << endc;
+		<< useCnt() << " transactions";
+    return os;
 }
 
 void Connection::decMaxIoSize(Size aMax) {
@@ -655,4 +779,11 @@ bool Connection::hasCredentials() const {
 
 bool Connection::genCredentials(UserCred &cred) const {
 	return theMgr && theMgr->credentialsFor(*this, cred);
+}
+
+void Connection::setTunnelEstablished() {
+	if (ShouldUs(!isTunnelEstablished)) {
+		isTunnelEstablished = true;
+		Broadcast(TheConnTunnelEstablishedChannel, this);
+	}
 }

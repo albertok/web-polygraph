@@ -40,15 +40,6 @@ void WebPageFormatter::closeTable() {
 	*thePage << "</table>" << endl;
 }
 
-void WebPageFormatter::openTableHeader(const String &id, const String &title) {
-	*thePage << "<tr class=\"header\">" << endl;
-}
-
-void WebPageFormatter::closeTableHeader() {
-	*thePage << "</tr>" << endl;
-}
-
-
 void WebPageFormatter::openTableRecord() {
 	*thePage << "<tr>" << endl;
 }

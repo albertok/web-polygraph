@@ -9,7 +9,7 @@
 #include "xstd/AlarmClock.h"
 #include "xstd/gadgets.h"
 
-AlarmClock TheAlarmClock;
+AlarmClock &TheAlarmClock = *new AlarmClock;
 
 /* Alarm */
 

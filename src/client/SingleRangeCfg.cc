@@ -3,9 +3,12 @@
  * Copyright 2003-2011 The Measurement Factory
  * Licensed under the Apache License, Version 2.0 */
 
+#include "base/polygraph.h"
+
 #include "client/SingleRangeCfg.h"
 #include "pgl/SingleRangeSym.h"
 #include "base/RangeGenStat.h"
+#include "runtime/HttpPrinter.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/httpText.h"
 #include "runtime/StatPhase.h"
@@ -57,15 +60,16 @@ void SingleRangeCfg::configure(const SingleRangeSym &aSingleRange) {
 			<< endl << xexit;
 }
 
-RangeCfg::RangesInfo SingleRangeCfg::makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const {
+RangeCfg::RangesInfo SingleRangeCfg::makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const {
 	RangeGenStat &rangeGenStat = TheStatPhaseMgr->rangeGenStat();
 	Size sz;
 
-	os << hfpRange;
+	const bool putHeader = hp.putHeader(hfpRange);
         const int repSize = contentCfg.calcFullEntitySize(oid);
 	if (theFirstByteAbsolute >= 0 || theFirstByteRelative >= 0) {
 		const int firstByte = (theFirstByteAbsolute >= 0) ? theFirstByteAbsolute.byte() : (int)(theFirstByteRelative*repSize);
-		os << firstByte << '-';
+		if (putHeader)
+			hp << firstByte << '-';
 
 		int lastByte = -1;
 		if (theLastByteAbsolute >= 0)
@@ -82,7 +86,8 @@ RangeCfg::RangesInfo SingleRangeCfg::makeRangeSet(ostream &os, const ObjId &oid,
 		}
 
 		if (lastByte >= 0) {
-			os << lastByte;
+			if (putHeader)
+				hp << lastByte;
 			sz = lastByte - firstByte + 1;
 		} else
 			sz = repSize - firstByte;
@@ -92,10 +97,12 @@ RangeCfg::RangesInfo SingleRangeCfg::makeRangeSet(ostream &os, const ObjId &oid,
 			suffixLength = theSuffixLengthAbsolute.byte();
 		else
 			suffixLength = (int)(theSuffixLengthRelative*repSize);
-		os << '-' << suffixLength;
+		if (putHeader)
+			hp << '-' << suffixLength;
 		sz = suffixLength;
 	}
-	os << crlf;
+	if (putHeader)
+		hp << crlf;
 
 	rangeGenStat.recordOneSize(sz);
 	rangeGenStat.recordTotalSize(sz);

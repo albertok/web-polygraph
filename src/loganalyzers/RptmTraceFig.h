@@ -23,8 +23,7 @@ class RptmTraceFig: public ReportTraceFigure {
 		void moreStats(const Stex *aStex);
 
 	protected:
-		virtual int createCtrlFile();
-		virtual void setCtrlOptions();
+		virtual int addPlotData();
 		int dumpDataLines(const Stex *stex);
 		int dumpDataLine(const Stex *stex, Time stamp, const StatIntvlRec &r);
 		

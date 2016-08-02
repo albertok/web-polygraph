@@ -36,6 +36,12 @@ void InfoScopeDim::add(const String &name) {
 	theNames.append(new String(name));
 }
 
+void InfoScopeDim::addFront(const String &name) {
+	Assert(!has(name));
+	// always first; works for empty arrays too
+	theNames.insert(new String(name), 0);
+}
+
 bool InfoScopeDim::has(const String &name) const {
 	for (int i = 0; i < theNames.count(); ++i) {
 		if (*theNames[i] == name)

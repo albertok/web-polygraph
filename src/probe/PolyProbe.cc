@@ -23,6 +23,7 @@
 #include "base/opts.h"
 #include "base/polyLogTags.h"
 #include "pgl/PglNetAddrRange.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "probe/ProbeClt.h"
 #include "probe/ProbeOpts.h"
@@ -32,7 +33,11 @@
 PolyProbe *ThePolyProbe = 0;
 FileScanner *TheFileScanner = 0;
 
-static SchArray<InAddress> TheLocalHosts;
+static Array<InAddress> TheLocalHosts;
+
+// XXX: Here to avoid linking with runtime/libagent.a and
+// opening the associated Pandora's box filled with linking problems.
+void StopTrafficWaiting() {}
 
 // XXX: should not be needed! remove magic labels/versions from OLog
 class MyOLog: public OLog {

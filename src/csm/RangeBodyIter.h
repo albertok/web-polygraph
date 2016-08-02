@@ -24,8 +24,7 @@ class RangeBodyIter: public BodyIter {
 		virtual Size fullEntitySize() const;
 
 	protected:
-		virtual bool pourBody();
-		virtual void putHeaders(ostream &os) const;
+		virtual void putHeaders(HttpPrinter &hp) const;
 		bool pourRange(Size &first, const Size &last);
 		void putRangeHeaders();
 		void putTerminator();

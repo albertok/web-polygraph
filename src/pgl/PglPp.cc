@@ -4,29 +4,12 @@
  * Licensed under the Apache License, Version 2.0 */
 
 #include "pgl/pgl.h"
-#include "xparser/xparser.h"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <fstream>
-#include <ctype.h>
-#include "xstd/h/string.h"
-#include "xstd/h/fcntl.h"
-#include "xstd/h/sstream.h"
-
-#include "xstd/Assert.h"
-#include "xstd/String.h"
+#include "xstd/CommandToBuffer.h"
 #include "pgl/PglLexer.h"
 #include "pgl/PglPp.h"
 #include "pgl/PglParser.h"
-
-#if !defined(HAVE_POPEN) && defined(HAVE__POPEN)
-	inline FILE *popen(const String &cmd, const char *mode) { return _popen(cmd, mode); }
-#endif
-#if !defined(HAVE_PCLOSE) && defined(HAVE__PCLOSE)
-	inline int pclose(FILE *f) { return _pclose(f); }
-#endif
-
 
 
 Array<String*> PglPp::TheDirs;
@@ -154,7 +137,14 @@ void PglPp::system() {
 	const String cmd = spelling();
 
 	if (cmd) { // ignore empty commands?
-		popen(cmd);
+		if (stringstream *const sbuf = xstd::CommandToBuffer(cmd)) {
+			const String h = cmd.len() > 13 ?
+				cmd(0, 10) + "..." : cmd;
+			open(*sbuf, "`" + h + "`");
+		} else {
+			cerr << token().loc() << "command '" << cmd
+				<< "' probably failed" << endl << xexit;
+		}
 		advance();
 	}
 }
@@ -182,30 +172,6 @@ void PglPp::open(const String &fname) {
 		cerr << "\t " << fn << endl;
 	}
 	cerr << xexit;
-}
-
-void PglPp::popen(const String &cmd) {
-	// unfortunately, pipes are not yet standard in iostream lib
-	// we emulate similar functionality by using stdio calls
-
-	stringstream &sbuf = *new stringstream;
-
-	// open the pipe to cmd
-	FILE *fp = ::popen(cmd.cstr(), "r");
-
-	if (fp) {
-		int c;
-		while ((c = fgetc(fp)) != EOF)
-			sbuf << (char)c;
-	}
-
-	// close the pipe
-	if (!fp || ferror(fp) || pclose(fp) != 0)
-		cerr << token().loc() << "command `" << cmd << "' probably failed." << endl << xexit;
-
-	// use buffered input
-	const String h = cmd.len() > 13 ? cmd(0,10) + "..." : cmd;
-	open(sbuf, "`" + h + "`");
 }
 
 void PglPp::open(istream &is, const String &fname) {
@@ -237,7 +203,7 @@ bool PglPp::spaceAfter(char c) const {
 }
 
 void PglPp::syncImage() {
-	if (symbol() <= 0)
+	if (symbol() <= _EOF_TOKEN)
 		return;
 
 	if (symbol() != RIGHTBRACE_TOKEN && theImage && theImage.last() == '\n' && theIndent)

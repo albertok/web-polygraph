@@ -20,10 +20,6 @@
 #include <sys/ioctl.h>
 
 
-bool NetIface::GetAddrs(Array<InetIfReq> &addrs, const String &ifname) {
-	return GetIfAddrs(addrs, ifname);
-}
-
 NetIface::NetIface() {
 	Must(theV4Sock.create(PF_INET, SOCK_DGRAM, 0));
 	theV6Sock.create(AF_INET6, SOCK_DGRAM, 0);
@@ -70,9 +66,9 @@ int NetIface::nextAliasIndex() const {
 	return index;
 }
 
-void NetIface::getAliases(Array<InetIfReq> &aliases) const {
+void NetIface::getAliases(Array<InetIfReq> &aliases, Array<InAddress> *netmasks) const {
 	Assert(theName);
-	Must(GetAddrs(aliases, theName));
+	Must(GetIfAddrs(aliases, theName, netmasks));
 
 	Primaries primes;
 	if (!primaries(primes))
@@ -80,50 +76,51 @@ void NetIface::getAliases(Array<InetIfReq> &aliases) const {
 
 	// remove primary address from the aliases array (if any)
 	if (primes.vFour)
-		ejectPrimary(primes.vFour, aliases);
+		EjectPrimary(primes.vFour, aliases, netmasks);
 	if (primes.vSix)
-		ejectPrimary(primes.vSix, aliases);
+		EjectPrimary(primes.vSix, aliases, netmasks);
 }
 
-void NetIface::ejectPrimary(const NetAddr &primary, Array<InetIfReq> &all) const {
+void NetIface::EjectPrimary(const NetAddr &primary, Array<InetIfReq> &all, Array<InAddress> *netmasks) {
 	int paIdx = -1;
 	for (int i = 0; paIdx < 0 && i < all.count(); ++i) {
 		if (all[i].addrN() == primary.addrN())
 			paIdx = i;
 	}
 	Must(paIdx >= 0);
-	if (paIdx < all.count()-1)
-		all.memmove(paIdx, all.items()+paIdx+1, all.count()-paIdx-1);
-	all.pop();
+	all.eject(paIdx);
+	if (netmasks)
+		netmasks->eject(paIdx);
 }
 
 int NetIface::delAliases() {
 	Assert(theName);
 	Array<InetIfReq> olds;
-	getAliases(olds);
+	Array<InAddress> netmasks;
+	getAliases(olds, &netmasks);
 
 	// reverse order seems to be important on Linux where
 	// one cannot delete :1 after deleting :0
 	int delCount = 0;
 	for (int i = olds.count() - 1; i >= 0; --i) {
 		const String aliasName = olds[i].name();
-		if (delAlias(olds[i].addrN(), aliasName))
+		if (delAlias(olds[i].addrN(), netmasks[i], aliasName))
 			delCount++;
 	}
 	return delCount;
 }
 
-bool NetIface::delAlias(const InAddress &addr, const String &name) {
+bool NetIface::delAlias(const InAddress &addr, const InAddress &netmask, const String &name) {
 	Assert(name);
 	switch (addr.family()) {
 		case AF_INET: {
 			InetIfAliasReq r(name);
 			r.addr(addr);
-			return theV4Sock.delIfAddr(r);
+			return theV4Sock.delV4IfAddr(r);
 		}
 		case AF_INET6: {
-			// XXX: implement
-			return false;
+			Inet6IfAliasReq r(name, addr, netmask);
+			return theV6Sock.delV6IfAddr(r);
 		}
 		default: {
 			Error::Last(EINVAL);

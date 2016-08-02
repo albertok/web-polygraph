@@ -5,6 +5,7 @@
 
 #include "xstd/xstd.h"
 
+#include <limits>
 #include <limits.h>
 #include <ctype.h>
 #include <fstream>
@@ -108,10 +109,30 @@ const char *StrBoundAfterSpace(const char *s, const char *eos) {
 	return s < eos ? s : 0;
 }
 
+const char *StrNotSpace(const char *s) {
+	while (*s) {
+		if (!isspace(*s))
+			return s;
+		++s;
+	}
+	return 0;
+}
+
 bool isInt(const char *s, int &i, const char **p, int base) {
+	const int min = std::numeric_limits<int>::min();
+	const int max = std::numeric_limits<int>::max();
+	int64_t i64;
+	if (isInt64(s, i64, p, base) && Should(min <= i64 && i64 <= max)) {
+		i = static_cast<int>(i64);
+		return true;
+	}
+	return false;
+}
+
+bool isInt64(const char *s, int64_t &i, const char **p, int base) {
 	if (s) {
 		char *ptr = 0;
-		const int h = (int) strtol(s, &ptr, base);
+		const int64_t h = strtoll(s, &ptr, base);
 		if (ptr != s && ptr) {
 			i = h;
 			if (p) *p = ptr;

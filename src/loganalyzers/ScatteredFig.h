@@ -25,11 +25,9 @@ class ScatteredFig: public ReportFigure {
 		void stats(const Stex *aStex1, const Stex *aStex2, const PhaseInfo *phase);
 
 	protected:
-		virtual int createCtrlFile();
-		virtual void setCtrlOptions();
+		virtual int addPlotData();
 
 		int dumpDataLine(const StatIntvlRec &r);
-		bool dumpAxis(const Stex *stex, const StatIntvlRec &r);
 		
 	protected:
 		const Stex *theStex1;

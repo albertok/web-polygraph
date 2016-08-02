@@ -9,11 +9,14 @@
 #include "xstd/h/iomanip.h"
 
 #include "xstd/Clock.h"
+#include "runtime/BcastRcver.h"
 #include "runtime/BcastChannel.h"
 
 bool BcastChannel::Debug = false;
 
-BcastChannel::BcastChannel(const String &anName): theName(anName) {
+BcastChannel::BcastChannel(const String &anName, const bool willStopTrafficWaiting):
+	stopsTrafficWaiting(willStopTrafficWaiting),
+	theName(anName) {
 }
 
 void BcastChannel::subscribe(BcastRcver* rcver) {
@@ -32,5 +35,5 @@ void BcastChannel::unsubscribe(BcastRcver* rcver) {
 }
 
 void BcastChannel::showEvent() const {
-	clog << TheClock << " event: " << theName << " x " << theCount << endl;
+	clog << TheClock << " event: " << theName << " x " << count() << endl;
 }

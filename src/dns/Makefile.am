@@ -6,6 +6,8 @@ noinst_LIBRARIES = \
 	libdns.a
 
 libdns_a_SOURCES = \
+	DnsCache.h \
+	DnsCache.cc \
 	DnsMgr.h \
 	DnsMgr.cc \
 	DnsMsg.h \

@@ -10,6 +10,7 @@
 #include "pgl/PglTimeSym.h"
 #include "pgl/PglStringSym.h"
 #include "pgl/DnsResolverSym.h"
+#include "pgl/DnsCacheSym.h"
 
 
 
@@ -19,12 +20,14 @@ static String strAddrArr = "addr[]";
 static String strServers = "servers";
 static String strTimeout = "timeout";
 static String strQueryType = "query_type";
+static String strDnsCache = "cache";
 
 
 DnsResolverSym::DnsResolverSym(): RecSym(TheType, new PglRec) {
 	theRec->bAdd(strAddrArr, strServers, 0);
 	theRec->bAdd(TimeSym::TheType, strTimeout, 0);
 	theRec->bAdd(StringSym::TheType, strQueryType, 0);
+	theRec->bAdd(DnsCacheSym::TheType, strDnsCache, new DnsCacheSym);
 }
 
 DnsResolverSym::DnsResolverSym(const String &aType, PglRec *aRec): RecSym(aType, aRec) {
@@ -52,3 +55,12 @@ String DnsResolverSym::queryType() const {
 	return getString(strQueryType);
 
 }
+
+DnsCacheSym *DnsResolverSym::cache() const {
+	SynSymTblItem *ci = 0;
+	Assert(theRec->find(strDnsCache, ci));
+	if (ci->sym())
+		return &(DnsCacheSym&)ci->sym()->cast(DnsCacheSym::TheType);
+	return 0;
+}
+

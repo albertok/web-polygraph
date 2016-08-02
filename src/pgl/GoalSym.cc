@@ -3,6 +3,7 @@
  * Copyright 2003-2011 The Measurement Factory
  * Licensed under the Apache License, Version 2.0 */
 
+#include "base/polygraph.h"
 #include "pgl/pgl.h"
 
 #include "xstd/String.h"
@@ -57,7 +58,7 @@ bool GoalSym::fillSize(BigSize &sz) const {
 	return szi->sym() != 0;
 }
 
-bool GoalSym::xactCount(int &count) const {
+bool GoalSym::xactCount(Counter &count) const {
 	SynSymTblItem *xi = 0;
 	Assert(theRec);
 	Assert(theRec->find(strXactions, xi));
@@ -66,7 +67,7 @@ bool GoalSym::xactCount(int &count) const {
 	return xi->sym() != 0;
 }
 
-bool GoalSym::errs(double &ratio, int &count) const {
+bool GoalSym::errs(double &ratio, Counter &count) const {
 	SynSymTblItem *ei = 0;
 	Assert(theRec);
 	Assert(theRec->find(strErrors, ei));
@@ -75,7 +76,7 @@ bool GoalSym::errs(double &ratio, int &count) const {
 		if (level < 1)
 			ratio = level;
 		else
-			count = (int)level;
+			count = level;
 	}
 	return ei->sym() != 0;
 }

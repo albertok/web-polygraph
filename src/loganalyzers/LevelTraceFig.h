@@ -26,8 +26,7 @@ class LevelTraceFig: public ReportTraceFigure {
 		void compareWith(const LevelStex *const stex);
 
 	protected:
-		virtual int createCtrlFile();
-		virtual void setCtrlOptions();
+		virtual int addPlotData();
 
 		int dumpDataLines(const LevelStex *stex);
 		int dumpDataLine(const LevelStex *stex, Time stamp, const StatIntvlRec &r);

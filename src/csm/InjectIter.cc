@@ -19,6 +19,8 @@
 
 void InjectIter::reset() {
 	theCreator = 0;
+
+	theAlgorithm = ialgNone;
 	theTdb = 0;
 	theBodyIter = 0;
 
@@ -30,6 +32,7 @@ void InjectIter::reset() {
 }
 
 void InjectIter::start(CdbBodyIter *aBodyIter) {
+	Assert(theAlgorithm);
 	Assert(theTdb && theTdb->count());
 	Assert(!theBodyIter && aBodyIter);
 	theBodyIter = aBodyIter;

@@ -111,7 +111,7 @@ class MsgSum {
 	public:
 		MsgSum();
 
-		int hostCount() const { return theReqRate.count(); }
+		Counter hostCount() const { return theReqRate.count(); }
 
 		MsgSum &operator +=(const StatusFwdMsg &msg);
 
@@ -326,7 +326,7 @@ void NoteMsg(const StatusFwdMsg &msg) {
 static
 void DeleteIdleHosts() {
 	// we will build these from scratch:
-	TheHostIdx.memset(0);
+	TheHostIdx.clear();
 
 	for (int h = 0; h < TheHosts.count(); ++h) {
 		if (Host *host = TheHosts[h]) {
@@ -457,8 +457,7 @@ int main(int argc, char *argv[]) {
 	}
 	Should(sock.blocking(false));
 
-	TheHostIdx.stretch(256);
-	TheHostIdx.count(TheHostIdx.capacity());
+	TheHostIdx.resize(256);
 	TheLabels.append(new String);
 
 	signal(SIGPIPE, SIG_IGN);

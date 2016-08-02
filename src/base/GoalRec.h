@@ -17,7 +17,7 @@ class ErrGoalRec: public LogObj {
 		ErrGoalRec();
 
 		operator void*() const { return (theCount >= 0 || theRatio >= 0) ? (void*)-1 : 0; }
-		int count() const { return theCount; }
+		Counter count() const { return theCount; }
 		double ratio() const { return theRatio; }
 
 		ErrGoalRec &operator +=(const ErrGoalRec &e);
@@ -30,7 +30,7 @@ class ErrGoalRec: public LogObj {
 
 	public: /* for logging/config only */
 		double theRatio;
-		int theCount;
+		Counter theCount;
 };
 
 // log image of Goal
@@ -40,7 +40,7 @@ class GoalRec: public LogObj {
 
 		operator void *() const; // true if positive goal is set
 		Time duration() const { return theDuration; }
-		int xactCnt() const { return theXactCnt; }
+		Counter xactCnt() const { return theXactCnt; }
 		const BigSize &fillSz() const { return theFillSz; }
 		const ErrGoalRec &errs() const { return theErrs; }
 
@@ -58,7 +58,7 @@ class GoalRec: public LogObj {
 
 	protected:
 		Time theDuration;
-		int theXactCnt;
+		Counter theXactCnt;
 		BigSize theFillSz;
 		ErrGoalRec theErrs;
 };

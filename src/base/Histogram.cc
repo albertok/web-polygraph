@@ -22,9 +22,12 @@ Histogram::Histogram(Val aMin, Val aMax, int binCount) {
 	limits(aMin, aMax, binCount);
 }
 
+Histogram::Histogram(const Histogram &h) {
+	add(h); // calls limits() to initialize our members first
+}
+
 void Histogram::limits(Val aMin, Val aMax, int binCount) {
-	theBins.stretch(binCount+2);
-	theBins.count(binCount+2);
+	theBins.resize(binCount+2);
 	theValMin = aMin;
 	theValMax = aMax;
 	theBinMax = binCount+1;
@@ -32,7 +35,7 @@ void Histogram::limits(Val aMin, Val aMax, int binCount) {
 
 void Histogram::reset() {
 	theStats.reset();
-	theBins.memset(0);
+	theBins.clear();
 	// do not reset 'limits'
 }
 
@@ -112,7 +115,7 @@ ILog &Histogram::load(ILog &log) {
 		for (int i = 0; i < busyCount; ++i) {
 			const int pos = log.geti();
 			Assert(0 <= pos && pos < theBins.count());
-			theBins[pos] = log.geti();
+			log >> theBins[pos];
 		}
 	} else {
 		log >> theBins;
@@ -122,7 +125,7 @@ ILog &Histogram::load(ILog &log) {
 }
 
 void Histogram::report(double step, ostream &os) const {
-	const int totCount = stats().count();
+	const Counter totCount = stats().count();
 	Array<HistogramBin> percs;
 
 	Percentiles(*this, percs, step);
@@ -225,7 +228,7 @@ void Percentiles(const Histogram &hist, Array<HistogramBin> &percs, double pStep
 	Assert(pStep > 0);
 	int stepId = 1;
 
-	const int totCount = hist.stats().count();
+	const Counter totCount = hist.stats().count();
 	HistogramBin accBin;
 	int accCount = 0;
 

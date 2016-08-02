@@ -15,7 +15,6 @@ class LogIter {
 
 		LogIter &start(ILog *aLog);
 
-		bool eof() const;
 		operator void *() const;
 		LogIter &operator ++();
 
@@ -27,6 +26,7 @@ class LogIter {
 
 	protected:
 		void sync();
+		bool eof() const;
 
 	protected:
 		ILog *theLog;

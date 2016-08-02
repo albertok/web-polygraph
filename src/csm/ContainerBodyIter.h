@@ -20,9 +20,11 @@ class ContainerBodyIter: public BodyIter {
 		void embedContModel(EmbedContMdl *aModel);
 
 	protected:
-		virtual bool pourBody();
+		virtual bool pourMiddle();
 		virtual void calcContentSize() const;
-		Size embed(); // writes embedded oid tag
+
+		// writes embedded oid tag and returns true if something was written
+		bool embed();
 
 	protected:
 		EmbedContMdl *theModel;

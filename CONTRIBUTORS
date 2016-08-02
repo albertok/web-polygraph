@@ -1,3 +1,9 @@
+- Karl Young <karlyoun@cisco.com>
+  2012/04 OpenSSL certificate generation improvements.
+
+- Markus Moeller <huaraz@moeller.plus.com>
+  2011/02 Initial Kerberos authentication support.
+
 - Qiao Yang <geoyang@ironport.com>
   2008/03 NTLM authentication bugs.
 

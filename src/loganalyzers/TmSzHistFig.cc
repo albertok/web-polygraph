@@ -27,7 +27,7 @@ class TmSzHistStex: public HistStex {
 
 
 TmSzHistFig::TmSzHistFig(const String &aUnit): theUnit(aUnit) {
-	theLabelX1 = theUnit;
+	theAxisX1.label(theUnit);
 }
 
 TmSzHistFig::~TmSzHistFig() {

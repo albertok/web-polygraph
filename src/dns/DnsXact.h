@@ -30,6 +30,7 @@ class DnsXact: public AlarmUser {
 		void type(DnsMsg::Types type) { theType = type; }
 		void idx(int anIdx) { theIdx = anIdx; }
 
+		const NetAddr &queryAddr() const { return theQueryAddr; }
 		const NetAddr &respAddr() const { return theRespAddr; }
 		CltXact *reason() { return theReason; }
 		int id() const { return theId; }

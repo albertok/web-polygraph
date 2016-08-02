@@ -13,7 +13,9 @@ libapp_a_SOURCES = \
 	DebugSwitch.h \
 	DebugSwitch.cc \
 	shutdown.h \
-	shutdown.cc
+	shutdown.cc \
+	WorkersRunner.h \
+	WorkersRunner.cc
 
 
 include $(top_srcdir)/common.am

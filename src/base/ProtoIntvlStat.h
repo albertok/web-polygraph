@@ -19,6 +19,7 @@ class ProtoIntvlStat {
 		void progress(ProtoProgress *aProgress);
 		const char *id() const;
 		const char *name() const;
+		bool updateProgress;
 
 		void restart();
 		void keepLevel(const ProtoIntvlStat &s);
@@ -36,7 +37,7 @@ class ProtoIntvlStat {
 		inline const LevelStat &connLevel() const;
 		inline int errXacts() const;
 
-		inline HRStat &doneXacts();
+		void recordXact(const Time &tm, const Size &sz, const bool hit);
 		inline LevelStat &xactLevel();
 		inline LevelStat &connLevel();
 		inline void recordXactError();
@@ -78,12 +79,6 @@ const LevelStat &ProtoIntvlStat::xactLevel() const {
 inline
 const LevelStat &ProtoIntvlStat::connLevel() const {
 	return theConnLvl;
-}
-
-
-inline
-HRStat &ProtoIntvlStat::doneXacts() {
-	return theDoneXacts;
 }
 
 inline

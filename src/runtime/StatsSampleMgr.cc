@@ -21,7 +21,10 @@
 StatsSampleMgr TheStatsSampleMgr;
 
 
-StatsSampleMgr::StatsSampleMgr(): theStartCnt(0), thePendCfgCnt(0) {
+StatsSampleMgr::StatsSampleMgr():
+	theStartCnt(0),
+	thePendCfgCnt(0),
+	didStart(false) {
 }
 
 StatsSampleMgr::~StatsSampleMgr() {
@@ -55,12 +58,15 @@ void StatsSampleMgr::addSample(const StatsSampleCfg &cfg) {
 		idx++;
 
 	// move later samples up
-	for (int i = theCfgs.count(); i > idx; --i)
-		theCfgs.put(theCfgs[i-1], i);
+	for (int i = theCfgs.count(); i > idx; --i) {
+		StatsSampleCfg * const tmp = theCfgs[i-1];
+		theCfgs.put(tmp, i);
+	}
 
 	theCfgs.put(new StatsSampleCfg(cfg), idx);
 
-	schedSample(cfg);
+	if (didStart)
+		schedSample(cfg);
 }
 
 void StatsSampleMgr::willAddSample() {
@@ -68,10 +74,20 @@ void StatsSampleMgr::willAddSample() {
 }
 
 void StatsSampleMgr::start() {
+	if (!didStart) {
+		didStart = true;
+		const Time waitTime = TheClock.time() - Clock::TheStartTime;
+		Must(waitTime >= 0);
+		for (int i = 0; i < theCfgs.count(); ++i) {
+			theCfgs[i]->start += waitTime;
+			schedSample(*theCfgs[i]);
+		}
+	}
 }
 
 void StatsSampleMgr::wakeUp(const Alarm &a) {
 	AlarmUser::wakeUp(a);
+	Must(didStart); // we should not have been sleeping otherwise
 	const Time t = Max(a.time(), TheClock.time());
 	while (theStartCnt < theCfgs.count() &&
 		theCfgs[theStartCnt]->start + Clock::TheStartTime <= t) {

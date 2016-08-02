@@ -17,15 +17,19 @@
 #include "runtime/Agent.h"
 #include "runtime/AgentCfg.h"
 #include "runtime/LogComment.h"
+#include "runtime/MimeHeadersCfg.h"
+#include "runtime/XactAbortCoord.h"
 
 
 AgentCfg::AgentCfg(): theSslWrapSel(0), theHttpVersionSel(0),
-	theCookieSenderProb(0) {
+	theHttpHeaders(0),
+	theCookieSenderProb(0), theAbortProb(0) {
 }
 
 AgentCfg::~AgentCfg() {
 	delete theSslWrapSel;
 	delete theHttpVersionSel;
+	delete theHttpHeaders;
 }
 
 void AgentCfg::configure(const AgentSym *agent) {
@@ -34,6 +38,9 @@ void AgentCfg::configure(const AgentSym *agent) {
 	configureSslWraps(agent);
 	configureCustomStatsScope(agent);
 	configureHttpVersions(agent);
+	configureHttpHeaders(agent);
+
+	agent->abortProb(theAbortProb);
 }
 
 void AgentCfg::configureSslWraps(const AgentSym *agent) {
@@ -62,6 +69,19 @@ bool AgentCfg::selectCookieSenderStatus() {
 	return rng.event(theCookieSenderProb);
 }
 
+void AgentCfg::selectAbortCoord(XactAbortCoord &coord) {
+	static RndGen rng1, rng2; // uncorrelated unless theAbortProb is 1
+	if (rng1.event(theAbortProb)) {
+		const RndGen::Seed where = rng2.state();
+		rng2.trial();
+		coord.configure(rng2.state(), where);
+	} else {
+		const RndGen::Seed whether = rng1.state();
+		rng1.trial();
+		coord.configure(whether, rng1.state());
+	}
+}
+
 void AgentCfg::configureHttpVersions(const AgentSym *agent) {
 	static StringIdentifier sidf;
 	if (!sidf.count()) {
@@ -77,6 +97,11 @@ void AgentCfg::configureHttpVersions(const AgentSym *agent) {
 
 int AgentCfg::selectHttpVersion() {
 	return (int)theHttpVersionSel->trial();
+}
+
+void AgentCfg::configureHttpHeaders(const AgentSym *agent) {
+	if (const ArraySym *const a = agent->httpHeaders())
+		theHttpHeaders = new MimeHeadersCfg(*a);
 }
 
 bool AgentCfg::inCustomStatsScope(const int httpStatus) const {

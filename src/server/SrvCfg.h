@@ -6,11 +6,11 @@
 #ifndef POLYGRAPH__SERVER_SRVCFG_H
 #define POLYGRAPH__SERVER_SRVCFG_H
 
+#include <map>
 #include "xstd/Array.h"
 #include "csm/ContentTypeIdx.h"
 #include "runtime/AgentCfg.h"
 
-class XactAbortCoord;
 class ServerSym;
 class PopModel;
 class RndDistr;
@@ -30,13 +30,14 @@ class SrvCfg: public AgentCfg {
 		bool sslActive(const int protocol) const;
 
 		int selectProtocol();
-		void selectAbortCoord(XactAbortCoord &coord);
 		bool setEmbedContType(ObjId &oid, const Area &category) const;
+		bool findRamFile(const String &fileName, ObjId &oid) const;
 
 	protected:
 		void configureRepTypes();
 		void configureProtocols();
 		void configureCookies();
+		void configureContentsMap(Array<ContentCfg*> &ccfgs);
 
 	public:
 		const ServerSym *theServer;  // used to identify/share configs
@@ -49,8 +50,14 @@ class SrvCfg: public AgentCfg {
 		RndDistr *theCookieSizes;  // individual cookie value sizes
 		double theCookieSendProb;  // probability of sending a cookie
 
-		double theAbortProb;
 		double theReqBodyAllowed;
+
+	protected:
+		// map RamFile name to ContentCfg that has it and its ID within
+		// that ContentCfg RamFiles storage
+		typedef pair<ContentCfg*, int> ContentCfgAndRamFileId;
+		typedef std::map<String, ContentCfgAndRamFileId> RamFilesByName;
+		RamFilesByName theRamFilesByName;
 };
 
 

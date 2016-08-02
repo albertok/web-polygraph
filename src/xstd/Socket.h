@@ -72,7 +72,8 @@ class Socket {
 		bool getIfBcastAddr(const String &ifname, struct sockaddr &addr);
 		bool addV4IfAddr(const InetIfAliasReq &req, int idx = -1);
 		bool addV6IfAddr(const Inet6IfAliasReq &req, int idx = -1);
-		bool delIfAddr(const InetIfAliasReq &req, int idx = -1);
+		bool delV4IfAddr(const InetIfAliasReq &req, int idx = -1);
+		bool delV6IfAddr(const Inet6IfAliasReq &req);
 
 		bool configure(const SockOpt &opt);
 

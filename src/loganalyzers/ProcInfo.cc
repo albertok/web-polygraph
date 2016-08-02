@@ -77,8 +77,8 @@ const PhaseInfo &ProcInfo::allPhasesPhase() const {
 	return theAllPhasesPhase;
 }
 
-int ProcInfo::repCount(const Scope &scope) const {
-	int count = 0;
+Counter ProcInfo::repCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < thePhases.count(); ++i) {
 		if (scope.hasPhase(thePhases[i]->name()))
 			count += thePhases[i]->stats().theXactCnt; // all successfull
@@ -86,8 +86,8 @@ int ProcInfo::repCount(const Scope &scope) const {
 	return count;
 }
 
-int ProcInfo::hitCount(const Scope &scope) const {
-	int count = 0;
+Counter ProcInfo::hitCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < thePhases.count(); ++i) {
 		if (scope.hasPhase(thePhases[i]->name()))
 			count += thePhases[i]->stats().theBasicXacts.hits().size().stats().count();
@@ -95,8 +95,8 @@ int ProcInfo::hitCount(const Scope &scope) const {
 	return count;
 }
 
-int ProcInfo::offeredHitCount(const Scope &scope) const {
-	int count = 0;
+Counter ProcInfo::offeredHitCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < thePhases.count(); ++i) {
 		if (scope.hasPhase(thePhases[i]->name()))
 			count += thePhases[i]->stats().theIdealHR.hits().count();
@@ -104,8 +104,8 @@ int ProcInfo::offeredHitCount(const Scope &scope) const {
 	return count;
 }
 
-int ProcInfo::uselessProxyValidationCount(const Scope &scope) const {
-	int count = 0;
+Counter ProcInfo::uselessProxyValidationCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < thePhases.count(); ++i) {
 		if (scope.hasPhase(thePhases[i]->name()))
 			count += thePhases[i]->stats().theProxyValidationR.misses().aggr().count();

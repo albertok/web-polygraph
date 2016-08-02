@@ -11,7 +11,7 @@
 // uniform
 class UnifPopDistr: public PopDistr {
 	public:
-		virtual int choose(RndGen &rng, int lastName);
+		virtual int64_t choose(RndGen &rng, int64_t lastName);
 		virtual ostream &print(ostream &os) const;
 };
 
@@ -20,7 +20,7 @@ class ZipfPopDistr: public PopDistr {
 	public:
 		ZipfPopDistr(double aSkew = 1);
 
-		virtual int choose(RndGen &rng, int lastName);
+		virtual int64_t choose(RndGen &rng, int64_t lastName);
 		virtual ostream &print(ostream &os) const;
 
 	protected:

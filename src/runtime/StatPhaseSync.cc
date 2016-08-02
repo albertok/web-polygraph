@@ -28,13 +28,8 @@ class StatPhaseGroup {
 StatPhaseSync TheStatPhaseSync;
 
 
-// XXX: we need to grow this map on-demand basis!
-StatPhaseSync::StatPhaseSync(): theIndex(37), theCount(0), thePhaseSyncPosMin(-1) {
-}
-
-StatPhaseSync::~StatPhaseSync() {
-	while (theIndex.count())
-		delete theIndex.pop();
+StatPhaseSync::StatPhaseSync(): theCount(0), thePhaseSyncPosMin(-1) {
+	theIndex.resize(37); // XXX: we need to grow this map on-demand basis!
 }
 
 int StatPhaseSync::phaseSyncPos() const {

@@ -11,7 +11,7 @@
 static void RegisterClock(Clock *clock);
 static void UnregisterClock(Clock *clock);
 
-Clock TheClock;
+Clock &TheClock = *new Clock;
 static Array<Clock*> *TheClocks = 0;
 
 /* Clock */
@@ -52,6 +52,8 @@ void Clock::Update(bool advanceAll) {
 static
 void RegisterClock(Clock *clock) {
 	Assert(clock);
+	if (!TheClocks)
+		TheClocks = new Array<Clock*>;
 	TheClocks->append(clock);
 }
 
@@ -65,22 +67,4 @@ void UnregisterClock(Clock *clock) {
 		}
 	}
 	Assert(false); // clock not found
-}
-
-/* ClockLibCounter; internal stuff, ignore */
-
-int ClockLibCounter::theUseCount = 0;
-
-ClockLibCounter::ClockLibCounter() {
-	if (!theUseCount++)
-		TheClocks = new Array<Clock*>;
-}
-
-ClockLibCounter::~ClockLibCounter() {
-	if (!--theUseCount) {
-		Assert(TheClocks);
-		Assert(!TheClocks->count());
-		delete TheClocks;
-		TheClocks = 0;
-	}
 }

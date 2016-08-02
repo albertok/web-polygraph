@@ -15,7 +15,7 @@ class InAddress {
 	public:
 		static InAddress IPvFour();
 		static InAddress IPvSix();
-		static InAddress NetMask(int bits);
+		static InAddress NetMask(const int family, int bitCount);
 		static unsigned short GetPort(const sockaddr_storage &s);
 		static void SetPort(sockaddr_storage &s, int port);
 

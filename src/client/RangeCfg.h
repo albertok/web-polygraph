@@ -6,10 +6,10 @@
 #ifndef POLYGRAPH__CLIENT_RANGECFG_H
 #define POLYGRAPH__CLIENT_RANGECFG_H
 
-#include "xstd/h/iostream.h"
 #include "xstd/Size.h"
 
 class ContentCfg;
+class HttpPrinter;
 class ObjId;
 
 // Abstract base class for SingleRangeCfg and MultiRangeCfg
@@ -22,7 +22,7 @@ class RangeCfg {
 			unsigned int theCount;
 		};
 
-		virtual RangesInfo makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const = 0;
+		virtual RangesInfo makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const = 0;
 };
 
 #endif

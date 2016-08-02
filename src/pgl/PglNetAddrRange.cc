@@ -31,15 +31,15 @@ void PglNetAddrRange::netmask(InAddress &netm) const {
 	String str;
 	startIter();
 	currentIter(str);
+	NetAddr firstNetAddr;
+	Should(pglIsNetAddr(str, firstNetAddr));
 
 	int subnet = theSubnet;
 	if (subnet < 0) {
 		// default subnet length is the size of the address: 32 or 128
-	NetAddr firstNetAddr;
-	Should(pglIsNetAddr(str, firstNetAddr));
 		subnet = firstNetAddr.addrN().len() * 8;
 	}
-	netm = InAddress::NetMask(subnet);
+	netm = InAddress::NetMask(firstNetAddr.addrN().family(), subnet);
 }
 
 ArraySym *PglNetAddrRange::toSyms(const TokenLoc &loc) const {
@@ -61,11 +61,8 @@ ArraySym *PglNetAddrRange::toSyms(const TokenLoc &loc) const {
 void PglNetAddrRange::toAddrs(Array<NetAddr*> &addrs) const {
 	startIter();
 	do {
-		String str;
-		currentIter(str);
-
 		NetAddr addr;
-		Assert(pglIsNetAddr(str, addr));
+		currentNetAddr(addr);
 
 		addrs.append(new NetAddr(addr));
 	} while (nextIter());
@@ -74,11 +71,8 @@ void PglNetAddrRange::toAddrs(Array<NetAddr*> &addrs) const {
 void PglNetAddrRange::toAddrs(AddrIter iter) const {
 	startIter();
 	do {
-		String str;
-		currentIter(str);
-
 		NetAddr addr;
-		Assert(pglIsNetAddr(str, addr));
+		currentNetAddr(addr);
 
 		iter(addr);
 	} while (nextIter());
@@ -91,17 +85,22 @@ void PglNetAddrRange::addrAt(int idx, NetAddrSym &nas) const {
 }
 
 void PglNetAddrRange::currentAddrSym(NetAddrSym &nas) const {
-	String str;
-	currentIter(str);
-
 	NetAddr addr;
-	Assert(pglIsNetAddr(str, addr));
+	currentNetAddr(addr);
 
 	nas.val(addr);
 	if (theIfName)
 		nas.setIfname(theIfName);
 	if (theSubnet >= 0)
 		nas.setSubnet(theSubnet);
+}
+
+void PglNetAddrRange::currentNetAddr(NetAddr &addr) const {
+	String str;
+	currentIter(str);
+	if (!pglIsNetAddr(str, addr))
+		cerr << here << "error: invalid address " << str
+			<< " extracted from a malformed address range " << toStr() << endl << xexit;
 }
 
 bool PglNetAddrRange::parse(const String &val) {

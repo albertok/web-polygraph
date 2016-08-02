@@ -42,8 +42,7 @@ ConnHash::ConnHash(int anCcAddrMax) {
 }
 
 void ConnHash::ccAddrMax(int aMax) {
-	theHash.stretch(Max(aMax|1, 7));
-	theHash.count(theHash.capacity());
+	theHash.resize(Max(aMax|1, 7));
 	TheItems.limit(1024);      // magic, no good way to estimate
 	TheQueueItems.limit(1024); // magic, no good way to estimate
 }

@@ -7,6 +7,7 @@
 #define POLYGRAPH__LOGANALYZERS_BLOBDB_H
 
 #include "xml/XmlNodes.h"
+#include "xml/XmlTag.h"
 #include "loganalyzers/InfoScope.h"
 #include "loganalyzers/BlobIdx.h"
 
@@ -35,7 +36,8 @@ class BlobDb {
 		const ReportBlob &get(const String &key);
 		const XmlNode &include(const String &key); // at most once
 		const XmlNode &quote(const String &key);   // many times
-		XmlNode &ptr(const String &key, const XmlNodes &context);
+		XmlNode &ptr(const String &key, const XmlNodes &context); // link
+		XmlNode &nullPtr(const XmlNodes &context); // grayed-out link
 		XmlTag reportNote(const String &id, const XmlNode &note);
 
 		ostream &print(ostream &os, const String &pfx) const;

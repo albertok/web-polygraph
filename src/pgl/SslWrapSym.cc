@@ -25,6 +25,8 @@ static String strProtocols = "protocols";
 static String strRootCertificate = "root_certificate";
 static String strSizeArr = "size[]";
 static String strRsaKeySizes = "rsa_key_sizes";
+static String strGenerateCertificates = "generate_certificates";
+static String strCertificates = "certificates";
 static String strCiphers = "ciphers";
 static String strSslCiphers = "ssl-ciphers";	// a global name for the distr
 static String strSessionResump = "session_resumption";
@@ -32,6 +34,7 @@ static String strSessionCache = "session_cache";
 static String strSharingGroup = "sharing_group";
 static String strSslConfigFile = "ssl_config_file";
 static String strVerifyPeerCertificate = "verify_peer_certificate";
+static String strCompression = "compression";
 
 
 SslWrapSym::SslWrapSym(): RecSym(TheType, new PglRec) {
@@ -39,11 +42,14 @@ SslWrapSym::SslWrapSym(): RecSym(TheType, new PglRec) {
 	theRec->bAdd(StringSym::TheType, strRootCertificate, 0);
 	theRec->bAdd(StringSym::TheType, strSharingGroup, 0);
 	theRec->bAdd(strSizeArr, strRsaKeySizes, 0);
+	theRec->bAdd(BoolSym::TheType, strGenerateCertificates, 0);
+	theRec->bAdd(strStringArr, strCertificates, 0);
 	theRec->bAdd(strStringArr, strCiphers, 0);
 	theRec->bAdd(NumSym::TheType, strSessionResump, 0);
 	theRec->bAdd(IntSym::TheType, strSessionCache, 0);
 	theRec->bAdd(StringSym::TheType, strSslConfigFile, 0);
 	theRec->bAdd(BoolSym::TheType, strVerifyPeerCertificate, 0);
+	theRec->bAdd(NumSym::TheType, strCompression, 0);
 }
 
 SslWrapSym::SslWrapSym(const String &aType, PglRec *aRec): RecSym(aType, aRec) {
@@ -79,7 +85,7 @@ bool SslWrapSym::rsaKeySizes(Array<Size> &sizes, RndDistr *&sel) const {
 
 	ArraySym &a = (ArraySym&)wi->sym()->cast(ArraySym::TheType);
 	Array<SizeSym*> syms;
-	ArraySymExportM(SizeSym, a, SizeSym::TheType, syms);
+	a.exportA(syms);
 
 	sizes.stretch(syms.count());
 	for (int i = 0; i < syms.count(); ++i) {
@@ -98,6 +104,14 @@ bool SslWrapSym::rsaKeySizes(Array<Size> &sizes, RndDistr *&sel) const {
 	sel = TblDistr::FromDistrTable(type() + "-" + strRsaKeySizes, probs);
 
 	return true;
+}
+
+bool SslWrapSym::generateCertificates(bool &set) const {
+	return getBool(strGenerateCertificates, set);
+}
+
+bool SslWrapSym::certificates(Array<String*> &certificates) const {
+	return getStrings(strCertificates, certificates);
 }
 
 bool SslWrapSym::ciphers(Array<String*> &ciphers, RndDistr *&selector) const {
@@ -127,4 +141,8 @@ String SslWrapSym::sslConfigFile() const {
 
 bool SslWrapSym::verifyPeerCertificate(bool &set) const {
 	return getBool(strVerifyPeerCertificate, set);
+}
+
+bool SslWrapSym::compression(double &prob) const {
+	return getDouble(strCompression, prob);
 }

@@ -90,8 +90,6 @@ libbase_a_SOURCES = \
 	StatIntvlRec.cc \
 	StatPhaseRec.h \
 	StatPhaseRec.cc \
-	XactStatRec.h \
-	XactStatRec.cc \
 	\
 	histograms.h \
 	histograms.cc \
@@ -100,6 +98,10 @@ libbase_a_SOURCES = \
 	opts.cc \
 	polyOpts.h \
 	polyOpts.cc \
+	\
+	PatchRegistry.h \
+	PatchRegistry.cc \
+	PatchRegistrations.h \
 	\
 	rndDistrStat.h \
 	rndDistrStat.cc \
@@ -125,6 +127,9 @@ libbase_a_SOURCES = \
 	\
 	IpRange.h \
 	IpRange.cc \
+	\
+	SslPhaseStat.h \
+	SslPhaseStat.cc \
 	\
 	macros.h \
 	macros.cc

@@ -20,7 +20,7 @@
 #include "runtime/Connection.h"
 #include "runtime/HostMap.h"
 #include "runtime/AddrMap.h"
-#include "runtime/EphPortMgr.h"
+#include "runtime/PortMgr.h"
 #include "runtime/ErrorMgr.h"
 #include "runtime/LogComment.h"
 #include "runtime/StatPhaseMgr.h"
@@ -42,8 +42,6 @@
 
 XactFarm<SrvXact> *Server::TheFtpXacts;
 XactFarm<SrvXact> *Server::TheHttpXacts;
-
-PtrArray<PortMgr*> Server::ThePortMgrs;
 
 
 void Server::FtpFarm(XactFarm<SrvXact> *aFarm) {
@@ -75,14 +73,14 @@ Server::~Server() {
 void Server::configure(const ServerSym *cfg, const NetAddr &aHost) {
 	Assert(theConnMgr);
 
+	theCfg = TheSrvSharedCfgs.getConfig(cfg);
+
 	Agent::configure(cfg, aHost);
 	if (theHost.port() < 0) {
 		cerr << cfg->loc() << "no port specified for the server `"
 			<< theKind << "' running on " << theHost << endl;
 		exit(-3);
 	}
-
-	theCfg = TheSrvSharedCfgs.getConfig(cfg);
 
 	// XXX: cannot Assert: pxy server does not have a HostMap entry
 	if (!TheHostMap->find(aHost, theHostIdx))
@@ -112,8 +110,6 @@ void Server::configure(const ServerSym *cfg, const NetAddr &aHost) {
 	if (!TheAddrMap->has(theHost)) // PolyApp adds only if findAddr() fails
 		TheAddrMap->add(theHost);
 
-	selectHttpVersion(*theCfg);
-
 	isCookieSender = theCfg->selectCookieSenderStatus();
 	if (isCookieSender && (!theCfg->theCookieSizes || !theCfg->theCookieCounts)) {
 		cerr << cfg->loc() << "error: cookie-sending server does not have " <<
@@ -121,7 +117,7 @@ void Server::configure(const ServerSym *cfg, const NetAddr &aHost) {
 		FatalError2(errOther, lgcSrvSide);
 	}
 
-	thePortMgr = cfgPortMgr();
+	thePortMgr = PortMgr::Get(theHost);
 
 	TheFtpXacts->limit(1024); // magic, no good way to estimate
 	TheHttpXacts->limit(1024); // magic, no good way to estimate
@@ -242,21 +238,6 @@ void Server::startXact(Connection *conn) {
 	}
 	x->exec(this, conn,
 		theThinkDistr ? Time::Secd(theThinkDistr->trial()) : Time());
-}
-
-// slow, used during configuration only
-// XXX: add port manager options for server, merge with Client::cfgPortMgr
-PortMgr *Server::cfgPortMgr() {
-	// slowly check if we already have a port mgr for our host
-	for (int i = 0; i < ThePortMgrs.count(); ++i) {
-		if (ThePortMgrs[i]->addr() == theHost)
-			return ThePortMgrs[i];
-	}
-
-	// create new port manager
-	PortMgr *mgr = new EphPortMgr(theHost);
-	ThePortMgrs.append(mgr);
-	return mgr;
 }
 
 PortMgr *Server::portMgr() {

@@ -12,12 +12,12 @@
 // base class for all trace figures
 class ReportTraceFigure: public ReportFigure {
 	public:
+		ReportTraceFigure();
+
 		void globalStart(Time aStart);
 
-		void setCtrlOptions();
-
 	protected:
-		void dumpTime(Time stamp);
+		void addDataPoint(const Time stamp, const double y);
 		
 	protected:
 		Time theGlobalStart;

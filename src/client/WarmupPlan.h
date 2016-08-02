@@ -11,10 +11,12 @@
 
 // iterates through vidx values until all reachable pub worlds are ready
 class WarmupPlan {
+	public:
+		static int ReadyCount();
+
 	protected:
 		static bool WarmViserv(int vidx);
 		static void ReportProgress();
-		static int ReadyCount();
 
 	protected:
 		static int TheReqCnt;

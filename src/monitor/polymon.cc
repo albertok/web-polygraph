@@ -163,7 +163,7 @@ class WinMatrix {
 };
 
 // WINDOW wrapper with a title and event handlers
-class Window: public WINDOW {
+class Window {
 	public:
 		typedef void (Window::*EventHandler)(const Host &);
 
@@ -175,8 +175,14 @@ class Window: public WINDOW {
 		virtual void noteDel(const Host &) {}
 		virtual void noteUpd(const Host &) {}
 
+	private:
+		// disable copying
+		Window(const Window &);
+		Window &operator =(const Window &);
+
 	public:
-		const char *theTitle;
+		WINDOW *const handle;
+		const char *title;
 };
 
 // general monitor information
@@ -194,6 +200,15 @@ class InfoWindow: public Window {
 	protected:
 		int theMsgCnt;       // msgs seen so far
 		int theListnCnt;     // derived from CopyCnt in the fwded msg
+};
+
+// help window
+class HelpWindow: public Window {
+	public:
+		HelpWindow();
+
+	protected:
+		void update();
 };
 
 // summary information about SmxWindows
@@ -260,7 +275,7 @@ class MsgSum {
 	public:
 		MsgSum();
 
-		int hostCount() const { return theReqRate.count(); }
+		Counter hostCount() const { return theReqRate.count(); }
 
 		MsgSum &operator +=(const StatusFwdMsg &msg);
 
@@ -283,7 +298,7 @@ class MsgSum {
 struct RunLabelSmxWin: public SmxWindow {
 	RunLabelSmxWin(const char *aTitle): SmxWindow(aTitle) {}
 	virtual void displayMsg(int y, int x, const StatusFwdMsg &msg) {
-		mvwprintw(this, y, x, (char*)"%7.6s", msg.theLabel);
+		mvwprintw(handle, y, x, (char*)"%7.6s", msg.theLabel);
 	}
 };
 
@@ -390,15 +405,18 @@ static NetAddr TheDisp;
 static FileScanner *TheScanner = 0;
 static bool DoShutdown = false;
 
-static Array<Host*> TheHosts;
+static PtrArray<Host*> TheHosts;
 static Array<Host*> TheHostIdx; // address -> host map
 static int TheBusyHostCnt = 0;
-static Array<String*> TheLabels;
+static PtrArray<String*> TheLabels;
 static int TheUniqLblCnt = 0;
 
-static Array<Window*> TheWins;
+static PtrArray<Window*> TheWins;
 static int TheWinPos = 0; // current window
 static Window *TheInfoWin = 0; // special
+
+static Window *TheHelpWin = 0; // help window
+static bool ShowingHelp = false; // true iff help window is shown
 
 static HostFilter TheFilter;
 static char TheFiltWarn[80] = "";
@@ -445,6 +463,17 @@ void KbdMonitor::noteReadReady(int) {
 		case KEY_DOWN: SwitchLblFilter(TheFilter.lbl.pos - 1); break;
 		case KEY_UP: SwitchLblFilter(TheFilter.lbl.pos + 1); break;
 
+		case 'H':
+		case 'h':
+			if (!ShowingHelp) {
+				ShowingHelp = true;
+				touchwin(TheHelpWin->handle);
+				wrefresh(TheHelpWin->handle);
+				return;
+			} else
+				SwitchWin(TheWinPos);
+			break;
+
 		case 'S': SwitchCatFilter(TheFilter.logCat.pos - 1); break;
 		case 's': SwitchCatFilter(TheFilter.logCat.pos + 1); break;
 
@@ -457,7 +486,10 @@ void KbdMonitor::noteReadReady(int) {
 		default: return;
 	}
 
-	redrawwin(TheWins[TheWinPos]);
+	if (ShowingHelp)
+		ShowingHelp = false;
+
+	wrefresh(TheWins[TheWinPos]->handle);
 }
 
 /* MsgMonitor */
@@ -507,7 +539,7 @@ void MsgMonitor::noteReadReady(int) {
 	}
 	Assert(theSize >= 0);
 
-	wrefresh(TheWins[TheWinPos]);
+	wrefresh(TheWins[TheWinPos]->handle);
 }
 
 
@@ -561,10 +593,8 @@ bool Host::matches(const HostFilter &filter) const {
 
 /* WinMatrix */
 
-WinMatrix::WinMatrix(int aMaxY, int aMaxX): 
-	theImage((aMaxY+1) * (aMaxX+1)), theMaxY(aMaxY), theMaxX(aMaxX) {
-	theImage.count(theImage.capacity());
-	theImage.memset(0);
+WinMatrix::WinMatrix(int aMaxY, int aMaxX): theMaxY(aMaxY), theMaxX(aMaxX) {
+	theImage.resize((aMaxY+1) * (aMaxX+1));
 }
 
 int WinMatrix::safePos(int y, int x) const {
@@ -576,24 +606,25 @@ int WinMatrix::safePos(int y, int x) const {
 
 /* Window */
 
-Window::Window(const char *aTitle): WINDOW(*newwin(0,0,0,0)), theTitle(aTitle) {
-	leaveok(this, true); // do not bother about cursor pos
+Window::Window(const char *aTitle): handle(newwin(0,0,0,0)), title(aTitle) {
+	leaveok(handle, true); // do not bother about cursor pos
 
 	int maxx, maxy;
-	getmaxyx(this, maxy, maxx);
+	(void)maxy; // silence g++ "set but not used" warning
+	getmaxyx(handle, maxy, maxx);
 
-	werase(this);
+	werase(handle);
 
 	// print window title
-	wattron(this, A_BOLD);
-	wattron(this, A_UNDERLINE);
-	mvwaddstr(this, 0, (maxx - strlen(theTitle))/2, (char*)theTitle);
-	wattroff(this, A_UNDERLINE);
-	wattroff(this, A_BOLD);
+	wattron(handle, A_BOLD);
+	wattron(handle, A_UNDERLINE);
+	mvwaddstr(handle, 0, (maxx - strlen(title))/2, (char*)title);
+	wattroff(handle, A_UNDERLINE);
+	wattroff(handle, A_BOLD);
 }
 
 Window::~Window() {
-	delwin(this);
+	delwin(handle);
 }
 
 
@@ -607,14 +638,14 @@ InfoWindow::InfoWindow(char const *aTitle): Window(aTitle),
 void InfoWindow::update() {
 	const int x = 2;
 	int y = 3;
-	mvwprintw(this, y++, x, (char*)"%20s %s:%d", "dispatcher:", TheDisp.addrA().cstr(), TheDisp.port());
-	mvwprintw(this, y++, x, (char*)"%20s %7d", "listeners:", theListnCnt);
+	mvwprintw(handle, y++, x, (char*)"%20s %s:%d", "dispatcher:", TheDisp.addrA().cstr(), TheDisp.port());
+	mvwprintw(handle, y++, x, (char*)"%20s %7d", "listeners:", theListnCnt);
 	y++;
-	mvwprintw(this, y++, x, (char*)"%20s %7d", "messages received:", theMsgCnt);
-	mvwprintw(this, y++, x, (char*)"%20s %7d", "mean message size:", sizeof(StatusNotifMsg));
-	mvwprintw(this, y++, x, (char*)"%20s %7d", "selected hosts:", TheSelHostCnt);
-	mvwprintw(this, y++, x, (char*)"%20s %7d", "busy hosts:", TheBusyHostCnt);
-	mvwprintw(this, y++, x, (char*)"%20s %7d", "experiments:", TheUniqLblCnt);
+	mvwprintw(handle, y++, x, (char*)"%20s %7d", "messages received:", theMsgCnt);
+	mvwprintw(handle, y++, x, (char*)"%20s %7d", "mean message size:", sizeof(StatusNotifMsg));
+	mvwprintw(handle, y++, x, (char*)"%20s %7d", "selected hosts:", TheSelHostCnt);
+	mvwprintw(handle, y++, x, (char*)"%20s %7d", "busy hosts:", TheBusyHostCnt);
+	mvwprintw(handle, y++, x, (char*)"%20s %7d", "experiments:", TheUniqLblCnt);
 }
 
 void InfoWindow::noteAdd(const Host &host) {
@@ -634,6 +665,26 @@ void InfoWindow::noteUpd(const Host &host) {
 		theListnCnt = host.log()[0].theCopyCnt;
 	}
 	update();
+}
+
+
+/* HelpWindow */
+
+HelpWindow::HelpWindow(): Window("Help") {
+	update();
+}
+
+void HelpWindow::update() {
+	const int x = 2;
+	int y = 2;
+	mvwprintw(handle, y++, x, "0:\t\tMonitor Info.");
+	mvwprintw(handle, y++, x, "LEFT/RIGHT:\tNext/previous tab.");
+	mvwprintw(handle, y++, x, "UP/DOWN:\tChange label filters.");
+	mvwprintw(handle, y++, x, "h:\t\tShow/close this help tab.");
+	mvwprintw(handle, y++, x, "S/s:\t\tChange client/server-side filters.");
+	mvwprintw(handle, y++, x, "R:\t\tReset filters, remove idle hosts, and refresh screen.");
+	mvwprintw(handle, y++, x, "r:\t\tRefresh screen.");
+	mvwprintw(handle, y++, x, "Q/q:\t\tQuit.");
 }
 
 
@@ -662,20 +713,20 @@ void SumWindow::update() {
 	const int x = 2;
 
 	int y = 2;
-	mvwprintw(this, y++, x, (char*)"%s (%d hosts)", "Client side:", cltSum.hostCount());
+	mvwprintw(handle, y++, x, (char*)"%s (%d hosts)", "Client side:", cltSum.hostCount());
 	displaySide(y, x+2, cltSum);
 
 	y += 1;
-	mvwprintw(this, y++, x, (char*)"%s (%d hosts)", "Server side:", srvSum.hostCount());
+	mvwprintw(handle, y++, x, (char*)"%s (%d hosts)", "Server side:", srvSum.hostCount());
 	displaySide(y, x+2, srvSum);
 
 	y += 1;
-	mvwprintw(this, y++, x+2, (char*)"%20s %7s %8s %9s %9s %s",
+	mvwprintw(handle, y++, x+2, (char*)"%20s %7s %8s %9s %9s %s",
 		"measurement:", "min", "mean", "max", "sum", "unit");
 }
 
 void SumWindow::displaySide(int &y, int x, const MsgSum &sum) {
-	//mvwprintw(this, y++, x, (char*)"%20s %s", "labels:", 
+	//mvwprintw(handle, y++, x, (char*)"%20s %s", "labels:",
 	//	(const char*)sum.theLabels);
 
 	displayLine(y++, x, "load:", sum.theReqRate, "req/sec");
@@ -693,7 +744,7 @@ void SumWindow::displaySide(int &y, int x, const MsgSum &sum) {
 }
 
 void SumWindow::displayLine(int y, int x, const char *label, const AggrStat &stats, const char *meas, double scale) {
-	mvwprintw(this, y, x, (char*)"%20s %7d %8d %9d %9d %s",
+	mvwprintw(handle, y, x, (char*)"%20s %7d %8d %9d %9d %s",
 		label,
 		Dbl2Int(stats.min()/scale),
 		Dbl2Int(stats.mean()/scale), 
@@ -722,17 +773,17 @@ void SumWindow::noteUpd(const Host &host) {
 
 SmxWindow::SmxWindow(char const *aTitle): Window(aTitle) {
 
-	wattron(this, A_BOLD);
+	wattron(handle, A_BOLD);
 
 	// horizontal lables
 	for (int i = 0; i < 10; ++i)
-		mvwprintw(this, 2, Id2X(i), (char*)"%7d", i+1);
+		mvwprintw(handle, 2, Id2X(i), (char*)"%7d", i+1);
 
 	// vertical labels
 	for (int i = 0; i < 100; i += 10)
-		mvwprintw(this, Id2Y(i), 0, (char*)"%2d", i);
+		mvwprintw(handle, Id2Y(i), 0, (char*)"%2d", i);
 
-	wattroff(this, A_BOLD);
+	wattroff(handle, A_BOLD);
 }
 
 void SmxWindow::noteAdd(const Host &host) {
@@ -751,7 +802,7 @@ void SmxWindow::noteUpd(const Host &host) {
 }
 
 void SmxWindow::eraseSlot(int y, int x) {
-	mvwprintw(this, y, x, (char*)"%7s ", "");
+	mvwprintw(handle, y, x, (char*)"%7s ", "");
 }
 
 int SmxWindow::Host2Y(const Host &host) {
@@ -797,7 +848,7 @@ void NumxWindow::noteUpd(const Host &host) {
 void NumxWindow::displayMsg(int y, int x, const StatusFwdMsg &msg) {
 	const double n = msg2num(msg);
 	theNumSum -= theMatrix(y, x);
-	mvwprintw(this, y, x, (char*)theFmt, n);
+	mvwprintw(handle, y, x, (char*)theFmt, n);
 	theMatrix(y, x) = n;
 	theNumSum += n;
 	update();
@@ -812,19 +863,19 @@ void NumxWindow::eraseSlot(int y, int x) {
 
 void NumxWindow::update() {
 	int maxx, maxy;
-	getmaxyx(this, maxy, maxx);
+	getmaxyx(handle, maxy, maxx);
 
     int y = maxy-1;
 
-	wattron(this, A_BOLD);
-	mvwaddstr(this, y, Id2X(2) + TheXCellWidth-4, (char*)"cnt:");
-	mvwaddstr(this, y, Id2X(4) + TheXCellWidth-4, (char*)"avg:");
-	mvwaddstr(this, y, Id2X(6) + TheXCellWidth-4, (char*)"sum:");
-	wattroff(this, A_BOLD);
+	wattron(handle, A_BOLD);
+	mvwaddstr(handle, y, Id2X(2) + TheXCellWidth-4, (char*)"cnt:");
+	mvwaddstr(handle, y, Id2X(4) + TheXCellWidth-4, (char*)"avg:");
+	mvwaddstr(handle, y, Id2X(6) + TheXCellWidth-4, (char*)"sum:");
+	wattroff(handle, A_BOLD);
 
-	mvwprintw(this, y, Id2X(3), (char*)"%7d", theNumCnt);
-	mvwprintw(this, y, Id2X(5), (char*)theFmt, Ratio(theNumSum,theNumCnt));
-	mvwprintw(this, y, Id2X(7), (char*)theFmt, theNumSum);
+	mvwprintw(handle, y, Id2X(3), (char*)"%7d", theNumCnt);
+	mvwprintw(handle, y, Id2X(5), (char*)theFmt, Ratio(theNumSum,theNumCnt));
+	mvwprintw(handle, y, Id2X(7), (char*)theFmt, theNumSum);
 }
 
 
@@ -835,9 +886,9 @@ void RunTimeSmxWin::displayMsg(int y, int x, const StatusFwdMsg &msg) {
 	const int min = (sec/60) % 60;
 	const int hour = sec/3600;
 	if (hour > 0)
-		mvwprintw(this, y, x, (char*)"%4d:%02d", hour, min);
+		mvwprintw(handle, y, x, (char*)"%4d:%02d", hour, min);
 	else
-		mvwprintw(this, y, x, (char*)"%4d.%02d", min, sec%60);
+		mvwprintw(handle, y, x, (char*)"%4d.%02d", min, sec%60);
 }
 
 
@@ -851,10 +902,10 @@ void MsgGapSmxWin::noteUpd(const Host &host) {
 
 void MsgGapSmxWin::displayMsg(int y, int x, const StatusFwdMsg &msg) {
 	if (theLastMsg.theRcvTime >= 0)
-		mvwprintw(this, y, x, (char*)"%7d", 
+		mvwprintw(handle, y, x, (char*)"%7d",
 			(msg.theRcvTime - theLastMsg.theRcvTime).sec());
 	else
-		mvwprintw(this, y, x, (char*)"%7s", "?");
+		mvwprintw(handle, y, x, (char*)"%7s", "?");
 }
 
 MsgSum::MsgSum(): theLabels("") {
@@ -955,7 +1006,7 @@ void Broadcast(Window::EventHandler weh) {
 static
 void DeleteIdleHosts() {
 	// we will these from scratch:
-	TheHostIdx.memset(0);
+	TheHostIdx.clear();
 	TheSelHostCnt = 0;
 
 	for (int h = 0; h < TheHosts.count(); ++h) {
@@ -979,6 +1030,9 @@ void DeleteIdleHosts() {
 
 static
 bool AddFirstLabel(const Host *skip, const String &l) {
+	if (!l)
+		return false; // empty label
+
 	for (int h = 0; h < TheHosts.count(); ++h) {
 		if (TheHosts[h] == skip)
 			continue;
@@ -1020,7 +1074,7 @@ bool DelLastLabel(const Host *skip, const String &l) {
 static
 int SwitchWin(int idx) {
 	TheWinPos = (idx + TheWins.count()) % TheWins.count();
-	touchwin(TheWins[TheWinPos]);
+	touchwin(TheWins[TheWinPos]->handle);
 	return TheWinPos;
 }
 
@@ -1052,17 +1106,17 @@ void SelectHosts() {
 	BuildFiltWarn(s);
 	for (int w = 0; w < TheWins.count(); ++w) {
 		if (strlen(TheFiltWarn)) {
-			wattron(TheWins[w], A_BOLD);
-			mvwaddstr(TheWins[w], 1, 0, (char*)"Filters:");
-			wattroff(TheWins[w], A_BOLD);
-			mvwprintw(TheWins[w], 1, 10, (char*)"%-20s", TheFiltWarn);
+			wattron(TheWins[w]->handle, A_BOLD);
+			mvwaddstr(TheWins[w]->handle, 1, 0, (char*)"Filters:");
+			wattroff(TheWins[w]->handle, A_BOLD);
+			mvwprintw(TheWins[w]->handle, 1, 10, (char*)"%-20s", TheFiltWarn);
 		} else {
-			wattroff(TheWins[w], A_BOLD);
-			mvwprintw(TheWins[w], 1, 0, (char*)"%-30s", "");
+			wattroff(TheWins[w]->handle, A_BOLD);
+			mvwprintw(TheWins[w]->handle, 1, 0, (char*)"%-30s", "");
 		}
 	}
 
-	touchwin(TheWins[TheWinPos]);
+	touchwin(TheWins[TheWinPos]->handle);
 }
 
 static
@@ -1133,8 +1187,7 @@ int main(int argc, char *argv[]) {
 	curs_set(0);
 	wtimeout(stdscr, 0); // delay for cusrses input, msec; zero == nonblocking
 
-	TheHostIdx.stretch(256);
-	TheHostIdx.count(TheHostIdx.capacity());
+	TheHostIdx.resize(256);
 	TheLabels.append(new String);
 
 	TheWins.append(TheInfoWin = new InfoWindow("Monitor Info"));
@@ -1154,6 +1207,8 @@ int main(int argc, char *argv[]) {
 	TheWins.append(new SockInstCntSmxWin("Open Sockets Now"));
 	TheWins.append(new MsgGapSmxWin("Message Gap [sec]"));
 
+	TheHelpWin = new HelpWindow;
+
 	signal(SIGPIPE, SIG_IGN);
 	Clock::Update();
 
@@ -1165,7 +1220,7 @@ int main(int argc, char *argv[]) {
 	Ticker *ticker = new Ticker(Time::Sec(60));
 
 	SwitchWin(0);
-	redrawwin(TheWins[TheWinPos]);
+	wrefresh(TheWins[TheWinPos]->handle);
 
 	while (!DoShutdown) {
 		Clock::Update();
@@ -1177,6 +1232,7 @@ int main(int argc, char *argv[]) {
 	delete ticker;
 	delete msgSrv;
 	delete kbdSrv;
+	delete TheHelpWin;
 	delete TheScanner;
 
 	endwin();

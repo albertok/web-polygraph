@@ -165,4 +165,4 @@ const FD_Set &Select::fdSet(const IODir dir) const {
 
 bool Select::active() const {
 	return fdSet(dirRead).active() || fdSet(dirWrite).active();
-};
+}

@@ -29,14 +29,12 @@ class EmbedContMdl {
 
 		// called by Server through ContentCfg
 		double compContPerCall(const ContentCfg *cc) const;
-		void noteNewContProb(ContentCfg *cc, double newProb);
 
 		// called by ContainerBodyIter
 		int embedGoal(RndGen &rng);
 		ObjId embedRndOid(const ObjId &oid, int oidCount, RndGen &rng);
 
 		// called by CdbeLink
-		bool findEmbedContType(const Area &category, int &etype) const;
 		ObjId embedCatOid(const ObjId &oid, int oidCount, const String &category);
 
 	protected:
@@ -47,7 +45,6 @@ class EmbedContMdl {
 	protected:
 		Array<ContentCfg*> theCfgs;   // embedded objs configs
 		Array<double> theProbs;       // probability of selecting a cfg
-		Array<double> theNewContProb; // prob. of producing new content when producing an embedded oid
 		ContentTypeIdx theTypes;      // embedded content type IDs
 		RndDistr *theCfgSel;          // selector for cfgs
 		RndDistr *theEmbedCount;      // objs per container

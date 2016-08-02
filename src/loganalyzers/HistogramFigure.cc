@@ -15,11 +15,13 @@
 
 
 HistogramFigure::HistogramFigure(): thePhase(0), theStex(0) {
+	theAxisY1.label("cumulative %");
 }
 
 void HistogramFigure::stats(const HistStex *aStex, const PhaseInfo *aPhase) {
 	theStex = aStex;
 	thePhase = aPhase;
+	theAxisX1.label(theStex->unit());
 }
 
 void HistogramFigure::compareWith(const HistStex *stex) {
@@ -28,38 +30,24 @@ void HistogramFigure::compareWith(const HistStex *stex) {
 		theComparison.append(stex);
 }
 
-void HistogramFigure::setCtrlOptions() {
-	theLabelX1 = theStex->unit();
-	theLabelY1 = "cumulative %";
-	ReportFigure::setCtrlOptions();
-	*theCtrlFile << "set key right bottom" << endl;
-}
-
-int HistogramFigure::createCtrlFile() {
-	if (ReportFigure::createCtrlFile() < 0)
-		return -1;
-
+int HistogramFigure::addPlotData() {
 	// make sure that the most interesting line is on top
 	if (theStex->value(*thePhase))
 		theComparison.append(theStex);
 
 	// create plot command
 	for (int i = 0; i < theComparison.count(); ++i)
-		addPlotLine(theComparison[i]->name(), theLabelY1);
-	addedAllPlotLines();
+		addPlotLine(theComparison[i]->name());
 
 	// dump data to plot
 	int pointCount = 0;
 	for (int s = 0; s < theComparison.count(); ++s) {
-		if (s)
-			*theCtrlFile << 'e' << endl; // note: two empty lines do not work
-
 		const Histogram *hist = theComparison[s]->value(*thePhase);
-		const int count = hist->stats().count();
+		const Counter count = hist->stats().count();
 		int c = 0;
 		for (HistogramConstIter i(*hist); count && i; ++i)
 			c += dumpDataLine(*i, count);
-
+		addedLineData();
 		if (theStex == theComparison[s])
 			pointCount = c;
 	}
@@ -67,7 +55,7 @@ int HistogramFigure::createCtrlFile() {
 	return pointCount;
 }
 
-int HistogramFigure::dumpDataLine(const HistogramBin &bin, int totCount) {
+int HistogramFigure::dumpDataLine(const HistogramBin &bin, const Counter totCount) {
 	if (bin.count) {
 		const double p = Percent(bin.accCount, totCount);
 
@@ -77,7 +65,7 @@ int HistogramFigure::dumpDataLine(const HistogramBin &bin, int totCount) {
 		if (Percent(bin.accCount-bin.count, totCount) > 95)
 			return 0; // ingore large values unless they contribute a lot
 
-		*theCtrlFile << bin.sup << ' ' << p << endl;
+		addDataPoint(bin.sup, p);
 		return 1;
 	}
 	return 0;

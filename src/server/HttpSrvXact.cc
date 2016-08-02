@@ -16,10 +16,13 @@
 #include "runtime/ErrorMgr.h"
 #include "runtime/HostMap.h"
 #include "runtime/HttpDate.h"
+#include "runtime/HttpPrinter.h"
 #include "runtime/LogComment.h"
+#include "runtime/ObjUniverse.h"
 #include "runtime/PopModel.h"
-#include "runtime/PubWorld.h"
 #include "runtime/SharedOpts.h"
+#include "runtime/StatPhase.h"
+#include "runtime/StatPhaseMgr.h"
 #include "runtime/StatPhaseSync.h"
 #include "server/Server.h"
 #include "server/SrvCfg.h"
@@ -143,29 +146,29 @@ void HttpSrvXact::makeRep(WrBuf &buf) {
 	}
 
 	const char *repStart = buf.space();
-	ofixedstream os(buf.space(), buf.spaceSize());
+	HttpPrinter hp(buf.space(), buf.spaceSize());
 
 	if (the100ContinueState == csAllowed)
-		make100Continue(os);
+		make100Continue(hp);
 	else
 	if (the100ContinueState == csDenied)
-		make417ExpectationFailed(os);
+		make417ExpectationFailed(hp);
 	else
 	if (!acceptableCoding)
-		make406NotAcceptable(os);
+		make406NotAcceptable(hp);
 	else
-	if (shouldMake302Found() && make302Found(os))
+	if (shouldMake302Found() && make302Found(hp))
 		; // nothing to be done here
 	else
 	if (shouldMake304NotMod())
-		make304NotMod(os);
+		make304NotMod(hp);
 	else
 	if (shouldMake416RequestedRangeNotSatisfiable())
-		make416RequestedRangeNotSatisfiable(os);
+		make416RequestedRangeNotSatisfiable(hp);
 	else
-		make2xxContent(os);
+		make2xxContent(hp);
 
-	buf.appended(Size(os.tellp()));
+	buf.appended(Size(hp.tellp()));
 
 	Assert(theRepSize.header().known() && theRepSize.expected() >= theRepSize.header());
 
@@ -254,11 +257,9 @@ Error HttpSrvXact::interpretHeader() {
 
 	// update history for this server
 	if (theOid.viserv() >= 0 && theReqHdr.theLocWorld)
-		updatePubWorld(theReqHdr.theLocWorld);
+		updateUniverse(theReqHdr.theLocWorld);
 
-	// update client group info
-	if (theReqHdr.thePhaseSyncPos >= 0 && theReqHdr.theGroupId)
-		TheStatPhaseSync.notePhaseSync(theReqHdr.theGroupId, theReqHdr.thePhaseSyncPos);
+	doPhaseSync(theReqHdr);
 
 	// note if the client will close the connection
 	theConn->lastUse(!theReqHdr.persistentConnection());
@@ -266,7 +267,7 @@ Error HttpSrvXact::interpretHeader() {
 	theOid.reload(!theReqHdr.isCachable);
 
 	// get content specs for this reply
-	Assert(theOid.type() >= TheContentMgr.normalContentStart());
+	Assert(theOid.type() >= ContType::NormalContentStart());
 	theRepContentCfg = TheContentMgr.get(theOid.type());
 
 	if (theReqHdr.expect100Continue) {
@@ -366,8 +367,8 @@ Error HttpSrvXact::setViserv(const NetAddr &name) {
 			return errForeignHostName;
 	}
 
-	if (!host->thePubWorld)
-		PubWorld::Add(host, new PubWorld());
+	if (!host->theUniverse)
+		ObjUniverse::Add(host, new ObjUniverse());
 
 	theOid.viserv(viserv);
 	return 0;
@@ -421,31 +422,31 @@ void HttpSrvXact::normalizeRanges() {
 	}
 }
 
-void HttpSrvXact::make100Continue(ostream &os) {
-	putResponseLine(os, rls100Continue);
-	os << crlf; // end-of-headers
+void HttpSrvXact::make100Continue(HttpPrinter &hp) {
+	putResponseLine(hp, rls100Continue);
+	hp << crlf; // end-of-headers
 
-	theRepSize.header(Size(os.tellp()));
+	theRepSize.header(Size(hp.tellp()));
 	theRepSize.expect(theRepSize.header());
 }
 
 // build headers for a happy "200 OK" or "206 Partial Content" reply
-void HttpSrvXact::make2xxContent(ostream &os) {
+void HttpSrvXact::make2xxContent(HttpPrinter &hp) {
 	if (theBodyIter == 0)
 		theBodyIter = theRepContentCfg->getBodyIter(theOid, &theRanges);
 
 	if (!theOid.range()) {
 		theHttpStatus = RepHdr::sc200_OK;
-		putResponseLine(os, rls200Ok);
+		putResponseLine(hp, rls200Ok);
 	} else {
 		theHttpStatus = RepHdr::sc206_PartialContent;
-		putResponseLine(os, rls206PartialContent);
+		putResponseLine(hp, rls206PartialContent);
 	}
 
-	put2xxContentHead(os);
-	os << crlf; // end-of-headers
+	put2xxContentHead(hp);
+	hp << crlf; // end-of-headers
 
-	theRepSize.header(Size(os.tellp()));
+	theRepSize.header(Size(hp.tellp()));
 	if (theOid.head()) {
 		// do not send message body for HEAD
 		theRepSize.expect(theRepSize.header());
@@ -475,20 +476,20 @@ bool HttpSrvXact::canMake302Found(ObjId &oid) const {
 	if (!theOwner->popModel())
 		return false;
 
-	PubWorld *pubWorld = TheHostMap->findPubWorldAt(theOid.viserv());
+	ObjUniverse *const universe =
+		TheHostMap->findUniverseAt(theOid.viserv());
 
-	if (!pubWorld || !pubWorld->canRepeat())
+	if (!universe || !universe->canRepeat(theOid.type()))
 		return false;
 
 	oid = theOid; // set viserv and such
 	oid.name(-1);
 	oid.type(-1); // overwrite name and type
-	pubWorld->repeat(oid, theOwner->popModel());
-	oid.type(Oid2ContType(theOid));
+	universe->repeat(oid, theOwner->popModel());
 	return true;
 }
 
-bool HttpSrvXact::make302Found(ostream &os) {
+bool HttpSrvXact::make302Found(HttpPrinter &hp) {
 	if (theBodyIter) {
 		theBodyIter->putBack();
 		theBodyIter = 0;
@@ -503,29 +504,38 @@ bool HttpSrvXact::make302Found(ostream &os) {
 	}
 
 	theHttpStatus = RepHdr::sc302_Found;
-	putResponseLine(os, rls302Found);
-	putStdFields(os);
+	putResponseLine(hp, rls302Found);
 
-	os << hfpLocation;
-	const Size urlStart = Size(os.tellp());
-	Oid2Url(newOid, os);
-	const Size urlLen = Size(os.tellp()) - urlStart;
-	os << crlf;
+	hp.putHeaders(theOwner->cfg()->httpHeaders());
+	putStdFields(hp);
 
-	const Size clen = urlLen + Size(text302Found.len());
-	os << hfpContLength << (int)clen << crlf;
+	String url;
+	{
+		const int buf_size = 4*1024;
+		static char buf[buf_size];
+		ofixedstream url_os(buf, buf_size);
+		Oid2Url(newOid, url_os) << ends;
+		buf[buf_size-1] = '\0';
+		url = buf;
+	}
+	if (hp.putHeader(hfpLocation))
+		hp << url << crlf;
 
-	putXFields(os);
+	const int clen = url.len() + text302Found.len();
+	if (hp.putHeader(hfpContLength))
+		hp << clen << crlf;
 
-	os << crlf; // end-of-headers
+	putXFields(hp);
+
+	hp << crlf; // end-of-headers
 
 	// we determine the type of IMS request later
-	theRepSize.header(Size(os.tellp()));
+	theRepSize.header(Size(hp.tellp()));
 
 	// text for humans
-	Oid2Url(newOid, os << text302Found);
+	Oid2Url(newOid, hp << text302Found);
 
-	theRepSize.expect(theRepSize.header() + clen);
+	theRepSize.expect(theRepSize.header() + Size(clen));
 	return true;
 }
 
@@ -533,9 +543,9 @@ bool HttpSrvXact::shouldMake302Found() const {
 	return theOid.repToRedir();
 }
 
-void HttpSrvXact::make304NotMod(ostream &os) {
-	openSimpleMessage(os, RepHdr::sc304_NotModified, rls304NotModified, 0);
-	closeSimpleMessage(os, 0);
+void HttpSrvXact::make304NotMod(HttpPrinter &hp) {
+	openSimpleMessage(hp, RepHdr::sc304_NotModified, rls304NotModified, 0);
+	closeSimpleMessage(hp, 0);
 	theOid.ims304(true);
 }
 
@@ -545,37 +555,38 @@ bool HttpSrvXact::shouldMake304NotMod() const {
 		theTimes.lmt() <= theReqHdr.theIms;
 }
 
-void HttpSrvXact::make406NotAcceptable(ostream &os) {
+void HttpSrvXact::make406NotAcceptable(HttpPrinter &hp) {
 	ReportError(errNoAcceptableContentCoding);
 
 	const String &body = text406NotAcceptable;
-	openSimpleMessage(os, RepHdr::sc406_NotAcceptable, rls406NotAcceptable, &body);
+	openSimpleMessage(hp, RepHdr::sc406_NotAcceptable, rls406NotAcceptable, &body);
 
 	if (theRepContentCfg->multipleContentCodings())
-		os << hfVaryAcceptEncoding;
+		hp.putHeader(hfVaryAcceptEncoding);
 
-	closeSimpleMessage(os, &body);
+	closeSimpleMessage(hp, &body);
 }
 
-void HttpSrvXact::make416RequestedRangeNotSatisfiable(ostream &os) {
+void HttpSrvXact::make416RequestedRangeNotSatisfiable(HttpPrinter &hp) {
 	Assert(theBodyIter);
 
 	const String &body = text416RequestedRangeNotSatisfiable;
-	openSimpleMessage(os, RepHdr::sc416_RequestedRangeNotSatisfiable, rls416RequestedRangeNotSatisfiable, &body);
+	openSimpleMessage(hp, RepHdr::sc416_RequestedRangeNotSatisfiable, rls416RequestedRangeNotSatisfiable, &body);
 
-	os << hfpContRange << "*/" << (int)theBodyIter->fullEntitySize() << crlf;
+	if (hp.putHeader(hfpContRange))
+		hp << "*/" << (int)theBodyIter->fullEntitySize() << crlf;
 
-	closeSimpleMessage(os, &body);
+	closeSimpleMessage(hp, &body);
 }
 
 bool HttpSrvXact::shouldMake416RequestedRangeNotSatisfiable() const {
 	return (theOid.range() && theRanges.empty());
 }
 
-void HttpSrvXact::make417ExpectationFailed(ostream &os) {
+void HttpSrvXact::make417ExpectationFailed(HttpPrinter &hp) {
 	const String &body = text417ExpectationFailed;
-	openSimpleMessage(os, RepHdr::sc417_ExpectationFailed, rls417ExpectationFailed, &body);
-	closeSimpleMessage(os, &body);
+	openSimpleMessage(hp, RepHdr::sc417_ExpectationFailed, rls417ExpectationFailed, &body);
+	closeSimpleMessage(hp, &body);
 }
 
 void HttpSrvXact::putResponseLine(ostream &os, const String &suffix) {
@@ -587,90 +598,107 @@ void HttpSrvXact::putResponseLine(ostream &os, const String &suffix) {
 }
 
 // put well-known fields acceptable for both 304 and 200 replies
-void HttpSrvXact::putStdFields(ostream &os) const {
+void HttpSrvXact::putStdFields(HttpPrinter &hp) const {
 	// general-header fields
 
-	HttpDatePrint(os << hfpDate) << crlf;
+	if (hp.putHeader(hfpDate))
+		HttpDatePrint(hp) << crlf;
 
 	// persistency indication depends on HTTP version
 	if (theHttpVersion <= HttpVersion(1,0)) {
 		if (theConn->reusable())
-			os << hfConnAliveOrg;
+			hp.putHeader(hfConnAliveOrg);
 	} else {
 		if (!theConn->reusable())
-			os << hfConnCloseOrg;
+			hp.putHeader(hfConnCloseOrg);
 	}
 
 	// response-header fields (none)
 	// entity-header fields
 
-	if (theOid.cachable() && theTimes.knownExp()) 
-		HttpDatePrint(os << hfpExpires, theTimes.exp()) << crlf;
+	if (theOid.cachable() &&
+		theTimes.knownExp() &&
+		hp.putHeader(hfpExpires))
+		HttpDatePrint(hp, theTimes.exp()) << crlf;
 }
 
 // put extension header fields acceptable for both 302 and 200 replies
-void HttpSrvXact::putXFields(ostream &os) const {
+void HttpSrvXact::putXFields(HttpPrinter &hp) const {
 	// put group ids with source/target ids on one line?
-	os << hfpXTarget << theOwner->host() << crlf;
+	if (hp.putHeader(hfpXTarget))
+		hp << theOwner->host() << crlf;
 
-	if (theReqHdr.theXactId)
-		os << hfpXXact 
-			<< TheGroupId
+	if (theReqHdr.theXactId &&
+		hp.putHeader(hfpXXact)) {
+		hp << TheGroupId
 			<< ' ' << theReqHdr.theXactId.genMutant()
 			<< ' ' << hex << theRepFlags << dec
 			<< crlf;
+	}
 
 	if (theOid.viserv() >= 0 && theReqHdr.theRemWorld)
-		putRemWorld(os, theReqHdr.theRemWorld);
+		putRemWorld(hp, theReqHdr.theRemWorld);
 
-	os << hfpXAbort	<< ' ' << theAbortCoord.whether()
+	if (hp.putHeader(hfpXAbort)) {
+		hp << theAbortCoord.whether()
 		<< ' ' << theAbortCoord.where()	<< crlf;
+	}
 
-	os << hfpXPhaseSyncPos << TheStatPhaseSync.phaseSyncPos() << crlf;
+	putPhaseSyncPos(hp, TheStatPhaseSync.phaseSyncPos());
 }
 
-void HttpSrvXact::put2xxContentHead(ostream &os) {
-	/* it is "good practice" to send general-header fields first,
-	 * followed by request-header or response-header fields, and
-	 * ending with the entity-header fields. */
+void HttpSrvXact::put2xxContentHead(HttpPrinter &hp) {
+	/* user-configured headers */
+
+	if (theRepContentCfg)
+		hp.putHeaders(theRepContentCfg->mimeHeaders());
+	hp.putHeaders(theOwner->cfg()->httpHeaders());
 
 	/* general-header fields */
 
-	os << (theOid.cachable() ? hfCcCachable : hfCcUncachable);
+	if (theOid.cachable())
+		hp.putHeader(hfCcCachable);
+	else {
+		hp.putHeader(hfCcUncachable);
+		hp.putHeader(hfPragmaUncachable);
+	}
 
-	putStdFields(os);
+	putStdFields(hp);
 
 	/* other entity-header fields */
 
-	if (theOid.cachable() && theTimes.showLmt()) 
-		HttpDatePrint(os << hfpLmt, theTimes.lmt()) << crlf;
+	if (theOid.cachable() &&
+		theTimes.showLmt() &&
+		hp.putHeader(hfpLmt))
+		HttpDatePrint(hp, theTimes.lmt()) << crlf;
 
 	if (theRepContentCfg->multipleContentCodings())
-		os << hfVaryAcceptEncoding;
+		hp.putHeader(hfVaryAcceptEncoding);
 
 	// Servers probably MUST NOT send a Content-MD5 header with
 	// 206 responses. See
 	// http://trac.tools.ietf.org/wg/httpbis/trac/ticket/178
 	if (!theOid.range() && theRepContentCfg->calcChecksumNeed(theOid))
-		putChecksum(*theRepContentCfg, theOid, os);
+		putChecksum(*theRepContentCfg, theOid, hp);
 
 	if (theOwner->isCookieSender)
-		putCookies(os);
+		putCookies(hp);
 
 	if (theBodyIter)
-		theBodyIter->putHeaders(os);
+		theBodyIter->putHeaders(hp);
 
 	/* extention-header fields (they are entity-header fields as well) */
-	putXFields(os);
+	putXFields(hp);
 }
 
-void HttpSrvXact::putRemWorld(ostream &os, const ObjWorld &oldSlice) const {
-	PubWorld &world = *TheHostMap->findPubWorldAt(theOid.viserv());
+void HttpSrvXact::putRemWorld(HttpPrinter &hp, const ObjWorld &oldWorld) const {
+	ObjUniverse &universe = *TheHostMap->findUniverseAt(theOid.viserv());
 
 	int sliceIdx;
-	if (world.find(oldSlice.id(), sliceIdx)) {
-		if (const PubWorldSlice *slice = world.newerSlice(oldSlice, sliceIdx))
-			os << hfpXRemWorld << *slice << crlf;
+	if (universe.find(oldWorld.id(), sliceIdx)) {
+		const ObjWorld *const world = universe.newerWorld(oldWorld, sliceIdx);
+		if (world && hp.putHeader(hfpXRemWorld))
+			hp << *world << crlf;
 	} 
 
 	// else client-side sent remote world ID before the same public world ID
@@ -714,7 +742,7 @@ void HttpSrvXact::putCookies(ostream &os) {
 		}
 
 		// yes, make buffer (ostream) full
-		IOBuf::RandomFill(os, cookieContentOff, cookieSize);
+		IOBuf::RandomFill(os, cookieContentOff, cookieSize, RndText());
 		accSize += cookieSize;
 
 		os << cookieValueSfx << crlf;
@@ -724,15 +752,17 @@ void HttpSrvXact::putCookies(ostream &os) {
 	}
 }
 
-void HttpSrvXact::openSimpleMessage(ostream &os, const int status, const String &header, const String *const body) {
+void HttpSrvXact::openSimpleMessage(HttpPrinter &hp, const int status, const String &header, const String *const body) {
 	theHttpStatus = status;
-	putResponseLine(os, header);
-	putStdFields(os);
+	putResponseLine(hp, header);
 
-	if (body)
-		os << hfpContLength << body->len() << crlf;
+	hp.putHeaders(theOwner->cfg()->httpHeaders());
+	putStdFields(hp);
 
-	putXFields(os);
+	if (body && hp.putHeader(hfpContLength))
+		hp << body->len() << crlf;
+
+	putXFields(hp);
 }
 
 void HttpSrvXact::closeSimpleMessage(ostream &os, const String *const body) {
@@ -753,6 +783,14 @@ void HttpSrvXact::closeSimpleMessage(ostream &os, const String *const body) {
 	} else {
 		theRepSize.expect(theRepSize.header());
 		theOid.type(TheBodilessContentId);
+	}
+}
+
+void HttpSrvXact::doPhaseSync(const MsgHdr &hdr) const {
+	Xaction::doPhaseSync(hdr);
+	if (TheStatPhaseMgr.phaseSyncPos() < TheStatPhaseSync.phaseSyncPosMin()) {
+		TheStatPhaseMgr->reachedPositiveGoal("all clients reached "
+			"their phase goals");
 	}
 }
 

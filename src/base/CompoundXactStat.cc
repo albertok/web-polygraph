@@ -44,10 +44,22 @@ CompoundXactStat &CompoundXactStat::operator +=(const CompoundXactStat &s) {
 	return *this;
 }
 
+bool CompoundXactStat::sane() const {
+	return duration.sane() && reqSize.sane() && repSize.sane() &&
+		exchanges.sane();
+}
+
+void CompoundXactStat::recordCompound(const Time &rptm, const Size &req, const Size &rep, const int ex) {
+	duration.record(rptm);
+	reqSize.record(req);
+	repSize.record(rep);
+	exchanges.record(ex);
+}
+
 ostream &CompoundXactStat::print(ostream &os, const String &pfx) const {
-	duration.print(os, pfx + "duration.");
-	reqSize.print(os, pfx + "req_size.");
-	repSize.print(os, pfx + "rep_size.");
+	duration.print(os, pfx + "rptm.");
+	reqSize.print(os, pfx + "req.size.");
+	repSize.print(os, pfx + "rep.size.");
 	exchanges.print(os, pfx + "exchanges.");
 	return os;
 }

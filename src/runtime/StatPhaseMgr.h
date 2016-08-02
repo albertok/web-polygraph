@@ -33,14 +33,24 @@ class StatPhaseMgr {
 		int logCat() const { return theLogCat; }
 		void logCat(int lc) { theLogCat = lc; }
 
+		// whether we are waiting for the first transaction
+		// returns false if called before start()
+		bool trafficWaiting() const { return thePhaseIdx < 0 && theWaitPhase; }
+		void stopTrafficWaiting();
+		bool reachedNegative() const { return reachedNegative_; }
+
 	protected:
 		void nextPhase();
 
 	protected:
 		Array<StatPhase*> thePhases; // all phases are stored here
 		StatPhase *thePhase; // current phase, thePhases[thePhaseIdx]
-		int thePhaseIdx;
+		StatPhase *theWaitPhase; // the first (a.k.a. "wait") phase
+		int thePhaseIdx; // current phase index (negative before/while waiting)
 		int theLogCat;      // log entry category
+
+	private:
+		bool reachedNegative_; // whether a phase reached a negative goal
 };
 
 extern StatPhaseMgr TheStatPhaseMgr;

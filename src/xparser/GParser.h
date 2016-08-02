@@ -43,7 +43,7 @@ class GParser {
 		void push(int x) { theParseStack.push(x); }
 		void throwAway(int x) { theParseStack.pop(x); }
 
-		SynSym **sem_top(int len) { return &theSemStack.last(len); }
+		SynSym **sem_top(const int len);
 		void sem_push(SynSym *x);
 		void sem_throwAway(int x);
 		void peek();

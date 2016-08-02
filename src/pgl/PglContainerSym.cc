@@ -5,6 +5,7 @@
 
 #include "pgl/pgl.h"
 
+#include "xstd/Rnd.h"
 #include "base/StringArray.h"
 #include "pgl/PglBoolSym.h"
 #include "pgl/PglStringSym.h"
@@ -63,14 +64,18 @@ ExpressionSym *ContainerSym::bnOper(const Oper &op, const SynSym &exp) const {
 	return ExpressionSym::bnOper(op, exp);
 }
 
-void ContainerSym::forEach(Visitor &v) const {
+void ContainerSym::forEach(Visitor &v, RndGen *const rng) const {
 	const int c = count();
 	for (int i = 0; i < c; ++i) {
-		const SynSym *s = item(i);
+		double p = -1;
+		const SynSym *const s = itemProb(i, p);
+		if (rng && probsSet() && p >= 0 && !rng->event(p))
+				continue;
+
 		if (s->isA(ContainerSym::TheType)) {
 			const ContainerSym &c =
 				(const ContainerSym&)s->cast(ContainerSym::TheType);
-			c.forEach(v);
+			c.forEach(v, rng);
 		} else {
 			v.visit(*s); // leaf
 		}

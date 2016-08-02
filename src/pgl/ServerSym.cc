@@ -70,7 +70,7 @@ bool ServerSym::contents(Array<ContentSym*> &ccfgs, Array<double> &cprobs) const
 
 	ArraySym &a = (ArraySym&)conti->sym()->cast(ArraySym::TheType);
 	a.copyProbs(cprobs);
-	ArraySymExportM(ContentSym, a, ContentSym::TheType, ccfgs);
+	a.exportA(ccfgs);
 	return true;
 }
 
@@ -87,7 +87,7 @@ bool ServerSym::directAccess(Array<ContentSym*> &dacfgs, Array<double> &daprobs)
 		return false; // undefined
 
 	ArraySym &a = (ArraySym&)dai->sym()->cast(ArraySym::TheType);
-	ArraySymExportM(ContentSym, a, ContentSym::TheType, dacfgs);
+	a.exportA(dacfgs);
 
 	daprobs.reset();
 	if (hasDa && a.probsSet())

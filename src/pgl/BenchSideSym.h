@@ -31,6 +31,7 @@ class BenchSideSym: public RecSym {
 		void bench(const BenchSym *aBench) const { theBench = aBench; }
 
 		bool hosts(Array<NetAddr *> &addrs) const;
+		bool cpuCoresArray(Array< Array<int> > &cpuCores) const;
 		ArraySym *hostsSym() const;
 		const ArraySym *addrSpace() const;
 		NetAddr addrMask() const;

@@ -16,8 +16,6 @@ class Connection;
 
 class ConnIdx: protected Array<Connection*> {
 	public:
-		ConnIdx(int aCapacity = 0);
-
 		void fdLimit(int limit);
 
 		void add(Connection *conn);

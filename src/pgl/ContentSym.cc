@@ -15,6 +15,7 @@
 #include "pgl/MimeSym.h"
 #include "pgl/ObjLifeCycleSym.h"
 #include "pgl/ContentSym.h"
+#include "pgl/MimeHeaderSym.h"
 #include "pgl/ClientBehaviorSym.h"
 
 
@@ -25,9 +26,11 @@ static String strCachable = "cachable";
 static String strChecksum = "checksum";
 static String strChoice_space = "choice_space";
 static String strClient_behavior = "client_behavior";
+static String strGenerator = "generator";
 static String strContent_db = "content_db";
 static String strEmbedded_obj_cnt = "embedded_obj_cnt";
 static String strInfect_prob = "infect_prob";
+static String strInject_object = "inject_object";
 static String strInject_db = "inject_db";
 static String strInject_gap = "inject_gap";
 static String strInt_distr = "int_distr";
@@ -41,6 +44,9 @@ static String strSize_distr = "size_distr";
 static String strContainerContents = "container_contents";
 static String strStringArr = "string[]";
 static String strEncodings = "encodings";
+static String strMimeHeaders = "mime_headers";
+static String strMimeHeaderArr = "MimeHeader[]";
+static String strDocumentRoot = "document_root";
 
 ContentSym::ContentSym(): RecSym(TheType, new PglRec) {
 	theRec->bAdd(StringSym::TheType, strKind, 0);
@@ -54,11 +60,15 @@ ContentSym::ContentSym(): RecSym(TheType, new PglRec) {
 	theRec->bAdd(strInt_distr, strEmbedded_obj_cnt, 0);
 	theRec->bAdd(IntSym::TheType, strChoice_space, 0);
 	theRec->bAdd(ClientBehaviorSym::TheType, strClient_behavior, new ClientBehaviorSym);
+	theRec->bAdd(StringSym::TheType, strGenerator, 0);
 	theRec->bAdd(StringSym::TheType, strContent_db, 0);
+	theRec->bAdd(StringSym::TheType, strInject_object, 0);
 	theRec->bAdd(StringSym::TheType, strInject_db, 0);
 	theRec->bAdd(NumSym::TheType, strInfect_prob, 0);
 	theRec->bAdd(strSize_distr, strInject_gap, 0);
 	theRec->bAdd(strStringArr, strEncodings, 0);
+	theRec->bAdd(strMimeHeaderArr, strMimeHeaders, 0);
+	theRec->bAdd(StringSym::TheType, strDocumentRoot, 0);
 }
 
 ContentSym::ContentSym(const String &aType, PglRec *aRec): RecSym(aType, aRec) {
@@ -148,8 +158,16 @@ ClientBehaviorSym *ContentSym::clientBehavior() const {
 	return &(ClientBehaviorSym&)mi->sym()->cast(ClientBehaviorSym::TheType);
 }
 
+String ContentSym::generator() const {
+	return getString(strGenerator);
+}
+
 String ContentSym::cdb() const {
 	return getString(strContent_db);
+}
+
+String ContentSym::injectObject() const {
+	return getString(strInject_object);
 }
 
 String ContentSym::injectDb() const {
@@ -166,4 +184,12 @@ RndDistr *ContentSym::injectGap() const {
 
 bool ContentSym::encodings(Array<String*> &codings) const {
 	return getStrings(strEncodings, codings);
+}
+
+const ArraySym *ContentSym::mimeHeaders() const {
+	return getArraySym(strMimeHeaders);
+}
+
+String ContentSym::documentRoot() const {
+	return getString(strDocumentRoot);
 }

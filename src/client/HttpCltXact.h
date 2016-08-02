@@ -22,6 +22,8 @@ class HttpCltXact: public CltXact {
 		// setup and execution
 		virtual PipelinedCxm *getPipeline();
 		virtual void pipeline(PipelinedCxm *aMgr);
+		virtual void freezeProxyAuth();
+		virtual bool needGssContext() const;
 		virtual void exec(Connection *const aConn);
 
 		// called by CltXactMgr
@@ -44,9 +46,9 @@ class HttpCltXact: public CltXact {
 		const IOBuf &savedRepHeader() const { return theSavedRepHeader; }
 
 		virtual int actualRepType() const { return theActualRepType; }
-		virtual HttpAuthScheme proxyAuth() const;
 		virtual int cookiesSent() const;
 		virtual int cookiesRecv() const;
+		virtual AuthPhaseStat::Scheme proxyStatAuth() const;
 
 	protected:
 //		virtual void noteHdrDataReady(bool &needMore);
@@ -54,8 +56,8 @@ class HttpCltXact: public CltXact {
 //		virtual bool noteBufReady(WrBuf &buf);
 		virtual void makeReq(WrBuf &buf);
 
-		void makeConnectReq(ostream &os);
-		void makeExplicitReq(ostream &os);
+		void makeConnectReq(HttpPrinter &hp);
+		void makeExplicitReq(HttpPrinter &hp);
 		void finishReqHdrs(ostream &os, bool forceDump);
 
 		Error getHeader();
@@ -65,22 +67,24 @@ class HttpCltXact: public CltXact {
 		Error doForbidden();
 		Error doProxyAuth();
 		Error doOriginAuth();
-		Error doAuth(const bool proxyAuth, const bool needed, Connection::NtlmAuth &ntlmState);
-		Error startAuth(const HttpAuthScheme scheme);
+		Error doAuth(const bool proxyAuth, const bool needed, Connection::NtlmAuth &ntlmState, Gss::Error &gssErr);
+		Error startAuth(const bool proxyAuth, const HttpAuthScheme scheme);
 		Error handleAuth();
+		void checkAuthEnd(const bool proxyAuth, const bool needed, const Error &err);
+		virtual void reportAuthError(const AuthPeer peer, const char *context, const Gss::Error gssErr = Gss::Error(), const Connection::NtlmAuth *ntlmState = 0);
 		void redirect();
 
 		virtual void finish(Error err);
 
 		void makeReqVersion(ostream &os);
 		void makeReqMethod(ostream &os);
-		void makeEndToEndHdrs(ostream &os);
-		void makeHopByHopHdrs(ostream &os);
+		void makeEndToEndHdrs(HttpPrinter &hp);
+		void makeHopByHopHdrs(HttpPrinter &hp);
 		void makeCookies(ostream &os);
-		void makeProxyAuthHdr(ostream &os);
-		void makeOriginAuthHdr(ostream &os);
-		void makeAuthHdr(const String &header, const HttpAuthScheme scheme, Connection::NtlmAuth &ntlmState, ostream &os);
-		void makeAuthorization(const String &header, const HttpAuthScheme scheme, ostream &os);
+		void makeProxyAuthHdr(HttpPrinter &hp);
+		void makeOriginAuthHdr(HttpPrinter &hp);
+		void makeAuthHdr(const bool proxyAuth, const String &header, const HttpAuthScheme scheme, Connection::NtlmAuth &ntlmState, HttpPrinter &hp);
+		bool makeAuthorization(const String &header, const HttpAuthScheme scheme, HttpPrinter &hp);
 
 		void firstHandSync();
 
@@ -106,6 +110,8 @@ class HttpCltXact: public CltXact {
 
 		RndDistr *seedOidDistr(RndDistr *raw, int globSeed);
 
+		void createCompound();
+
 	protected:
 		RepHdr theRepHdr;
 		mutable ObjTimes theOlcTimes; // cached value
@@ -118,6 +124,8 @@ class HttpCltXact: public CltXact {
 		Size theBodyPartCount;
 
 		int theActualRepType;
+
+		HttpAuthScheme theProxyAuthScheme; // at the time of request making
 
 		// this is used to check whether the xaction wants to use peers
 		enum { peerUnknown = -1, peerNone, peerSome } thePeerState;

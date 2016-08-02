@@ -61,6 +61,7 @@ void ContentSel::configure(const ServerSym *cfg) {
 	// make selector for direct access content
 	theDirAccSel = TblDistr::FromDistrTable("da-sel", theDaProbs);
 	Assert(theDirAccSel);
+	theDirAccSel->rndGen()->seed(LclPermut(rndContentSel));
 
 	ContentTypeIdx::configure(theContents);
 }
@@ -122,7 +123,7 @@ void ContentSel::reportCfg(ostream &os) const {
 				<< "(i.e., is not in direct_access closure)." << endl;
 		}
 
-		expCProbs[c] = contPerDa;
+		expCProbs.put(contPerDa, c);
 		expCProbsSum += contPerDa;
 	}
 
@@ -156,9 +157,8 @@ void ContentSel::reportCfg(ostream &os) const {
 	os << "\texpected average server-side object size: " << sizeSum << "Bytes" << endl;
 }
 
-ContentCfg *ContentSel::getDir(const ObjId &oid) {
-	theDirAccSel->rndGen()->seed(GlbPermut(oid.hash(), rndContentSel));
+const ContentCfg &ContentSel::getDir() {
 	const int tid = (int)theDirAccSel->trial();
 	Assert(tid >= 0 && tid < theDirectAccess.count());
-	return theDirectAccess[tid];
+	return *theDirectAccess[tid];
 }

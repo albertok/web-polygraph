@@ -10,11 +10,20 @@
 
 #include "xstd/Assert.h"
 
-bool Complain(const char *fname, int lineno) {
-	cerr << fname << ':' << lineno << ": " << Error::Last() << endl;
+bool ComplainSys(const char *fname, int lineno) {
+	const Error err = Error::Last();
+	cerr << fname << ':' << lineno << ": " << err << endl;
 	return false;
 }
 
+bool ComplainUs(const char *fname, int lineno, const char *cond) {
+	cerr << fname << ':' << lineno << ": soft assertion failed: " << cond << endl;
+	return false;
+}
+
+bool Complain(const char *fname, int lineno, const char *cond) {
+	return Error::Last() ? ComplainSys(fname, lineno) : ComplainUs(fname, lineno, cond);
+}
 
 void Abort(const char *fname, int lineno, const char *cond) {
 	cerr << fname << ':' << lineno << ": assertion failed: '" 

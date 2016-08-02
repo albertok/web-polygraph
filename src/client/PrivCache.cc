@@ -17,7 +17,7 @@ PrivCache::PrivCache(int aCapacity): theEntryCount(0), theHitCount(0), theMissCo
 
 void PrivCache::clear() {
 	theHistory.reset();
-	theHash.memset(0);
+	theHash.clear();
 	theEntryCount = 0;
 	// theHitCount = theMissCount = 0; // need to handle stats differently
 }
@@ -64,8 +64,7 @@ void PrivCache::capacity(int aCap) {
 	// would be nice to find the closest prime
 	aCap = 3*aCap | 1;
 	Assert(aCap <= 0xFFFF); // we use short int as an index
-	theHash.stretch(aCap);
-	theHash.count(theHash.capacity());
+	theHash.resize(aCap);
 }
 
 int PrivCache::hash(const ObjId &oid) const {

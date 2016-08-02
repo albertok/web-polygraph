@@ -54,7 +54,7 @@ class MyOpts: public OptGrp {
 		TimeOpt theTimeUnit;
 		BoolOpt syncTimes;
 		BoolOpt smoothSlide;
-		Array<String*> theFiles;
+		PtrArray<String*> theFiles;
 };
 
 struct TraceIntvlRec {	
@@ -65,9 +65,10 @@ struct TraceIntvlRec {
 	TraceIntvlRec(Time tm, const StatIntvlRec &r): rec(r), time(tm) {}
 };
 
-class TraceWin: protected Ring<TraceIntvlRec> {
+class TraceWin: protected Ring<TraceIntvlRec*> {
 	public:
 		TraceWin(const String &fname, Time aLength);
+		~TraceWin();
 
 		void startTime(Time time);
 		int avg(StatIntvlRec &rec, Time &min, Time &max) const;
@@ -82,10 +83,10 @@ class TraceWin: protected Ring<TraceIntvlRec> {
 		void step(Time intvlBeg);
 
 	protected:
-		const TraceIntvlRec &beg() const { return item(theOutOff % theCapacity); }
-		const TraceIntvlRec &end() const { return item((theInOff-1) % theCapacity); }
-		const TraceIntvlRec &tir(int off) const { return item((theOutOff + off) % theCapacity); }
-		TraceIntvlRec &tir(int off) { return item((theOutOff + off) % theCapacity); }
+		const TraceIntvlRec &beg() const { return *top(); }
+		const TraceIntvlRec &end() const { return *top(count() - 1); }
+		const TraceIntvlRec &tir(const int off) const { return *top(off); }
+		TraceIntvlRec &tir(const int off) { return *top(off); }
 
 		void doStep();
 
@@ -173,6 +174,10 @@ TraceWin::TraceWin(const String &fname, Time aLength):
 	doStep();
 }
 
+TraceWin::~TraceWin() {
+	while (!empty()) delete dequeue();
+}
+
 void TraceWin::startTime(Time time) {
 	Assert(count() == 1);
 	theTimeOff = time - timeBeg();
@@ -208,7 +213,7 @@ int TraceWin::avg(StatIntvlRec &rec, Time &min, Time &max) const {
 // get rid of old entries
 void TraceWin::clean(Time coveredTime) {
 	while (!empty() && timeBeg() <= coveredTime)
-		(void)dequeue();
+		delete dequeue();
 
 	if (empty())
 		doStep();
@@ -227,11 +232,16 @@ bool TraceWin::load(const LogEntryPx &px) {
 		return false;
 
 	switch (px.theTag) {
+		case lgContTypeKinds: {
+			// should be called only once per log
+			ContType::Load(theLog);
+			break;
+		}
 		case lgStatCycleRec: {
 			StatIntvlRec r;
 			r.load(theLog);
 			if (!r.sane()) {
-				clog << theLog.fileName() << ':' << theLog.stream()->tellg()
+				clog << theLog.fileName() << ':' << theLog.pos()
 					<< ": warning: skipping corrupted entry"
 					<< " (log time: " << theLog.progress().time() << ')' << endl;
 				return false;
@@ -252,8 +262,7 @@ void TraceWin::add(Time tm, const StatIntvlRec &rec) {
 		resize(1 + 2*capacity());
 	Assert(!full());
 
-	TraceIntvlRec tir(tm, rec);
-	enqueue(tir);
+	enqueue(new TraceIntvlRec(tm, rec));
 }
 
 
@@ -339,7 +348,8 @@ void MyScanner::report(const String &name, const StatIntvlRec &rec, int count, T
 	ostringstream buf;
 	configureStream(buf, 2);
 
-	printTime(buf << "time:\t ", (min+max)/2) << endl;
+	const Time middle = min/2 + max/2; // avoid year-2038 tv_sec overflows
+	printTime(buf << "time:\t ", middle) << endl;
 	rec.print(buf, "");
 	buf
 		<< "interval.start:\t   " << min << endl

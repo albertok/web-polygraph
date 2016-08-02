@@ -10,6 +10,8 @@ class String;
 class RndDistr;
 
 // XXX: move to parser module?
-extern RndDistr *LoadTblDistr(const String &fname, const String &argType);
+// If a non-empty distribution type is given, it must match the loaded type.
+// Upon successful return, distributionType will be set to the loaded type.
+extern RndDistr *LoadTblDistr(const String &fname, String &distributionType);
 
 #endif

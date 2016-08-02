@@ -22,11 +22,11 @@ class PopModel;
 class RepHdr;
 class RobotSym;
 class WarmupPlan;
-class XactAbortCoord;
 class RegExGroup;
 class ForeignWorld;
 class XmlTagIdentifier;
 class ContentCfg;
+class HttpPrinter;
 
 // Client configuration items that can be shared among multiple clients
 class CltCfg: public AgentCfg {
@@ -48,7 +48,6 @@ class CltCfg: public AgentCfg {
 		bool selectHttpProxy(NetAddr &addr);
 		bool selectSocksProxy(NetAddr &addr, bool &doSocksChaining);
 		bool selectCredentials(String &newName);
-		void selectAbortCoord(XactAbortCoord &coord);
 		bool selectFtpMode(bool &usePassive);
 
 		bool followAllUris(const RepHdr &rep) const;
@@ -56,9 +55,10 @@ class CltCfg: public AgentCfg {
 		const AclGroup &acl() const { return theAcl; }
 		ForeignWorld *foreignWorld() { return theForeignWorld; }
 
-		RangeCfg::RangesInfo makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const;
+		RangeCfg::RangesInfo makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const;
 
 	protected:
+		void configurePopModel();
 		void configureInterests();
 		void configureReqTypes();
 		void configureReqMethods();
@@ -120,7 +120,6 @@ class CltCfg: public AgentCfg {
 		double theRecurRatio;      // how often to re-visit an old object
 		double theSpnegoAuthRatio; // how often negotiate/spnego auth is preferred over NTLMSSP
 		double theEmbedRecurRatio; // how often to re-visit an old embedded obj
-		double theAbortProb;	   // prob of aborting a transaction
 		double theAuthError;       // prob of an authentication error
 
 		int theWaitXactLmt;        // limit on the number of postponed requests

@@ -19,7 +19,7 @@
 #endif
 
 #if WIN32 /* XXX: merge (declare our WIN32 specific ifconf) */
-bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname) {
+bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname, Array<InAddress> *netmasks) {
 	if (!ifname)
 		ifname = "any";
 
@@ -39,6 +39,8 @@ bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname) {
 		strncpy(req.ifr_name, ifname, sizeof(req.ifr_name));
 		memcpy(&req.ifr_addr, &InterfaceList[i].iiAddress, sizeof(req.ifr_addr));
 		addrs.append(req);
+		if (netmasks)
+			netmasks->append(InAddress()); // TODO: How to get the netmask?
 	}
 
 	s.close();
@@ -91,7 +93,7 @@ bool ifNameMatch(const String &ifname, const String &aname) {
 }
 
 #if HAVE_GETIFADDRS
-bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname) {
+bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname, Array<InAddress> *netmasks) {
 	struct ifaddrs *ifap = 0;
 	struct ifaddrs *ifp = 0;
 	if (getifaddrs(&ifap)) {
@@ -107,6 +109,9 @@ bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname) {
 			AF_INET6 == ifp->ifa_addr->sa_family) {
 			InetIfReq req(ifp->ifa_name, InAddress(*ifp->ifa_addr));
 			addrs.push(req);
+			ifp->ifa_netmask->sa_family = ifp->ifa_addr->sa_family;
+			if (netmasks)
+				netmasks->push(InAddress(*ifp->ifa_netmask));
 		}
 	}
 	freeifaddrs(ifap);
@@ -138,7 +143,7 @@ bool GuessIfConfSize(Socket s, IfConf &cfg) {
 // Get a list of all interface addresses using Socket::getIfConf.  
 // WARNING: this is IPv4 only!
 //
-bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname) {
+bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname, Array<InAddress> *netmasks) {
 	Socket s;
 	if (!s.create(PF_INET, SOCK_DGRAM, 0))
 		return false;
@@ -156,6 +161,8 @@ bool GetIfAddrs(Array<InetIfReq> &addrs, const String &ifname) {
 				continue;
 
 			addrs.append(*req);
+			if (netmasks)
+				netmasks->append(InAddress()); // TODO: How to get the netmask?
 		}
 	}
 

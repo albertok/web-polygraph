@@ -96,7 +96,7 @@ ostream &RegExGrpOne::print(ostream &os) const {
 		return theVal->print(os);
 	else
 		return os << "<none>";
-};
+}
 
 
 /* RegExGrpNot */

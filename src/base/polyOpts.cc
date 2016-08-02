@@ -14,6 +14,7 @@
 #include "base/opts.h"
 #include "base/polyOpts.h"
 #include "base/polyVersion.h"
+#include "base/PatchRegistry.h"
 #include "xstd/gadgets.h"
 
 
@@ -140,7 +141,7 @@ HostTypeOpt::HostTypeOpt(OptGrp *aGrp, const char *aName, const char *aDescr):
 bool HostTypeOpt::parse(const String &, const String &) {
 	Assert(theCmdLine);
 	cerr
-		<< "vesrion " << PolyVersion()
+		<< "version " << PolyVersion()
 		<< " built on " << CONFIG_HOST_TYPE
 		<< " at " << PolyCompTime() << ' ' << PolyCompDate()
 		<< endl;
@@ -162,10 +163,13 @@ VersionOpt::VersionOpt(OptGrp *aGrp, const char *aName, const char *aDescr):
 bool VersionOpt::parse(const String &, const String &) {
 	Assert(theCmdLine);
 	cerr << PolyLetterhd() << endl;
+	ReportPatches(cerr);
 	exit(0);
 	return false;
 }
 
 void VersionOpt::report(ostream &os) const {
 	os << PolyVersion();
+	if (const int count = CountPatches())
+		os << " with " << count << " patch(es)";
 }

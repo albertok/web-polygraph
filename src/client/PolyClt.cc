@@ -23,7 +23,7 @@
 #include "runtime/polyErrors.h"
 #include "runtime/globals.h"
 #include "runtime/HttpCookies.h"
-#include "runtime/PubWorld.h"
+#include "runtime/ObjUniverse.h"
 #include "pgl/PglStaticSemx.h"
 #include "pgl/RobotSym.h"
 #include "app/BeepDoorman.h"
@@ -129,7 +129,7 @@ void PolyClt::reportCfg() {
 void PolyClt::loadPersistence() {
 	PolyApp::loadPersistence();
 	if (ThePersistWorkSetMgr.loadSideState())
-		PubWorld::ReportWss(1);
+		ObjUniverse::ReportWss(1);
 }
 
 void PolyClt::loadModules(const Array<String*> &names) {
@@ -208,6 +208,11 @@ Client *PolyClt::flipCltState(Clients &from, Clients &to) {
 
 void PolyClt::startServices() {
 	PolyApp::startServices();
+
+	// assume client traffic starts right away, no need to wait
+	if (TheStatPhaseMgr.trafficWaiting())
+		TheStatPhaseMgr.stopTrafficWaiting();
+
 	if (TheWssFreezer)
 		TheWssFreezer->start();
 }
@@ -268,7 +273,7 @@ void PolyClt::noteClientEvent(BcastChannel *ch, const Client *c) {
 void PolyClt::noteInfoEvent(BcastChannel *ch, InfoEvent ev) {
 	Assert(ch == TheInfoChannel);
 	if (ev == ieReportProgress)
-		PubWorld::ReportWss(7);
+		ObjUniverse::ReportWss(7);
 }
 
 int main(int argc, char *argv[]) {

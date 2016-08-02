@@ -118,7 +118,7 @@ Bytes findOID(const Bytes & material);
 std::string createMechanism(const Bytes & oid);
 Bytes createOID(const std::string & mechanism);
 Bytes createFlags(int flags);
-Bytes createHeader(char type, int length);
+Bytes createHeader(const unsigned char type, const int length);
 unsigned int readLength(ByteListReader & in);
 
 // start of helper class and function implementations
@@ -219,13 +219,13 @@ int readTokenType(ByteListReader & in)
 {
     if (in.read() == (CONSTRUCTED | APPLICATION))
     {
-        int length = readLength(in);
+        readLength(in);
         if (in.read() != OID)
         {
             // log error no object identifier
             return 0;
         }
-        length = readLength(in);
+        readLength(in);
         if (createOID(GSSOID_SPNEGO_MECHANISM) != readOID(in))
         {
             // log error Not SPNEGO material.
@@ -551,7 +551,7 @@ spnego_auth_result readResult(ByteListReader & in)
         // log error;
         return REJECTED;
     };
-};
+}
 
 Bytes readOctetString(ByteListReader & in)
 {
@@ -688,7 +688,7 @@ Bytes createFlags(int flags)
     return bytes;
 }
 
-Bytes createHeader(char type, int length)
+Bytes createHeader(const unsigned char type, const int length)
 {
     Bytes header;
     header.push_back(type);

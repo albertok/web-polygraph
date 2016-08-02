@@ -9,13 +9,13 @@
 #include "base/StatIntvlRec.h"
 #include "base/GoalRec.h"
 #include "base/CompoundXactStat.h"
-#include "base/ContTypeStat.h"
 #include "base/ConnCloseStat.h"
 #include "base/HRHistStat.h"
 #include "base/ErrorStat.h"
 #include "base/OidGenStat.h"
 #include "base/histograms.h"
 #include "base/RangeGenStat.h"
+#include "base/SslPhaseStat.h"
 #include "base/StatusCodeStat.h"
 
 class StatPhaseMgr;
@@ -47,8 +47,8 @@ class StatPhaseRec: public StatIntvlRec {
 		String theName;
 		GoalRec theGoal;  // maintained for us
 
-		ContTypeStat theReqContType;   // request per-content-type stats
-		ContTypeStat theRepContType;   // reply per-content-type stats
+		ContType::HistStat theReqContTypeHist; // request per-content-type stats
+		ContType::HistStat theRepContTypeHist; // reply per-content-type stats
 		ConnCloseStat theConnClose; // pre-conn-close-class stats
 
 		SizeHist theSockRdSzH;   // socket reads
@@ -67,6 +67,7 @@ class StatPhaseRec: public StatIntvlRec {
 		LineHist theConnPipelineDepths;
 		TmSzHistStat thePageHist;
 		HRHistStat theFtpXacts;
+		SslPhaseStat theSslSessions; // SSL session stats
 
 		/* ICP */
 		HRHistStat theIcpXacts;
@@ -87,14 +88,16 @@ class StatPhaseRec: public StatIntvlRec {
 		CompoundXactStat theAuthBasic; // client side, basic auth
 		CompoundXactStat theAuthNtlm; // client side, NTLM auth
 		CompoundXactStat theAuthNegotiate; // client side, negotiate auth
-		CompoundXactStat theIsolated; // client side, isolated
+		CompoundXactStat theAuthKerberos; // client side, kerberos auth
+		CompoundXactStat theConnected; // client side, HTTP CONNECT + next xact
+		CompoundXactStat theSingles; // transactions not a part of some compound
 
 		/* Cookies */
 		AggrStat theCookiesSent;   // cookies/msg for msgs sent w/ cookies
 		AggrStat theCookiesRecv;   // cookies/msg for msgs received w/ cookies
-		int theCookiesPurgedFresh; // number of fresh cookies purged
-		int theCookiesPurgedStale; // number of stale cookies purged
-		int theCookiesUpdated; // number of cookies updated
+		Counter theCookiesPurgedFresh; // number of fresh cookies purged
+		Counter theCookiesPurgedStale; // number of stale cookies purged
+		Counter theCookiesUpdated; // number of cookies updated
 
 		StatusCodeStat theStatusCode; // response status code stats
 

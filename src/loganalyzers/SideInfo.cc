@@ -21,6 +21,7 @@
 #include "loganalyzers/BlobDb.h"
 #include "loganalyzers/HistogramFigure.h"
 #include "loganalyzers/RptmHistFig.h"
+#include "loganalyzers/RepOpts.h"
 #include "loganalyzers/SizeHistFig.h"
 #include "loganalyzers/PointTraceFig.h"
 #include "loganalyzers/RptmTraceFig.h"
@@ -116,44 +117,39 @@ int SideInfo::scopes(InfoScopes &res) const {
 }
 
 const InfoScope &SideInfo::execScope() const {
-	Assert(theTest);
-	if (!theExecScope) {
-		theExecScope = theTest->execScope().oneSide(name());
-		theExecScope.name("baseline");
-	}
-	return theExecScope;
+	return theExecScope; // may be empty
 }
 
 const StatPhaseRec &SideInfo::execScopeStats() const {
 	return theExecScopePhase.stats();
 }
 
-int SideInfo::repCount(const Scope &scope) const {
-	int count = 0;
+Counter SideInfo::repCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < theProcs.count(); ++i) {
 		count += theProcs[i]->repCount(scope);
 	}
 	return count;
 }
 
-int SideInfo::hitCount(const Scope &scope) const {
-	int count = 0;
+Counter SideInfo::hitCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < theProcs.count(); ++i) {
 		count += theProcs[i]->hitCount(scope);
 	}
 	return count;
 }
 
-int SideInfo::offeredHitCount(const Scope &scope) const {
-	int count = 0;
+Counter SideInfo::offeredHitCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < theProcs.count(); ++i) {
 		count += theProcs[i]->offeredHitCount(scope);
 	}
 	return count;
 }
 
-int SideInfo::uselessProxyValidationCount(const Scope &scope) const {
-	int count = 0;
+Counter SideInfo::uselessProxyValidationCount(const Scope &scope) const {
+	Counter count = 0;
 	for (int i = 0; i < theProcs.count(); ++i) {
 		count += theProcs[i]->uselessProxyValidationCount(scope);
 	}
@@ -406,15 +402,98 @@ void SideInfo::checkConsistency() {
 	checkCommonPhases();
 }
 
-void SideInfo::CompileEmptyStats(BlobDb &db, const Scope &scope) {
-	static const String tlTitle = "side stats";
-	ReportBlob blob(BlobDb::Key("summary", scope), tlTitle);
-	XmlParagraph para;
-	XmlText text;
-	text.buf() << "no side information was extracted from the logs";
-	para << text;
-	blob << para;
-	db << blob;
+void SideInfo::compileExecScope(const InfoScope *other) {
+	theExecScope.name("baseline");
+	theExecScope.addSide(name());
+	if (other)
+		configureExecScope("client-side baseline phases", other->phases());
+	else
+	if (TheRepOpts.thePhases)
+		configureExecScope("requested --phases", TheRepOpts.thePhases.val());
+	else
+		guessExecScope();
+}
+
+// convert --phases into the baseline scope for this side
+void SideInfo::configureExecScope(const char *reqSrc, const Array<String*> &reqPhases) {
+	InfoScope scope(theExecScope);
+	String missing;
+	for (int i = 0; i < reqPhases.count(); ++i) {
+		const String &name = *reqPhases[i];
+		if (hasPhase(name))
+			scope.addPhase(name);
+		else
+		if (!missing)
+			missing = name;
+		else
+			missing = missing + ", " + name;
+	}
+
+	// do not provide baseline phase stats unless all phases were found
+	if (!reqPhases.count()) {
+		// This usually happens on the server side when
+		// the client side does not have the baseline phases.
+		theExecScope.reason = "No baseline stats for the " + name() +
+			" side because " + reqSrc + " are empty.";
+		// leave theExecScope phaseless
+	} else
+	if (reqPhases.count() == scope.phases().count()) {
+		theExecScope = scope; // copy phases
+		theExecScope.reason = "Baseline stats for the " + name() +
+			" side are based on the following phase(s): " +
+			PointersToString(scope.phases(), ", ") + ".";
+	} else {
+		theExecScope.reason = "No baseline stats for the " + name() +
+			" side because " + name() + " log(s) lack stats for the "
+			"following " + reqSrc + ": " + missing + ".";
+		// leave theExecScope phaseless
+	}
+}
+
+// decide which phase(s) to use as a side baseline (due to lack of --phases)
+void SideInfo::guessExecScope() {
+	// find last phase with peak (highest) request rate; add all primary phases
+	String bestName;
+	double peakRate = -1;
+	String allBestName;
+	double allPeakRate = -1;
+	for (int i = 0; i < phaseCount(); ++i) {
+		const PhaseInfo &ph = phase(i);
+		const double rate = ph.availStats().reqRate();
+		// allow for 1% rate diff among phases with the same configured rate
+		if (ph.hasStats())
+			if (!bestName || peakRate <= 1.01*rate) {
+				peakRate = rate;
+				bestName = ph.name();
+			}
+		if (!bestName)
+			if (!allBestName || allPeakRate <= 1.01*rate) {
+				allPeakRate = rate;
+				allBestName = ph.name();
+			}
+		if (ph.stats().primary)
+			theExecScope.addPhase(ph.name());
+	}
+	if (!bestName)
+		bestName = allBestName;
+
+	if (theExecScope) {
+		theExecScope.reason = "Baseline stats for the " + name() +
+			" side are based on the following primary phase(s): " +
+			PointersToString(theExecScope.phases(), ", ") + ".";
+	} else
+	if (bestName) {
+		theExecScope.reason = "Baseline stats for the " + name() +
+			" side are based on the logged phase with the highest load: " +
+			bestName + ".";
+		theExecScope.addPhase(bestName);
+	} else
+	if (Should(allBestName)) {
+		theExecScope.reason = "Baseline stats for the " + name() +
+			" side are based on the logless phase with the highest load: " +
+			allBestName + ".";
+		theExecScope.addPhase(allBestName);
+	}
 }
 
 void SideInfo::compileStats(BlobDb &db) {
@@ -422,7 +501,8 @@ void SideInfo::compileStats(BlobDb &db) {
 
 	for (int i = 0; i < theProcs.count(); ++i) {
 		theProcs[i]->compileStats(db);
-		theExecScopePhase.merge(theProcs[i]->execScopePhase());
+		if (execScope())
+			theExecScopePhase.merge(theProcs[i]->execScopePhase());
 		theAllPhasesPhase.merge(theProcs[i]->allPhasesPhase());
 	}
 
@@ -435,9 +515,8 @@ void SideInfo::compileStats(BlobDb &db) {
 			phScope.image() == execScope().image();
 		compileStats(db, phase, phScope);
 	}
-	if (!gotExecScope)
+	if (!gotExecScope && execScope())
 		compileStats(db, theExecScopePhase, execScope());
-	// else should copy existing phase(i) stats?
 
 	compileStats(db, theAllPhasesPhase, theScope);
 
@@ -473,16 +552,18 @@ void SideInfo::compileStats(BlobDb &db, const PhaseInfo &phase, const Scope &sco
 	cmpProtoStats(db, phase, &StatIntvlRec::theSocksStat, scope);
 	cmpProtoStats(db, phase, &StatIntvlRec::theSslStat, scope);
 	cmpProtoStats(db, phase, &StatIntvlRec::theFtpStat, scope);
+	cmpProtoStats(db, phase, &StatIntvlRec::theConnectStat, scope);
+	cmpProtoStats(db, phase, &StatIntvlRec::theAuthingStat, scope);
 
 	addMeasBlob(db, "conn.count" + sfx,
 		stats.theConnUseCnt.count(),
 		"conn", "connection count"),
 	addMeasBlob(db, "conn.pipeline.count" + sfx,
-		stats.theConnPipelineDepth.count(), 
+		stats.theConnPipelineDepth.count(),
 		"conn", "pipelined connection count");
 	addMeasBlob(db, "conn.pipeline.ratio" + sfx, 
-		Percent(stats.theConnPipelineDepth.count(), 
-			stats.theConnUseCnt.count()), 
+		Percent(stats.theConnPipelineDepth.count(),
+			stats.theConnUseCnt.count()),
 		"%", "portion of pipelined connections");
 
 	addMeasBlob(db, "conn.pipeline.depth.min" + sfx,
@@ -502,6 +583,8 @@ void SideInfo::compileStats(BlobDb &db, const PhaseInfo &phase, const Scope &sco
 	cmplProtoLoadBlob(db, phase, &StatIntvlRec::theSocksStat, scope);
 	cmplProtoLoadBlob(db, phase, &StatIntvlRec::theSslStat, scope);
 	cmplProtoLoadBlob(db, phase, &StatIntvlRec::theFtpStat, scope);
+	cmplProtoLoadBlob(db, phase, &StatIntvlRec::theConnectStat, scope);
+	cmplProtoLoadBlob(db, phase, &StatIntvlRec::theAuthingStat, scope);
 	cmplRptmFigure(db, scope);
 	cmplRptmVsLoadFigure(db, phase, scope);
 	cmplHitRatioTable(db, scope);
@@ -524,6 +607,7 @@ void SideInfo::compileStats(BlobDb &db, const PhaseInfo &phase, const Scope &sco
 	cmplReplyStatusStreamTable(db, phase, scope);
 	cmplReplyStatusObjectTable(db, phase, scope);
 	cmplCookieTable(db, phase, scope);
+	cmplSslSessionTable(db, phase, scope);
 	cmplObjectBlobs(db, phase, scope, TheReplyStex);
 	cmplObjectBlobs(db, phase, scope, TheRequestStex);
 	cmplObjectBlobs(db, phase, scope, TheCompoundReplyStex);
@@ -622,11 +706,14 @@ void SideInfo::cmplLoadTable(BlobDb &db, ReportBlob &parent, const Scope &scope)
 	parent << blob;
 }
 
-void SideInfo::cmplLoadFigure(BlobDb &db, ReportBlob &blob, const Scope &scope) {
+void SideInfo::cmplLoadFigure(BlobDb &db, XmlTag &blob, const Scope &scope, const bool small) const {
 	SideLoadStex stex1("req", "offered", &StatIntvlRec::reqRate, &StatIntvlRec::reqBwidth);
 	SideLoadStex stex2("rep", "measured", &StatIntvlRec::repRate, &StatIntvlRec::repBwidth);
 	LoadTraceFig fig;
-	fig.configure("load.trace" + scope, "load trace");
+	String id = "load.trace";
+	if (small)
+		id += ".small";
+	fig.configure(id + scope, "load trace", small);
 	fig.stats(&stex1, &phase(scope));
 	fig.compareWith(&stex2);
 	fig.globalStart(theTest->startTime());
@@ -666,6 +753,11 @@ void SideInfo::cmplProtoLoadBlob(BlobDb &db, const PhaseInfo &phase, ProtoIntvlP
 	cmplProtoLoadFigure(db, blob, phase, protoPtr, scope);
 
 	{
+		// TODO: make description configurable.  "Request
+		// stream" and "reply messages" should be more
+		// specific (e.g., "secure request stream" for SSL).
+		// Also we want to refer to other tables (e.g.,
+		// ssl.sessions for SSL).
 		XmlTag descr("description");
 
 		XmlTextTag<XmlParagraph> p1;
@@ -769,19 +861,20 @@ void SideInfo::cmplProtoLoadFigure(BlobDb &db, ReportBlob &blob, const PhaseInfo
 	blob << db.include(figKey);
 }
 
-void SideInfo::cmplRptmFigure(BlobDb &db, const Scope &scope) {
+String SideInfo::cmplRptmFigure(BlobDb &db, const Scope &scope, const bool small) const {
 	MissesStex misses("misses", "misses");
 	HitsStex hits("hits", "hits");
 
 	RptmTraceFig fig;
-	fig.configure("rptm.trace" + scope, "Response times trace");
+	String id = "rptm.trace";
+	if (small)
+		id += ".small";
+	fig.configure(id + scope, "response times trace", small);
 	fig.stats(&misses, &phase(scope));
 	fig.moreStats(TheAllReps);
 	fig.moreStats(&hits);
 	fig.globalStart(theTest->startTime());
-	//const String &figKey = 
-	fig.plot(db).key();
-	//blob << db.include(figKey);
+	return fig.plot(db).key();
 }
 
 void SideInfo::cmplRptmVsLoadFigure(BlobDb &db, const PhaseInfo &phase, const Scope &scope) {
@@ -883,16 +976,18 @@ void SideInfo::cmplHitRatioTable(BlobDb &db, const Scope &scope) {
 			descr << p1;
 		}
 
-		XmlParagraph p;
 		Scope testScope = scope.oneSide("client");
 		testScope.addSide("server");
-		p << XmlText("A better way to measure hit ratio is to compare "
-			"client- and server-side traffic. A hit ratio table "
-			"based on such a comparison is available ");
-		p << db.ptr("hit.ratio" + testScope, XmlText("elsewhere"));
-		p << XmlText(".");
-		descr << p;
-		
+		if (theTest->hasScope(testScope)) {
+			XmlParagraph p;
+			p << XmlText("A better way to measure hit ratio is to "
+				"compare client- and server-side traffic. A "
+				"hit ratio table based on such a comparison is "
+				"available ") << db.ptr("hit.ratio" + testScope,
+				XmlText("elsewhere")) << XmlText(".");
+			descr << p;
+		}
+
 		blob << descr;
 	}
 
@@ -932,7 +1027,7 @@ void SideInfo::cmplBhrTrace(BlobDb &db, ReportBlob &blob, const Scope &scope) {
 
 void SideInfo::cmplConnLevelTable(BlobDb &db, const PhaseInfo &phase, const Scope &scope) {
 	ReportBlob blob("conn.level.table" + scope, "concurrent connection level");
-	blob << XmlAttr("vprimitive", "Concurrent HTTP/TCP connection level table");
+	blob << XmlAttr("vprimitive", "Concurrent TCP connection level table");
 
 	const StatIntvlRec &stats = phase.availStats();
 
@@ -964,8 +1059,49 @@ void SideInfo::cmplConnLevelTable(BlobDb &db, const PhaseInfo &phase, const Scop
 		XmlTag descr("description");
 
 		XmlTextTag<XmlParagraph> p1;
-		p1.buf() << "TBD.";
+		p1.buf() << "The concurrent connection level table shows the "
+			"number of TCP connections in different states during "
+			"the test. It is important to keep in mind that "
+			"Polygraph works on application level. It relies on "
+			"socket API and TCP stack implementation provided by "
+			"the OS.";
 		descr << p1;
+
+		XmlTextTag<XmlParagraph> p2;
+		p2.buf() << "For Polygraph client side:";
+		descr << p2;
+
+		XmlTag l1("ul");
+		l1 << XmlText("Open: Robot created a socket and is about to "
+			"call connect(2).");
+		l1 << XmlText("Established: OS declares the socket ready for "
+			"I/O after connect(2).");
+		l1 << XmlText("Idle: A persistent HTTP connection in the idle "
+			"connection pool, waiting for a robot to send another "
+			"request to the same HTTP hop.");
+		descr << l1;
+
+		XmlTextTag<XmlParagraph> p3;
+		p3.buf() << "For Polygraph server side:";
+		descr << p3;
+
+		XmlTag l2("ul");
+		l2 << XmlText("Open: Server received a new socket from "
+			"accept(2).");
+		l2 << XmlText("Established: OS declares the socket ready for "
+			"I/O after accept(2).");
+		l2 << XmlText("Idle: A persistent HTTP connection in the idle "
+			"connection pool, waiting for a new request from the "
+			"same HTTP hop.");
+		descr << l2;
+
+		XmlTextTag<XmlParagraph> p4;
+		p4.buf() << "An established connection is always open and an "
+			"idle connection is always established. An open "
+			"connection leaves all of the above states when it is "
+			"close(2)d. Polygraph does not use half-closed "
+			"connections.";
+		descr << p4;
 
 		blob << descr;
 	}
@@ -1547,6 +1683,13 @@ void SideInfo::cmplAuthStreamTable(BlobDb &db, const PhaseInfo &phase, const Sco
 			"auth-ing transactions with any authentication scheme.";
 		descr << p2;
 
+		XmlTextTag<XmlParagraph> p2b;
+		p2b.buf() << "Statistics reported using a Negotiate prefix are for "
+			"\"pure\" HTTP Negotiate authentication. Negotiate transactions "
+			"using Kerberos tokens, if any, are listed separately, using a "
+			"Kerberos prefix.";
+		descr << p2b;
+
 		XmlParagraph p3;
 		p3 << XmlText("The ");
 		p3 << db.ptr("auth.object.table" + scope, XmlText("'Authentication object' table"));
@@ -1989,6 +2132,13 @@ void SideInfo::cmplAuthObjectTable(BlobDb &db, const PhaseInfo &phase, const Sco
 			"streams. For example, the 'all auth-ing' stream contains "
 			"auth-ing transactions with any authentication scheme.";
 		descr << p2;
+
+		XmlTextTag<XmlParagraph> p2b;
+		p2b.buf() << "Statistics reported using a Negotiate prefix are for "
+			"\"pure\" HTTP Negotiate authentication. Negotiate transactions "
+			"using Kerberos tokens, if any, are listed separately, using a "
+			"Kerberos prefix.";
+		descr << p2b;
 
 		XmlParagraph p3;
 		p3 << XmlText("Some statistics may not be available because either "
@@ -2535,6 +2685,248 @@ void SideInfo::cmplCookieTableRec(BlobDb &db, XmlTable &table, const Stex &stex,
 	table << tr;
 }
 
+void SideInfo::cmplSslSessionTable(BlobDb &db, const PhaseInfo &phase, const Scope &scope) {
+	const String pfx = BlobDb::Key("ssl.sessions", scope);
+	ReportBlob blob(pfx, "SSL session stats");
+	blob << XmlAttr("vprimitive", "SSL sessions");
+
+	cmplSslSessionStats(db, phase, scope, pfx);
+
+	{
+		XmlTable table;
+		table << XmlAttr::Int("border", 1) << XmlAttr::Int("cellspacing", 1);
+
+		{
+			XmlTableRec tr;
+			tr << XmlTableHeading("SSL sessions", 1, 2);
+
+			XmlTableHeading allSessions("All", 2, 1);
+			tr << allSessions;
+
+			XmlTableHeading newSessions("New", 2, 1);
+			tr << newSessions;
+
+			XmlTableHeading resumedSessions("Resumed", 2, 1);
+			tr << resumedSessions;
+
+			XmlTableHeading resumptionProb("Resumption probability", 2, 2);
+			resumptionProb << XmlTag("br") << XmlText("(%)");
+			tr << resumptionProb;
+
+			table << tr;
+		}
+
+		{
+			XmlTableRec tr;
+
+			XmlTableHeading count("Count");
+			count << XmlTag("br") << XmlText("(sess,M)");
+
+			XmlTableHeading rate("Rate");
+			rate << XmlTag("br") << XmlText("(sess/sec)");
+
+			tr << count << rate;
+			tr << count << rate;
+			tr << count << rate;
+
+			table << tr;
+		}
+
+		if (scope.hasSide("client"))
+			cmplSslSessionTableRec(db, table, scope, pfx + ".offered", "Offered");
+		cmplSslSessionTableRec(db, table, scope, pfx + ".measured", "Measured");
+
+		blob << table;
+	}
+
+	{
+		XmlTag descr("description");
+
+		XmlTextTag<XmlParagraph> p1;
+		p1.buf() << "The 'SSL sessions' table provides statistics for "
+			"SSL sessions created and resumed. The 'New' column "
+			"shows count and rate stats for newly created SSL "
+			"sessions. The 'Resumed' column shows count and rate "
+			"stats for resumed SSL sessions. The 'All' column "
+			"shows sum of 'New' and 'Resumed' stats.";
+		descr << p1;
+
+		XmlTextTag<XmlParagraph> p2;
+		p2.buf() << "The 'Offered' stats are collected on client side "
+			"only.  They show numbers of client attempts to resume "
+			"an SSL session or create a new one. The 'Measured' "
+			"stats show the actual number of new and resumed SSL "
+			"sessions. The offered resumed SSL sessions numbers "
+			"may be greater than the measured ones while the "
+			"offered new SSL session numbers may be lower than the "
+			"measured, because proxy or server may reject client's "
+			"SSL session resumption attempts.";
+		descr << p2;
+
+		XmlTextTag<XmlParagraph> p3;
+		p3.buf() << "The 'Resumption probability' column shows various "
+			"ratios related to resumed SSL sessions. On the client "
+			"side, its 'offered' cell is probability of a Robot "
+			"trying to resume a session (i.e. offered resumed / "
+			"offered all) while the 'measured' cell is a "
+			"probability of resumption success (i.e. measured "
+			"resumed / offered resumed). On the server side, the "
+			"'measured' cell is a probability of reusing a session "
+			"(i.e. measured resumed / measured all).";
+		descr << p3;
+
+		XmlParagraph p4;
+		p4 << XmlText("SSL load statistics is available ");
+		p4 << db.ptr("ssl.load" + scope, XmlText("elsewhere"));
+		p4 << XmlText(".");
+		descr << p4;
+
+		blob << descr;
+	}
+
+	db << blob;
+}
+
+void SideInfo::cmplSslSessionStats(BlobDb &db, const PhaseInfo &phase, const Scope &scope, const String &pfx) {
+	if (scope.hasSide("client")) {
+		cmplSslSessionCommonStats(db, phase, scope, pfx + ".offered",
+			"offered", &SslPhaseStat::offered);
+	}
+	cmplSslSessionCommonStats(db, phase, scope, pfx + ".measured",
+		"measured", &SslPhaseStat::measured);
+
+	const String offeredResProbName = BlobDb::Key(pfx +
+		".offered.resumption_probability", scope);
+	const String offeredResProbTitle = "offered resumption probability";
+	const String measuredResProbName = BlobDb::Key(pfx +
+		".measured.resumption_probability", scope);
+	const String measuredResProbTitle = "measured resumption probability";
+
+	if (const StatPhaseRec *stats = phase.hasStats()) {
+		const SslPhaseStat::Stat &measured = stats->theSslSessions.measured();
+
+		double measuredResProb;
+		if (scope.hasSide("client")) {
+			const SslPhaseStat::Stat &offered =
+				stats->theSslSessions.offered();
+			measuredResProb = Percent(measured.reusedSessions(),
+				offered.reusedSessions());
+			const double offeredResProb = Percent(offered.reusedSessions(),
+				offered.allSessions());
+			addMeasBlob(db, offeredResProbName, offeredResProb,
+				"%", offeredResProbTitle);
+		} else {
+			measuredResProb = Percent(measured.reusedSessions(),
+				measured.allSessions());
+		}
+		addMeasBlob(db, measuredResProbName, measuredResProb,
+			"%", measuredResProbTitle);
+	} else {
+		if (scope.hasSide("client"))
+			addNaMeasBlob(db, offeredResProbName, offeredResProbTitle);
+		addNaMeasBlob(db, measuredResProbName, measuredResProbTitle);
+	}
+}
+
+void SideInfo::cmplSslSessionCommonStats(BlobDb &db, const PhaseInfo &phase, const Scope &scope, const String &pfx, const String &titlePfx, const SslStatsPtr sslStatsPtr) {
+	const String allCountName = BlobDb::Key(pfx + ".all.count", scope);
+	const String allCountTitle = titlePfx + " all count";
+	const String allRateName = BlobDb::Key(pfx + ".all.rate", scope);
+	const String allRateTitle = titlePfx + " all rate";
+	const String newCountName = BlobDb::Key(pfx + ".new.count", scope);
+	const String newCountTitle = titlePfx + " new count";
+	const String newRateName = BlobDb::Key(pfx + ".new.rate", scope);
+	const String newRateTitle = titlePfx + " new rate";
+	const String reusedCountName = BlobDb::Key(pfx + ".reused.count", scope);
+	const String reusedCountTitle = titlePfx + " reused count";
+	const String reusedRateName = BlobDb::Key(pfx + ".reused.rate", scope);
+	const String reusedRateTitle = titlePfx + " reused rate";
+
+	if (const StatPhaseRec *const stats = phase.hasStats()) {
+		const SslPhaseStat &sslSessions = stats->theSslSessions;
+		const SslPhaseStat::Stat &sslStats = (sslSessions.*sslStatsPtr)();
+		const double duration = stats->theDuration.secd();
+
+		addMeasBlob(db, allCountName, sslStats.allSessions()/1e6,
+			"M", allCountTitle);
+		addMeasBlob(db, allRateName, Ratio(sslStats.allSessions(),
+			duration), "/sec", allRateTitle);
+		addMeasBlob(db, newCountName, sslStats.newSessions()/1e6,
+			"M", newCountTitle);
+		addMeasBlob(db, newRateName, Ratio(sslStats.newSessions(),
+			duration), "/sec", newRateTitle);
+		addMeasBlob(db, reusedCountName, sslStats.reusedSessions()/1e6,
+			"M", reusedCountTitle);
+		addMeasBlob(db, reusedRateName, Ratio(sslStats.reusedSessions(),
+			duration), "/sec", reusedRateTitle);
+	} else {
+		addNaMeasBlob(db, allCountName, allCountTitle);
+		addNaMeasBlob(db, allRateName, allRateTitle);
+		addNaMeasBlob(db, newCountName, newCountTitle);
+		addNaMeasBlob(db, newRateName, newRateTitle);
+		addNaMeasBlob(db, reusedCountName, reusedCountTitle);
+		addNaMeasBlob(db, reusedRateName, reusedRateTitle);
+	}
+}
+
+void SideInfo::cmplSslSessionTableRec(BlobDb &db, XmlTable &table, const Scope &scope, const String &pfx, const String &name) {
+	const String allCountName = BlobDb::Key(pfx + ".all.count", scope);
+	const String allRateName = BlobDb::Key(pfx + ".all.rate", scope);
+	const String newCountName = BlobDb::Key(pfx + ".new.count", scope);
+	const String newRateName = BlobDb::Key(pfx + ".new.rate", scope);
+	const String reusedCountName = BlobDb::Key(pfx + ".reused.count", scope);
+	const String reusedRateName = BlobDb::Key(pfx + ".reused.rate", scope);
+	const String resumptionProbName =
+		BlobDb::Key(pfx + ".resumption_probability", scope);
+
+	XmlTableRec tr;
+	tr << algnLeft << XmlTableHeading(name);
+
+	{
+		XmlTableCell cell;
+		cell << algnRight << db.quote(allCountName);
+		tr << cell;
+	}
+
+	{
+		XmlTableCell cell;
+		cell << algnRight << db.quote(allRateName);
+		tr << cell;
+	}
+
+	{
+		XmlTableCell cell;
+		cell << algnRight << db.quote(newCountName);
+		tr << cell;
+	}
+
+	{
+		XmlTableCell cell;
+		cell << algnRight << db.quote(newRateName);
+		tr << cell;
+	}
+
+	{
+		XmlTableCell cell;
+		cell << algnRight << db.quote(reusedCountName);
+		tr << cell;
+	}
+
+	{
+		XmlTableCell cell;
+		cell << algnRight << db.quote(reusedRateName);
+		tr << cell;
+	}
+
+	{
+		XmlTableCell cell;
+		cell << algnRight << db.quote(resumptionProbName);
+		tr << cell;
+	}
+
+	table << tr;
+}
+
 void SideInfo::cmplObjectBlobs(BlobDb &db, const PhaseInfo &phase, const Scope &scope, const Array<Stex*> &stexes) {
 	for (int s = 0; s < stexes.count(); ++s)
 		cmplObjectBlob(db, *stexes[s], phase, scope);
@@ -2648,14 +3040,14 @@ void SideInfo::cmplObjectBlob(BlobDb &db, const Stex &stex, const PhaseInfo &pha
 			LoadTraceFig figLoad;
 			TmSzLoadStex loadStex(&stex);
 			figLoad.configure(pfx + ".load.trace" + scope, "load trace");
-			figLoad.stats(&loadStex, &this->phase(scope));
+			figLoad.stats(&loadStex, &phase);
 			figLoad.globalStart(theTest->startTime());
 			const String &figLoadKey = figLoad.plot(db).key();
 			blob << db.include(figLoadKey);
 
 			RptmTraceFig figRptm;
 			figRptm.configure(pfx + ".rptm.trace" + scope, "response time trace");
-			figRptm.stats(&stex, &this->phase(scope));
+			figRptm.stats(&stex, &phase);
 			figRptm.globalStart(theTest->startTime());
 			const String &figRptmKey = figRptm.plot(db).key();
 			blob << db.include(figRptmKey);
@@ -2708,12 +3100,12 @@ void SideInfo::cmplUnseenObjectsBlob(BlobDb &db, const Scope &scope) {
 }
 
 void SideInfo::cmplSideSum(BlobDb &db) {
-	ReportBlob blob(BlobDb::Key("summary", execScope()), "test side summary");
-	blob << db.quote("load" + execScope());
-	blob << db.quote("hit.ratio" + execScope());
-	blob << db.quote("reply_stream.table" + execScope());
-	blob << db.quote("reply_object.table" + execScope());
-	db << blob;
+	{
+		static const String tlTitle = "baseline selection argumentation";
+		ReportBlob blob("baseline.reason." + name(), tlTitle);
+		blob << XmlText(execScope().reason);
+		db << blob;
+	}
 }
 
 
@@ -2728,16 +3120,16 @@ void SideInfo::AddStex(Array<Stex*> &stexes, Stex *stex, const Stex *parent) {
 void SideInfo::Configure() {
 	TheAllReps = new AllRepsStex("rep", "all replies");
 
-	Stex *allContTypes = new AllContTypesStex("cont_type_all", "all response content types", &StatPhaseRec::theRepContType);
-	for (int i = 0; i < ContTypeStat::Kinds().count(); ++i) {
+	Stex *allContTypes = new AllRepContTypesStex("cont_type_all", "all response content types");
+	for (int i = 0; i < ContType::Count(); ++i) {
 		char buf[128];
 		ofixedstream s(buf, sizeof(buf));
 		s << "rep_cont_type_" << i << ends;
 		const String key = buf;
-		const String &cname = *ContTypeStat::Kinds()[i];
+		const String &cname = ContType::Kind(i);
 		const String name = String("\"") + cname + "\" response";
 		if (cname[0] != '_')
-			AddStex(TheReplyStex, new ContTypeStex(key, name, i, &StatPhaseRec::theRepContType), allContTypes);
+			AddStex(TheReplyStex, new RepContTypeStex(key, name, i), allContTypes);
 	}
 	AddStex(TheReplyStex, allContTypes, TheAllReps);
 
@@ -2781,8 +3173,6 @@ void SideInfo::Configure() {
 		&StatPhaseRec::thePostXacts, &StatIntvlRec::thePost), allMethods);
 	AddStex(TheReplyStex, new SimpleStex("method_put", "PUT",
 		&StatPhaseRec::thePutXacts, &StatIntvlRec::thePut), allMethods);
-	AddStex(TheReplyStex, new SimpleStex("method_connect", "CONNECT",
-		&StatPhaseRec::theConnectXacts, &StatIntvlRec::theConnect), allMethods);
 	AddStex(TheReplyStex, allMethods, TheAllReps);
 
 	AddStex(TheReplyStex, TheAllReps, 0);
@@ -2790,16 +3180,16 @@ void SideInfo::Configure() {
 	AddStex(TheReplyStex, new SimpleStex("page", "page",
 		&StatPhaseRec::thePageHist, &StatIntvlRec::thePage), 0);
 
-	TheAllReqs = new AllContTypesStex("req_cont_type_all", "all request content types", &StatPhaseRec::theReqContType);
-	for (int i = 0; i < ContTypeStat::Kinds().count(); ++i) {
+	TheAllReqs = new AllReqContTypesStex("req_cont_type_all", "all request content types");
+	for (int i = 0; i < ContType::Count(); ++i) {
 		char buf[128];
 		ofixedstream s(buf, sizeof(buf));
 		s << "req_cont_type_" << i << ends;
 		const String key = buf;
-		const String &cname = *ContTypeStat::Kinds()[i];
+		const String &cname = ContType::Kind(i);
 		const String name = String("\"") + cname + "\" request";
 		if (cname[0] != '_')
-			AddStex(TheRequestStex, new ContTypeStex(key, name, i, &StatPhaseRec::theReqContType), TheAllReqs);
+			AddStex(TheRequestStex, new ReqContTypeStex(key, name, i), TheAllReqs);
 	}
 	AddStex(TheRequestStex, TheAllReqs, 0);
 
@@ -2812,6 +3202,8 @@ void SideInfo::Configure() {
 	AddProtoStexes(&StatIntvlRec::theSocksStat);
 	AddProtoStexes(&StatIntvlRec::theSslStat);
 	AddProtoStexes(&StatIntvlRec::theFtpStat);
+	AddProtoStexes(&StatIntvlRec::theConnectStat);
+	AddProtoStexes(&StatIntvlRec::theAuthingStat);
 
 	/* auth related stexes */
 	{
@@ -2832,6 +3224,10 @@ void SideInfo::Configure() {
 		AddStex(TheAuthStex, authIngNegotiate, TheAllReps);
 	}
 	{
+		Stex *const authIngKerberos = new AuthIngStex("auth.ing.kerberos", "Kerberos auth-ing", AuthPhaseStat::sKerberos);
+		AddStex(TheAuthStex, authIngKerberos, TheAllReps);
+	}
+	{
 		Stex *const authIngAny = new AllAuthIngStex("auth.ing.any", "all auth-ing");
 		AddStex(TheAuthStex, authIngAny, TheAllReps);
 	}
@@ -2846,6 +3242,10 @@ void SideInfo::Configure() {
 	{
 		Stex *const authEdNegotiate = new AuthEdStex("auth.ed.negotiate", "Negotiate auth-ed", AuthPhaseStat::sNegotiate);
 		AddStex(TheAuthStex, authEdNegotiate, TheAllReps);
+	}
+	{
+		Stex *const authKerberos = new AuthEdStex("auth.ed.kerberos", "Kerberos auth-ed", AuthPhaseStat::sKerberos);
+		AddStex(TheAuthStex, authKerberos, TheAllReps);
 	}
 	{
 		Stex *const authFtp = new AuthIngStex("auth.ftp", "FTP auth", AuthPhaseStat::sFtp);
@@ -2873,10 +3273,18 @@ void SideInfo::Configure() {
 		&StatPhaseRec::theAuthNtlm), TheAllReps);
 	AddStex(TheCompoundReplyStex, new CompoundReplyStex("compound.auth.negotiate.rep", "Negotiate auth replies",
 		&StatPhaseRec::theAuthNegotiate), TheAllReps);
-	AddStex(TheCompoundReplyStex, new AllCompoundRepsStex("compound.any.reps",
+	AddStex(TheCompoundReplyStex, new CompoundReplyStex("compound.auth.kerberos.rep", "Kerberos auth replies",
+		&StatPhaseRec::theAuthKerberos), TheAllReps);
+	AddStex(TheCompoundReplyStex, new CompoundReplyStex("compound.connect_plus_one.rep", "CONNECT plus one replies",
+		&StatPhaseRec::theConnected), TheAllReps);
+	AddStex(TheCompoundReplyStex, new AllCompoundRepsStex("compound.any.rep",
 		"all compound replies"), TheAllReps);
-	AddStex(TheCompoundReplyStex, new CompoundReplyStex("compound.auth.not.rep", "isolated replies",
-		&StatPhaseRec::theIsolated), TheAllReps);
+	AddStex(TheCompoundReplyStex, new CompoundReplyStex("compound.not.rep", "single replies",
+		&StatPhaseRec::theSingles), TheAllReps);
+
+	// TODO: Integrate with others better. Also find a less overloaded label.
+	AddStex(TheCompoundReplyStex, new CompoundReplyStex("compound.baseline.rep", "baseline replies",
+		&StatPhaseRec::theBaseline), 0);
 
 	AddStex(TheCompoundRequestStex, new CompoundRequestStex("compound.auth.basic.req", "Basic auth requests",
 		&StatPhaseRec::theAuthBasic), TheAllReqs);
@@ -2884,10 +3292,18 @@ void SideInfo::Configure() {
 		&StatPhaseRec::theAuthNtlm), TheAllReqs);
 	AddStex(TheCompoundRequestStex, new CompoundRequestStex("compound.auth.negotiate.req", "Negotiate auth requests",
 		&StatPhaseRec::theAuthNegotiate), TheAllReqs);
-	AddStex(TheCompoundRequestStex, new AllCompoundReqsStex("compound.any.reqs",
+	AddStex(TheCompoundRequestStex, new CompoundRequestStex("compound.auth.kerberos.req", "Kerberos auth requests",
+		&StatPhaseRec::theAuthKerberos), TheAllReqs);
+	AddStex(TheCompoundRequestStex, new CompoundRequestStex("compound.connect_plus_one.req", "CONNECT plus one requests",
+		&StatPhaseRec::theConnected), TheAllReqs);
+	AddStex(TheCompoundRequestStex, new AllCompoundReqsStex("compound.any.req",
 		"all compound requests"), TheAllReqs);
-	AddStex(TheCompoundRequestStex, new CompoundRequestStex("compound.auth.not.req", "isolated requests",
-		&StatPhaseRec::theIsolated), TheAllReqs);
+	AddStex(TheCompoundRequestStex, new CompoundRequestStex("compound.not.req", "single requests",
+		&StatPhaseRec::theSingles), TheAllReqs);
+
+	// TODO: Integrate with others better. Also find a less overloaded label.
+	AddStex(TheCompoundRequestStex, new CompoundRequestStex("compound.baseline.req", "baseline requests",
+		&StatPhaseRec::theBaseline), 0);
 
 	AddStex(TheReplyStex, new SimpleStex("custom_stats", "custom",
 		&StatPhaseRec::theCustomXacts, &StatIntvlRec::theCustom), 0);

@@ -14,6 +14,7 @@ class RndDistr;
 class SessionSym;
 class AclSym;
 class DnsResolverSym;
+class KerberosWrapSym;
 class RangeSym;
 class ContentSym;
 
@@ -73,6 +74,8 @@ class RobotSym: public AgentSym {
 
 		bool haveReqMethods() const;
 		bool haveReqTypes() const;
+
+		const KerberosWrapSym *kerberosWrap() const;
 
 	protected:
 		virtual SynSym *dupe(const String &dType) const;

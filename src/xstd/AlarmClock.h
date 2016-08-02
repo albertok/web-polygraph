@@ -83,6 +83,6 @@ class AlarmClock: public Clock {
 		AlarmQueue theQueue;
 };
 
-extern AlarmClock TheAlarmClock;
+extern AlarmClock &TheAlarmClock;
 
 #endif

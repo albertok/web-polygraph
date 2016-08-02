@@ -12,19 +12,32 @@
 #include "runtime/ErrorMgr.h"
 #include "runtime/StatPhase.h"
 #include "runtime/StatPhaseMgr.h"
+#include "runtime/StatsSampleMgr.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/polyErrors.h"
 
 StatPhaseMgr TheStatPhaseMgr;
 
 
-StatPhaseMgr::StatPhaseMgr(): thePhase(0), thePhaseIdx(-1), theLogCat(lgcAll) {
+StatPhaseMgr::StatPhaseMgr():
+	thePhase(0),
+	theWaitPhase(0),
+	thePhaseIdx(-1),
+	theLogCat(lgcAll),
+	reachedNegative_(false) {
 }
 
 StatPhaseMgr::~StatPhaseMgr() {
+	delete theWaitPhase;
+	theWaitPhase = 0;
+
+	// cold phase
 	if (thePhaseIdx >= thePhases.count())
 		delete thePhase;
 	thePhase = 0;
+
+	// active phases
 	while (thePhases.count()) delete thePhases.pop();
 }
 
@@ -53,8 +66,18 @@ void StatPhaseMgr::noteDone(StatPhase *ph) {
 	nextPhase();
 }
 
+void StatPhaseMgr::stopTrafficWaiting() {
+	if (ShouldUs(trafficWaiting()) &&
+		ShouldUs(thePhase) &&
+		ShouldUs(thePhase == theWaitPhase))
+		thePhase->stop(); // not report()ing the all-zeros "wait" phase
+
+	nextPhase();
+}
+
 void StatPhaseMgr::nextPhase() {
-	const StatPhase *prevPhase = thePhase;
+	// do not treat theWaitPhase with its fake factors as a previous phase
+	const StatPhase *prevPhase = thePhaseIdx >= 0 ? thePhase : 0;
 
 	const bool mustStop(thePhase && thePhase->mustStop());
 	if (mustStop ||
@@ -63,6 +86,7 @@ void StatPhaseMgr::nextPhase() {
 		ostringstream s;
 		if (mustStop) {
 			thePhaseIdx = thePhases.count();
+			reachedNegative_ = true;
 			s << "phase '" << thePhase->name() << "' reached negative goal" << ends;
 			ReportError(errNegativePhase);
 		} else {
@@ -74,12 +98,13 @@ void StatPhaseMgr::nextPhase() {
 
 		// add a never-finishing phase when all official phases are over
 		// so that agents do not have to check for some phase to exist
-		// note: this phase is never deleted, but that's OK
-		thePhase = new StatPhase;
-		thePhase->name("cold");
-		thePhase->statsLogged(false);
+		thePhase = StatPhase::MakeVirtual("cold", prevPhase);
+	} else if (!theWaitPhase && thePhaseIdx < 0) {
+		thePhase = theWaitPhase = StatPhase::MakeVirtual("wait", prevPhase);
 	} else {
 		thePhase = thePhases[++thePhaseIdx];
+		if (thePhaseIdx == 0)
+			TheStatsSampleMgr.start();
 	}
 
 	Assert(thePhase);

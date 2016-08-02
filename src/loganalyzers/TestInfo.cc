@@ -31,15 +31,12 @@ static XmlAttr algnLeft("align", "left");
 static XmlAttr algnRight("align", "right");
 
 
-TestInfo::TestInfo(const String &aLabel): theLabel(aLabel), theSides(lgcEnd) {
-	theSides.count(lgcEnd);
+TestInfo::TestInfo(const String &aLabel): theLabel(aLabel) {
+	theSides.resize(lgcEnd);
 	theSides[lgcCltSide] = new SideInfo(lgcCltSide);
 	theSides[lgcCltSide]->test(this);
 	theSides[lgcSrvSide] = new SideInfo(lgcSrvSide);
 	theSides[lgcSrvSide]->test(this);
-	theExecScope.addSide("client");
-	theExecScope.addSide("server");
-	theExecScope.name("baseline");
 }
 
 TestInfo::~TestInfo() {
@@ -52,54 +49,53 @@ TestInfo::~TestInfo() {
 	while (theScopes.count()) delete theScopes.pop();
 }
 
-void TestInfo::execScope(const Scope &aScope) {
-	theExecScope = aScope;
-}
-
-const TestInfo::Scope &TestInfo::guessExecScope() {
+void TestInfo::compileExecScope(BlobDb &db) {
 	Assert(!theExecScope);
-	const SideInfo &side = aSide();
-
-	// find last phase with peak (highest) request rate
-	String bestName;
-	double peakRate = -1;
-	String allBestName;
-	double allPeakRate = -1;
-	for (int i = 0; i < side.phaseCount(); ++i) {
-		const PhaseInfo &phase = side.phase(i);
-		const double rate = phase.availStats().reqRate();
-		// allow for 1% rate diff among phases with the same configured rate
-		if (phase.hasStats())
-			if (!bestName || peakRate <= 1.01*rate) {
-				peakRate = rate;
-				bestName = phase.name();
-			}
-		if (!bestName)
-			if (!allBestName || allPeakRate <= 1.01*rate) {
-				allPeakRate = rate;
-				allBestName = phase.name();
-			}
-		if (phase.stats().primary)
-			theExecScope.addPhase(phase.name());
+	theExecScope.name("baseline");
+	if (cltSideExists()) {
+		theExecScope.addSide("client");
+		cltSide().compileExecScope(0);
 	}
-	if (!bestName)
-		bestName = allBestName;
+	if (srvSideExists()) {
+		theExecScope.addSide("server");
+		srvSide().compileExecScope(cltSideExists() ? &cltSide().execScope() : 0);
+	}
+	// now either both sides have identical baseline phases or
+	// at most one side has a baseline.
 
-	if (!theExecScope && Should(bestName)) {
-		clog << "no primary or 'executive summary' phases specified, using '"
-			<< bestName << "' phase" << endl;
-		theExecScope.addPhase(bestName);
+	if (!twoSided()) {
+		theExecScope.reason = "No test-wide baseline stats are available "
+			"because they require both client- and server-side logs but only "+
+			aSide().name() + " log(s) were provided.";
+		return; // one side, no phases
 	}
 
-	return theExecScope;
+	if (!cltSide().execScope()) {
+		theExecScope = cltSide().execScope();
+		theExecScope.reason = "No test-wide baseline stats are available "
+			"because no client-side baseline stats are available.";
+		theExecScope.addSide("server");
+	} else
+	if (!srvSide().execScope()) {
+		theExecScope = srvSide().execScope();
+		theExecScope.reason = "No test-wide baseline stats are available "
+			"because no server-side baseline stats are available.";
+		theExecScope.addSide("client");
+	} else {
+		const String cltPhases = PointersToString(cltSide().execScope().phases(), ", ");
+		const String srvPhases = PointersToString(srvSide().execScope().phases(), ", ");
+		Assert(cltPhases == srvPhases);
+		theExecScope = cltSide().execScope();
+		theExecScope.addSide("server");
+		theExecScope.reason = "Test-wide baseline stats are based on the "
+			"following phase(s): " + cltPhases + ".";
+	}
+
+	// theExecScope phases are empty if either client or server phases are
 }
 
 const String &TestInfo::label() const {
 	return theLabel;
-}
-
-const String &TestInfo::pglCfg() const {
-	return thePglCfg;
 }
 
 Time TestInfo::startTime() const {
@@ -150,6 +146,13 @@ const SideInfo &TestInfo::side(int logCat) const {
 	return *theSides[logCat];
 }
 
+bool TestInfo::hasScope(const InfoScope &scope) const {
+	bool found = false;
+	for (int i = 0; !found && i < theScopes.count(); ++i)
+		found = *theScopes[i] == scope;
+	return found;
+}
+
 int TestInfo::scopes(InfoScopes &res) const {
 	if (!twoSided())
 		return aSide().scopes(res);
@@ -158,19 +161,6 @@ int TestInfo::scopes(InfoScopes &res) const {
 		res.add(*theScopes[i]);
 
 	return res.count();
-}
-
-void TestInfo::checkCommonPglCfg() {
-	if (!cltSideExists() && srvSideExists())
-		thePglCfg = srvSide().pglCfg();
-	else
-	if (cltSideExists() && !srvSideExists())
-		thePglCfg = cltSide().pglCfg();
-	else
-	if (cltSide().pglCfg() == srvSide().pglCfg())
-		thePglCfg = cltSide().pglCfg();
-	else
-		cerr << label() << ": warning: client- and server-side PGL configurations differ" << endl;
 }
 
 void TestInfo::checkCommonBenchmarkVersion() {
@@ -231,20 +221,18 @@ void TestInfo::checkConsistency() {
 		srvSide().checkConsistency();
 
 	checkCommonBenchmarkVersion();
-	checkCommonPglCfg();
 	checkCommonStartTime();
-	//checkCommonPhases();
 }
 
-int TestInfo::repCount(const Scope &scope) const {
+Counter TestInfo::repCount(const Scope &scope) const {
 	return cltSideExists() ? cltSide().repCount(scope) : -1;
 }
 
-int TestInfo::hitCount(const Scope &scope) const {
+Counter TestInfo::hitCount(const Scope &scope) const {
 	return twoSided() ? cltSide().repCount(scope) - srvSide().repCount(scope) : -1;
 }
 
-int TestInfo::uselessProxyValidationCount(const Scope &scope) const {
+Counter TestInfo::uselessProxyValidationCount(const Scope &scope) const {
 	return srvSideExists() ? srvSide().uselessProxyValidationCount(scope) : -1;
 }
 
@@ -283,6 +271,13 @@ void TestInfo::cmplExecSumVars(BlobDb &db) {
 	addMeasBlob(db, "label", theLabel, "string", tlLabel);
 
 	{
+		static const String tlTitle = "baseline selection argumentation";
+		ReportBlob blob("baseline.reason.test", tlTitle);
+		blob << XmlText(theExecScope.reason);
+		db << blob;
+	}
+
+	{
 		ostringstream buf;
 		HttpDatePrint(buf, startTime());
 		buf << ends;
@@ -299,9 +294,9 @@ void TestInfo::cmplExecSumVars(BlobDb &db) {
 		} else {
 			XmlParagraph p;
 			p << XmlText("cannot show a single benchmark version because ");
-			p << db.ptr(BlobDb::Key("benchmark.version", execScope().oneSide("client")), XmlText("client-"));
+			p << db.ptr(BlobDb::Key("benchmark.version", cltSide().execScope()), XmlText("client-"));
 			p << XmlText(" and ");
-			p << db.ptr(BlobDb::Key("benchmark.version", execScope().oneSide("server")), XmlText("server-side"));
+			p << db.ptr(BlobDb::Key("benchmark.version", srvSide().execScope()), XmlText("server-side"));
 			p << XmlText(" versions differ");
 			blob << p;
 		}
@@ -317,15 +312,16 @@ void TestInfo::cmplExecSumVars(BlobDb &db) {
 }
 
 void TestInfo::cmplExecSum(BlobDb &db) {
-	const Scope &cltScope = theExecScope.oneSide("client");
-
-	cmplExecSumTable(db, cltScope);
-	cmplExecSumPhases(db, cltScope);
+	cmplExecSumVars(db);
+	cmplExecSumTable(db);
 }
 
-void TestInfo::cmplExecSumTable(BlobDb &db, const Scope &cltScope) {
+void TestInfo::cmplExecSumTable(BlobDb &db) {
+	const Scope *cltScope = cltSideExists() && cltSideExists()->execScope() ?
+		&cltSideExists()->execScope() : 0;
+
 	static const String tlTitle = "executive summary table";
-	ReportBlob blob("summary.exec.table" + theExecScope, tlTitle);
+	ReportBlob blob("summary.exec.table", tlTitle);
 	blob << XmlAttr("vprimitive", "Test summary table");
 
 	XmlTable table;
@@ -342,36 +338,36 @@ void TestInfo::cmplExecSumTable(BlobDb &db, const Scope &cltScope) {
 		table << tr;
 	}
 
-	{
+	if (cltScope) {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("throughput:");
 
 		XmlTableCell cell;
-		cell << db.quote("rep.rate" + cltScope);
+		cell << db.quote("rep.rate" + *cltScope);
 		cell << XmlText(" or ");
-		cell << db.quote("rep.bwidth" + cltScope);
+		cell << db.quote("rep.bwidth" + *cltScope);
 		tr << cell;
 
 		table << tr;
 	}
 
-	{
+	if (cltScope) {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("response time:");
 
 		XmlTableCell cell;
-		//cell << db.quote("object.hits.rptm.mean" + cltScope);
+		//cell << db.quote("object.hits.rptm.mean" + *cltScope);
 		//cell << XmlText(" hit, ");
-		cell << db.quote("rep.rptm.mean" + cltScope);
+		cell << db.quote("rep.rptm.mean" + *cltScope);
 		cell << XmlText(" mean");
-		//cell << db.quote("object.misses.rptm.mean" + cltScope);
+		//cell << db.quote("object.misses.rptm.mean" + *cltScope);
 		//cell << XmlText(" miss");
 		tr << cell;
 
 		table << tr;
 	}
 
-	{
+	if (theExecScope) {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("hit ratios:");
 
@@ -385,42 +381,42 @@ void TestInfo::cmplExecSumTable(BlobDb &db, const Scope &cltScope) {
 		table << tr;
 	}
 
-	{
+	if (cltScope) {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("unique URLs:");
 
 		XmlTableCell cell;
-		cell << db.quote("url.unique.count" + cltScope);
+		cell << db.quote("url.unique.count" + *cltScope);
 		cell << XmlText(" (");
-		cell << db.quote("url.recurrence.ratio" + cltScope);
+		cell << db.quote("url.recurrence.ratio" + *cltScope);
 		cell << XmlText(" recurrence)");
 		tr << cell;
 
 		table << tr;
 	}
 
-	{
+	if (cltScope) {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("errors:");
 
 		XmlTableCell cell;
-		cell << db.quote("xact.error.ratio" + cltScope);
+		cell << db.quote("xact.error.ratio" + *cltScope);
 		cell << XmlText(" (");
-		cell << db.quote("xact.error.count" + cltScope);
+		cell << db.quote("xact.error.count" + *cltScope);
 		cell << XmlText(" out of ");
-		cell << db.quote("xact.count" + cltScope);
+		cell << db.quote("xact.count" + *cltScope);
 		cell << XmlText(")");
 		tr << cell;
 
 		table << tr;
 	}
 
-	{
+	if (cltScope) {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("duration:");
 
 		XmlTableCell cell;
-		cell << db.include("duration" + cltScope);
+		cell << db.include("duration" + *cltScope);
 		tr << cell;
 
 		table << tr;
@@ -437,18 +433,18 @@ void TestInfo::cmplExecSumTable(BlobDb &db, const Scope &cltScope) {
 		table << tr;
 	}
 
-	{
+	/* XXX: check that workload page is available; it may be even theExecScope is empty */ {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("workload:");
 
 		XmlTableCell cell;
-		cell << db.ptr("workload" + theExecScope, XmlText("available"));
+		cell << db.ptr("page.workload", XmlText("available"));
 		tr << cell;
 
 		table << tr;
 	}
 
-	{
+	/* XXX: check that a single version is available or report all versions */ {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("Polygraph version:");
 
@@ -459,7 +455,7 @@ void TestInfo::cmplExecSumTable(BlobDb &db, const Scope &cltScope) {
 		table << tr;
 	}
 
-	{
+	/* XXX: remove theExecScope */ {
 		XmlTableRec tr;
 		tr << algnLeft << XmlTableHeading("reporter version:");
 
@@ -474,78 +470,49 @@ void TestInfo::cmplExecSumTable(BlobDb &db, const Scope &cltScope) {
 	db << blob;
 }
 
-void TestInfo::cmplExecSumPhases(BlobDb &db, const Scope &cltScope) {
-	static const String tlTitle = "executive summary phases";
-	ReportBlob blob("summary.exec.phases" + theExecScope, tlTitle);
-	blob << XmlAttr("vprimitive", "Test summary phases");
-
-	XmlParagraph p;
-	XmlText text;
-	text.buf() << "This executive summary and baseline report statistics"
-		<< " are based on the following "
-		<< theExecScope.phases().count() << " test phase(s): ";
-
-	{for (int i = 0; i < theExecScope.phases().count(); ++i) {
-		if (i)
-			text.buf() << ", ";
-		text.buf() << *theExecScope.phases().item(i);
-	}}
-
-	text.buf() << ". The test has the following " 
-		<< aSide().phaseCount() << " phase(s): ";
-
-	{for (int i = 0; i < aSide().phaseCount(); ++i) {
-		if (i)
-			text.buf() << ", ";
-		text.buf() << aSide().phase(i).name();
-	}}
-	text.buf() << '.';
-
-	p << text;
-	blob << p;
-	db << blob;
-}
-
 void TestInfo::cmplWorkload(BlobDb &db) {
 	static const String tlTitle = "test workload";
-	ReportBlob blob(BlobDb::Key("workload", theExecScope), tlTitle);
+	ReportBlob blob("workload.test", tlTitle);
 
-	if (!thePglCfg) {
+	String oneCfg;
+	if (!cltSideExists() && srvSideExists())
+		oneCfg = srvSide().pglCfg();
+	else
+	if (cltSideExists() && !srvSideExists())
+		oneCfg = cltSide().pglCfg();
+	else
+	if (cltSide().pglCfg() == srvSide().pglCfg())
+		oneCfg = cltSide().pglCfg();
+	else {
 		XmlParagraph p;
 		p << XmlText("Cannot show a single test workload because ");
-		p << db.ptr(BlobDb::Key("workload.code", execScope().oneSide("client")), XmlText("client-"));
+		p << db.ptr("workload.code.client", XmlText("client-"));
 		p << XmlText(" and ");
-		p << db.ptr(BlobDb::Key("workload.code", execScope().oneSide("server")), XmlText("server-side"));
+		p << db.ptr("workload.code.server", XmlText("server-side"));
 		p << XmlText(" PGL configurations differ.");
-		p << db.reportNote("workload", db.ptr("page.workload", XmlText("client- and server-side PGL configurations differ")));
+		p << db.reportNote("workload.test", db.ptr("page.workload", XmlText("client- and server-side PGL configurations differ")));
 		blob << p;
 	}
 
-	{
-		XmlSection sect("English interpretation");
-		sect << XmlTextTag<XmlParagraph>("TBD.");
-		blob << sect;
+	if (oneCfg)
+		cmplWorkloadBlob(blob, "", "workload.code.test", oneCfg);
+	else {
+		cmplWorkloadBlob(blob, "client-side", "workload.code.client", cltSide().pglCfg());
+		cmplWorkloadBlob(blob, "server-side", "workload.code.server", srvSide().pglCfg());
 	}
 
-	if (thePglCfg)
-		cmplWorkloadBlob(blob, "", thePglCfg);
-	else {
-		cmplWorkloadBlob(blob, "client", cltSide().pglCfg());
-		cmplWorkloadBlob(blob, "server", srvSide().pglCfg());
-	}
+	// TODO: Add English interpretation.
 
 	db << blob;
 }
 
-void TestInfo::cmplWorkloadBlob(ReportBlob &blob, const String &side, const String &pglCfg) {
+void TestInfo::cmplWorkloadBlob(ReportBlob &blob, const String &pfx, const String &key, const String &pglCfg) {
 	{
-		const String tlPglTitle((side ? side + "-side " : String()) + "PGL code");
+		const String tlPglTitle(pfx + "PGL code");
 
 		XmlSection sect(tlPglTitle);
 
-		ReportBlob code(BlobDb::Key("workload.code",
-			side ? execScope().oneSide(side) : theExecScope),
-			tlPglTitle);
+		ReportBlob code(key, tlPglTitle);
 		XmlTag codesample("codesample");
 		codesample << XmlText(pglCfg);
 		code << codesample;
@@ -574,6 +541,8 @@ void TestInfo::cmplHitRatio(BlobDb &db, const Scope &scope) {
 	static const String tlTitle = "hit ratios";
 	ReportBlob blob(BlobDb::Key("hit.ratio", scope), tlTitle);
 	blob << XmlAttr("vprimitive", "Hit Ratios");
+
+	const String hitRatioKey = "hit.ratio" + scope.oneSide("client");
 
 	if (twoSided()) {
 
@@ -609,13 +578,15 @@ void TestInfo::cmplHitRatio(BlobDb &db, const Scope &scope) {
 				<< "aborted-by-robots transactions.";
 			descr << p2;
 
+			if (db.has(hitRatioKey)) {
 			XmlParagraph p3;
 			p3 << XmlText("A less accurate way to measure hit ratio is to "
 				"detect hits on the client-side using custom HTTP headers. "
 				"A hit ratio table based on client-side tricks is available ");
-			p3 << db.ptr("hit.ratio" + scope.oneSide("client"), XmlText("elsewhere"));
+			p3 << db.ptr(hitRatioKey, XmlText("elsewhere"));
 			p3 << XmlText(".");
 			descr << p3;
+			}
 
 			blob << descr;
 		}
@@ -623,13 +594,13 @@ void TestInfo::cmplHitRatio(BlobDb &db, const Scope &scope) {
 	} else {
 		XmlParagraph para;
 		para << XmlText(theOneSideWarn);
-		if (cltSideExists()) {
-			para << XmlText("  See ");
-			para << db.ptr("summary" + theExecScope.oneSide("client"), XmlText("client-side"));
-			para << XmlText(" information for hit ratio estimations (if any)");
+		if (db.has(hitRatioKey)) {
+			para << XmlText("See ");
+			para << db.ptr(hitRatioKey, XmlText("client-side"));
+			para << XmlText(" information for hit ratio estimations (if any).");
 		} else {
-			para << XmlText("  No hit ratio measurements");
-			para << XmlText(" can be derived from server-side logs.");
+			para << XmlText("No hit ratio measurements"
+				" can be derived from server-side logs.");
 		}
 		blob << para;
 	}
@@ -1024,114 +995,134 @@ void TestInfo::cmplByteLatencyHist(BlobDb &db, XmlTag &parent, const Scope &scop
 	parent << blob;
 }
 
-void TestInfo::cmplBaseStats(BlobDb &db, const Scope &scope) {
-	static const String tlTitle = "baseline stats";
-	ReportBlob blob(BlobDb::Key("baseline", scope), tlTitle);
+void TestInfo::cmplTraffic(BlobDb &db) {
+	if (!aSide().execScope())
+		return;
 
-	blob << db.quote(BlobDb::Key("load", scope));
-	blob << db.quote(BlobDb::Key("hit.ratio", scope));
-
-	db << blob;
-}
-
-void TestInfo::cmplTraffic(BlobDb &db, const Scope &scope) {
 	static const String tlTitle = "test traffic stats";
-	ReportBlob blob("traffic" + scope, tlTitle);
+	ReportBlob blob("traffic", tlTitle);
 
 	XmlTag title("title");
 	title << XmlText("Traffic rates, counts, and volumes");
 	blob << title;
 
-	blob << XmlTextTag<XmlParagraph>("This information is based on the client-side measurements.");
-
-	blob << db.quote(BlobDb::Key("load", scope.oneSide("client")));
-	blob << db.quote(BlobDb::Key("ssl.load", scope.oneSide("client")));
-	blob << db.quote(BlobDb::Key("ftp.load", scope.oneSide("client")));
-	blob << db.quote(BlobDb::Key("reply_stream.table", scope.oneSide("client")));
+	blob << XmlTextTag<XmlParagraph>("This information is based on the " +
+		aSide().name() + "-side baseline measurements.");
+	
+	const InfoScope &scope = aSide().execScope();
+	blob << db.quote(BlobDb::Key("load", scope));
+	blob << db.quote(BlobDb::Key("ssl.load", scope));
+	blob << db.quote(BlobDb::Key("ftp.load", scope));
+	blob << db.quote(BlobDb::Key("reply_stream.table", scope));
 
 	db << blob;
 }
 
-void TestInfo::cmplRptm(BlobDb &db, const Scope &scope) {
+void TestInfo::cmplRptm(BlobDb &db) {
+	if (!aSide().execScope())
+		return;
+
 	static const String tlTitle = "test response time stats";
-	ReportBlob blob("rptm" + scope, tlTitle);
+	ReportBlob blob("rptm", tlTitle);
 
 	XmlTag title("title");
 	title << XmlText("Response times");
 	blob << title;
 
-	blob << XmlTextTag<XmlParagraph>("This information is based on the client-side measurements.");
+	XmlParagraph p;
+	p << XmlText("This information is based on the " +
+		aSide().name() + "-side baseline measurements");
+	if (theExecScope)
+		p << XmlText(", except for latency figures that use both test sides");
+	p << XmlText(".");
+	blob << p;
+	
+	const InfoScope &scope = aSide().execScope();
+	blob << db.quote(BlobDb::Key("rptm.trace", scope));
+	blob << db.quote("reply_object.table" + scope);
 
-	blob << db.quote(BlobDb::Key("rptm.trace", scope.oneSide("client")));
-	blob << db.quote("reply_object.table" + scope.oneSide("client"));
-
-	blob << db.quote(BlobDb::Key("latency", scope));
+	if (theExecScope)
+		blob << db.quote(BlobDb::Key("latency", theExecScope));
 
 	db << blob;
 }
 
-void TestInfo::cmplSavings(BlobDb &db, const Scope &scope) {
+void TestInfo::cmplSavings(BlobDb &db) {
+	if (!cltSideExists() || !cltSideExists()->execScope())
+		return;
+	const InfoScope &cltScope = cltSideExists()->execScope();
+
 	static const String tlTitle = "cache effectiveness";
-	ReportBlob blob("savings" + scope, tlTitle);
+	ReportBlob blob("savings", tlTitle);
 
 	XmlTag title("title");
 	title << XmlText("Savings");
 	blob << title;
 
-	blob << db.quote("hit.ratio" + scope);
+	if (theExecScope)
+		blob << db.quote("hit.ratio" + theExecScope);
 
-	blob << db.quote("hit.ratio" + scope.oneSide("client"));
+	blob << db.quote("hit.ratio" + cltScope);
 
-	blob << db.quote("cheap_proxy_validation.ratio" + scope);
+	if (theExecScope)
+		blob << db.quote("cheap_proxy_validation.ratio" + theExecScope);
 
 	db << blob;
 }
 
-void TestInfo::cmplLevels(BlobDb &db, const Scope &scope) {
+void TestInfo::cmplLevels(BlobDb &db) {
+	if (!aSide().execScope())
+		return;
+
 	static const String tlTitle = "test transaction concurrency and population levels";
-	ReportBlob blob("levels" + scope, tlTitle);
+	ReportBlob blob("levels", tlTitle);
 
 	XmlTag title("title");
 	title << XmlText("Concurrency levels and robot population");
 	blob << title;
 
-	blob << XmlTextTag<XmlParagraph>("This information is based on the client-side measurements.");
-	const InfoScope cltScope = scope.oneSide("client");
+	blob << XmlTextTag<XmlParagraph>("This information is based on the " +
+		aSide().name() + "-side baseline measurements.");
+
+	const InfoScope &scope = aSide().execScope();
 
 	{
 		XmlSection s("concurrent HTTP/TCP connections");
-		//s << db.quote("conn.level.fig" + cltScope);
-		s << db.quote("conn.level.table" + cltScope);
+		//s << db.quote("conn.level.fig" + scope);
+		s << db.quote("conn.level.table" + scope);
 		blob << s;
 	}
 		
 	{
 		XmlSection s("population level");
-		//s << db.quote("populus.level.fig" + cltScope);
-		s << db.quote("populus.level.table" + cltScope);
+		//s << db.quote("populus.level.fig" + scope);
+		s << db.quote("populus.level.table" + scope);
 		blob << s;
 	}
 		
 	{
 		XmlSection s("concurrent HTTP transactions");
-		//s << db.quote("xact.level.fig" + cltScope);
-		s << db.quote("xact.level.table" + cltScope);
+		//s << db.quote("xact.level.fig" + scope);
+		s << db.quote("xact.level.table" + scope);
 		blob << s;
 	}
 		
 	db << blob;
 }
 
-void TestInfo::cmplAuthentication(BlobDb &db, const Scope &scope) {
+void TestInfo::cmplAuthentication(BlobDb &db) {
+	if (!cltSideExists() || !cltSideExists()->execScope())
+		return;
+	const InfoScope &cltScope = cltSideExists()->execScope();
+
 	static const String tlTitle = "test authentication stats";
-	ReportBlob blob("authentication" + scope, tlTitle);
+	ReportBlob blob("authentication", tlTitle);
 
 	XmlTag title("title");
 	title << XmlText("Authentication");
 	blob << title;
 
-	blob << XmlTextTag<XmlParagraph>("This information is based on the client-side measurements.");
-	const InfoScope cltScope = scope.oneSide("client");
+	blob << XmlTextTag<XmlParagraph>("This information is based on the client-side baseline measurements.");
 
 	{
 		XmlTag compoundReplyStreamTitle("h3");
@@ -1178,23 +1169,29 @@ void TestInfo::cmplAuthentication(BlobDb &db, const Scope &scope) {
 	db << blob;
 }
 
-void TestInfo::cmplErrors(BlobDb &db, const Scope &scope) {
+void TestInfo::cmplErrors(BlobDb &db) {
 	static const String tlTitle = "test errors";
-	ReportBlob blob("errors" + scope, tlTitle);
+	ReportBlob blob("errors", tlTitle);
 
 	XmlTag title("title");
 	title << XmlText("Errors");
 	blob << title;
 
-	{
+	if (cltSideExists()) {
 		XmlSection s("client-side errors");
-		s << db.include("errors.table" + scope.oneSide("client"));
+		if (cltSideExists()->execScope())
+			s << db.include("errors.table" + cltSideExists()->execScope());
+		else
+			s << db.quote("baseline.reason.client");
 		blob << s;
 	}
-		
-	{
+
+	if (srvSideExists()) {
 		XmlSection s("server-side errors");
-		s << db.include("errors.table" + scope.oneSide("server"));
+		if (srvSideExists()->execScope())
+			s << db.include("errors.table" + srvSideExists()->execScope());
+		else
+			s << db.quote("baseline.reason.server");
 		blob << s;
 	}
 		
@@ -1218,41 +1215,15 @@ void TestInfo::cmplNotes(BlobDb &db) {
 	db << blob;
 }
 
-void TestInfo::cmplSynonyms(BlobDb &db, const Scope &scope) {
-	addLink(db, 
-		BlobDb::Key("load", scope),
-		BlobDb::Key("load", scope.oneSide("client")));
-	addLink(db, 
-		BlobDb::Key("load.table", scope),
-		BlobDb::Key("load.table", scope.oneSide("client")));
-	addLink(db,
-		BlobDb::Key("reply_stream.table", scope),
-		BlobDb::Key("reply_stream.table", scope.oneSide("client")));
-}
-
 void TestInfo::compileStats(BlobDb &db) {
-
-	if (!theExecScope)
-		guessExecScope();
-
-	if (cltSideExists())
-		cltSide().compileStats(db);
-	else
-		SideInfo::CompileEmptyStats(db, execScope().oneSide("client"));
-	if (srvSideExists())
-		srvSide().compileStats(db);
-	else
-		SideInfo::CompileEmptyStats(db, execScope().oneSide("server"));
-
-	cmplExecSumVars(db);
-	cmplExecSum(db);
-	cmplWorkload(db);
+	compileExecScope(db);
 
 	// build theScopes array
+	// include empty scopes to improve "everything.html" tables
 	theScopes.append(new Scope(execScope()));
 	if (twoSided()) {
 		Scope *allScope = new Scope;
-		allScope->name("all phases");
+		allScope->name("all phases"); // may be renamed later
 		theScopes.append(allScope);
 		for (int i = 0; i < cltSide().phaseCount(); ++i) {
 			const String &pname = cltSide().phase(i).name();
@@ -1263,24 +1234,35 @@ void TestInfo::compileStats(BlobDb &db) {
 			theScopes.last()->name(pname);
 			allScope->add(*theScopes.last());
 		}
+		if (allScope->phases().count() != cltSide().phaseCount() ||
+			allScope->phases().count() != srvSide().phaseCount())
+			allScope->rename("common phases");
 	}
+
+	if (cltSideExists())
+		cltSide().compileStats(db);
+	if (srvSideExists())
+		srvSide().compileStats(db);
+
+	cmplExecSum(db);
+	cmplWorkload(db);
+	cmplTraffic(db);
+	cmplRptm(db);
+	cmplSavings(db);
+	cmplLevels(db);
+	cmplAuthentication(db);
+	cmplErrors(db);
 
 	for (int s = 0; s < theScopes.count(); ++s) {
 		const Scope &scope = *theScopes[s];
-		cmplSynonyms(db, scope);
+		if (!scope)
+			continue;
 		cmplHitRatioVars(db, scope);
 		cmplHitRatio(db, scope);
 		cmplCheapProxyValidationVars(db, scope);
 		cmplCheapProxyValidation(db, scope);
 		cmplByteLatencyVars(db, scope);
 		cmplByteLatency(db, scope);
-		cmplBaseStats(db, scope);
-		cmplTraffic(db, scope);
-		cmplRptm(db, scope);
-		cmplSavings(db, scope);
-		cmplLevels(db, scope);
-		cmplAuthentication(db, scope);
-		cmplErrors(db, scope);
 	}
 
 	cmplNotes(db);

@@ -70,10 +70,10 @@ class HttpCookies {
 
 		void purgeDiscardable();
 
-		static int TheTotalCount;
-		static int ThePurgedFreshCount;
-		static int ThePurgedStaleCount;
-		static int TheUpdatedCount;
+		static Counter TheTotalCount;
+		static Counter ThePurgedFreshCount;
+		static Counter ThePurgedStaleCount;
+		static Counter TheUpdatedCount;
 
 	private:
 		typedef std::list<HttpCookie*> Cache;

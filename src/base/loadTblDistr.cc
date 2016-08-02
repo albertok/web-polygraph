@@ -99,7 +99,7 @@ bool getNumber(double &num, const String &str) {
 	return true;
 }
 
-RndDistr *LoadTblDistr(const String &fname, const String &argType) {
+RndDistr *LoadTblDistr(const String &fname, String &distrType) {
 	Assert(fname);
 
 	clog << "loading distribution pdf from '" << fname << "'..." << endl;
@@ -117,10 +117,11 @@ RndDistr *LoadTblDistr(const String &fname, const String &argType) {
 
 	// interpret header
 	if (getLine(is, line) == 4) {
-		const String type = argType + "_distr";
+		const String loadedDistrType = line.shift();
+		if (distrType.len() && !matchWord(distrType, loadedDistrType))
+		    return loadFailure(tbl);
 
-		if (!matchWord(type, line.shift()))
-			return loadFailure(tbl);
+		distrType = loadedDistrType; // may already be the same
 
 		tbl = new TblDistr(line.shift()); // name
 

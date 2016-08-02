@@ -57,7 +57,7 @@ void AddrSubstGroup::configure(const ContainerSym &group) {
 }
 
 bool AddrSubstGroup::member(const NetAddr &addr) const {
-	for (int i = 0; i < theCount; ++i) {
+	for (int i = 0; i < count(); ++i) {
 		if (*item(i) == addr)
 			return true;
 	}

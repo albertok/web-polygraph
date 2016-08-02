@@ -197,7 +197,7 @@ ostream &CdbePage::print(ostream &os) const {
 	return theDb->print(os);
 }
 
-// based on CdbBodyIter::pourBody
+// based on CdbBodyIter::pourMiddle
 bool CdbePage::pour(CdbEntryPrnOpt &globOpt, bool &needMore) const {
 	CdbEntryPrnOpt &opt = globOpt;
 

@@ -21,10 +21,10 @@ class PopModel: public ObjSelector {
 		void configure(const PopModelSym *cfg);
 
 		// selects oid, adjusts for wss and hot set position
-		virtual void choose(int lastOid, int wsCap, int hotSetPos, ObjId &oid);
+		virtual void choose(Counter lastOid, Counter wsCap, Counter hotSetPos, ObjId &oid);
 
 	protected:
-		void pickBest(int nameBeg, int nameEnd, ObjId &oid);
+		void pickBest(const Counter nameBeg, const Counter nameEnd, ObjId &oid);
 
 	protected:
 		PopDistr *theDistr;

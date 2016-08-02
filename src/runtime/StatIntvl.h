@@ -29,6 +29,7 @@ class StatIntvl: public AlarmUser, public BcastRcver {
 		virtual void noteAgentEvent(BcastChannel *ch, const Agent *a);
 		virtual void noteConnEvent(BcastChannel *ch, const Connection *c);
 		virtual void noteXactEvent(BcastChannel *ch, const Xaction *x);
+		virtual void noteCompoundXactEvent(BcastChannel *ch, const CompoundXactInfo *cx);
 		virtual void noteIcpXactEvent(BcastChannel *ch, const IcpXaction *x);
 		virtual void notePageEvent(BcastChannel *ch, const PageInfo *p);
 

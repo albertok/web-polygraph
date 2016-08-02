@@ -21,6 +21,10 @@ class CompoundXactStat: public LogObj {
 
 		CompoundXactStat &operator +=(const CompoundXactStat &s);
 
+		bool sane() const;
+
+		void recordCompound(const Time &rptm, const Size &reqSize, const Size &repSize, const int exchanges);
+
 		ostream &print(ostream &os, const String &pfx) const;
 
 		TimeHist duration; // transaction duration

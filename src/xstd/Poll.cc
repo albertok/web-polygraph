@@ -61,8 +61,7 @@ PollFD PollFD::unidir(IODir dir) const {
 
 void Poll::configure() {
 	FileScanner::configure(numeric_limits<int>::max());
-	thePollees.stretch(fdLimit());
-	thePollees.count(fdLimit());
+	thePollees.resize(fdLimit());
 	theHotFDs.stretch(fdLimit());
 	theHotIdx.stretch(fdLimit());
 

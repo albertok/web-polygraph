@@ -19,7 +19,7 @@ void HotSet::reset() {
 	thePos = 0;
 }
 
-void HotSet::syncPos(int size, int wss) {
+void HotSet::syncPos(const Counter size, const Counter wss) {
 	if (size && wss != 0) {
 		if (wss < 0) {
 			// the best we can do w/o storing size-at-change?
@@ -29,7 +29,7 @@ void HotSet::syncPos(int size, int wss) {
 			// random position within working set
 			Assert(wss <= size);
 			RndGen rng(LclPermut(thePos, rndHotSetPos));
-			thePos = size - rng(0, wss);
+			thePos = size - rng(static_cast<Counter>(0), wss);
 		}
 	}
 	Assert(0 <= thePos && thePos <= size);

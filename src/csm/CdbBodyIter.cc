@@ -63,7 +63,7 @@ void CdbBodyIter::stop() {
 	}
 }
 
-bool CdbBodyIter::pourBody() {
+bool CdbBodyIter::pourMiddle() {
 	CdbEntryPrnOpt opt;
 	opt.buf = theBuf;
 	opt.injector = theInjector;
@@ -71,10 +71,10 @@ bool CdbBodyIter::pourBody() {
 	opt.embed.rng = &theRng;
 	opt.embed.container = theOid;
 
-	while (canPour()) {
+	while (canPour() && middleSizeLeft()) {
 		const CdbEntry *e = theCdb->entry(thePos);
 
-		opt.sizeMax = sizeLeft();
+		opt.sizeMax = middleSizeLeft();
 		opt.entryOff = theEntryOff;
 		opt.entryData = theEntryData;
 		bool needMore = false;
@@ -100,8 +100,7 @@ bool CdbBodyIter::pourBody() {
 			// current entry will never fit, stuff with random data
 			theEntryOff = 0;
 			theEntryData = 0;
-			Size rndOff = IOBuf::RandomOffset(offSeed(), theBuiltSize);
-			theBuiltSize += theBuf->appendRndUpTo(rndOff, sizeLeft());
+			pourRandom(middleSizeLeft());
 		}
 	}
 	return true;

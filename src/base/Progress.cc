@@ -14,7 +14,9 @@ Progress TheProgress;
 
 
 Progress::Progress():
-	socks("socks", "SOCKS"), ssl("ssl", "SSL"), ftp("ftp", "FTP") {
+	socks("socks", "SOCKS"), ssl("ssl", "SSL"), ftp("ftp", "FTP"),
+	connect("connect", "HTTP CONNECT"),
+	authing("auth-ing", "Authenticating") {
 	theXactCnt = theErrCnt = 0;
 }
 

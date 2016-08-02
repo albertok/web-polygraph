@@ -22,7 +22,7 @@ class StringArrayBlockSym: public ContainerSym {
 
 		virtual bool isA(const String &type) const;
 
-		virtual void forEach(Visitor &v) const;
+		virtual void forEach(Visitor &v, RndGen *const rng = 0) const;
 		virtual const StringArrayBlock &val() const = 0;
 };
 

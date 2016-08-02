@@ -34,10 +34,10 @@ class ProcInfo: public SomeInfo {
 		const PhaseInfo &execScopePhase() const;
 
 		// delete these, use allPhaseStats() ?
-		int repCount(const Scope &scope) const;
-		int hitCount(const Scope &scope) const;
-		int offeredHitCount(const Scope &scope) const;
-		int uselessProxyValidationCount(const Scope &scope) const;
+		Counter repCount(const Scope &scope) const;
+		Counter hitCount(const Scope &scope) const;
+		Counter offeredHitCount(const Scope &scope) const;
+		Counter uselessProxyValidationCount(const Scope &scope) const;
 		BigSize repVolume(const Scope &scope) const;
 		BigSize hitVolume(const Scope &scope) const;
 		BigSize offeredHitVolume(const Scope &scope) const;

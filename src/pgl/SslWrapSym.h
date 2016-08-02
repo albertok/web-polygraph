@@ -27,11 +27,14 @@ class SslWrapSym: public RecSym {
 		bool protocols(Array<String*> &protos, Array<double> &probs) const;
 		RndDistr *protocols(const TokenIdentifier &protocolNames) const;
 		bool rsaKeySizes(Array<Size>&, RndDistr *&) const;
+		bool generateCertificates(bool &set) const;
+		bool certificates(Array<String*> &) const;
 		bool ciphers(Array<String*> &, RndDistr *&) const;
 		bool sessionResumpt(double &prob) const;
 		bool sessionCacheSize(int &count) const;
 		String sslConfigFile() const;
 		bool verifyPeerCertificate(bool &set) const;
+		bool compression(double &prob) const;
 
 	protected:
 		virtual SynSym *dupe(const String &dType) const;

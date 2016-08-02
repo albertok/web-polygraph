@@ -51,7 +51,7 @@ class FtpReq: public FtpMsg {
 			frcRETR,
 			frcSTOR,
 			frcQUIT,
-			frcOther,
+			frcOther
 		};
 
 		static void Configure();

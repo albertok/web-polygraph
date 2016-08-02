@@ -13,7 +13,6 @@
 #include "runtime/HostMap.h"
 #include "runtime/PopModel.h"
 #include "runtime/ErrorMgr.h"
-#include "runtime/XactAbortCoord.h"
 #include "runtime/LogComment.h"
 #include "runtime/polyErrors.h"
 #include "csm/ContentCfg.h"
@@ -21,12 +20,13 @@
 #include "pgl/ServerSym.h"
 #include "server/Server.h"
 #include "server/SrvCfg.h"
+#include "csm/RamFiles.h"
 
 SrvSharedCfgs TheSrvSharedCfgs;
 
 SrvCfg::SrvCfg(): theServer(0), thePopModel(0), theRepTypeSel(0),
 	theProtocolSel(0), theCookieCounts(0), theCookieSizes(0),
-	theCookieSendProb(0), theAbortProb(0), theReqBodyAllowed(-1) {
+	theCookieSendProb(0), theReqBodyAllowed(-1) {
 }
 
 SrvCfg::~SrvCfg() {
@@ -56,10 +56,10 @@ void SrvCfg::configure(const ServerSym *aServer) {
 	Array<ContentCfg*> ccfgs;
 	TheContentMgr.get(csyms, ccfgs);
 	theTypes.configure(ccfgs);
+	configureContentsMap(ccfgs);
 
 	configureCookies();
 
-	theServer->abortProb(theAbortProb);
 	theServer->reqBodyAllowed(theReqBodyAllowed);
 
 	if (!theSslWraps.empty() &&
@@ -127,26 +127,36 @@ void SrvCfg::configureCookies() {
 		theCookieSenderProb = 1;
 }
 
+void SrvCfg::configureContentsMap(Array<ContentCfg*> &ccfgs) {
+	for (int i = 0; i < ccfgs.count(); ++i) {
+		const RamFiles *ramFiles = ccfgs[i]->ramFiles();
+		if (!ramFiles)
+			continue;
+		for (int index = 0; index < ramFiles->count(); ++index) {
+			const String &name = ramFiles->fileAt(index).name;
+			const pair<RamFilesByName::iterator, bool> res =
+				theRamFilesByName.insert(std::make_pair(name,
+					std::make_pair(ccfgs[i], index)));
+			if (!res.second) {
+				static bool didOnce = false;
+				if (!didOnce) {
+					didOnce = true;
+					Comment(1) << "warning: Same-server document_roots for " <<
+						"Content " << ccfgs[i]->kind() << " and Content " <<
+						res.first->second.first->kind() << " contain files " <<
+						"with identical names: " << name << endc;
+				}
+			}
+		}
+	}
+}
+
 bool SrvCfg::sslActive(const int protocol) const {
 	return protocol != Agent::pFTP && !theSslWraps.empty();
 }
 
 int SrvCfg::selectProtocol() {
 	return theProtocolSel->ltrial();
-}
-
-// merge this with CltCfg::selectAbortCfg() if more methods can be shared
-void SrvCfg::selectAbortCoord(XactAbortCoord &coord) {
-	static RndGen rng1, rng2; // uncorrelated unless theAbortProb is 1
-	if (rng1.event(theAbortProb)) {
-		const int whether = rng2.state();
-		(void)rng2.trial();
-		coord.configure(rng2.state(), whether);
-	} else {
-		const int whether = rng1.state();
-		(void)rng1.trial();
-		coord.configure(whether, rng1.state());
-	}
 }
 
 bool SrvCfg::setEmbedContType(ObjId &oid, const Area &category) const {
@@ -161,6 +171,14 @@ bool SrvCfg::setEmbedContType(ObjId &oid, const Area &category) const {
 	return false;
 }
 
+bool SrvCfg::findRamFile(const String &fileName, ObjId &oid) const {
+	const RamFilesByName::const_iterator it = theRamFilesByName.find(fileName);
+	if (it == theRamFilesByName.end())
+		return false;
+	oid.type(it->second.first->id()); // ContentCfg ID
+	oid.name(it->second.second + 1); // RamFile position in that ContentCfg + 1
+	return true;
+}
 
 /* SrvSharedCfgs */
 

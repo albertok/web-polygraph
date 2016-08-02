@@ -24,16 +24,21 @@ class UserCred {
 		void reset() { theImage = String(); isValid = true; }
 
 		bool valid() const { return isValid; }
+		bool hasMacros() const { return theImage.str(TheTargetIpMacro); }
 		const String &image() const { return theImage; }
-		Area name() const;
+		Area name(bool &hasRealm) const;
+		Area name() const { bool hasRealm; return name(hasRealm); }
 		Area password() const;
 
 		void invalidate();
 
 	protected:
 		void finalize(const NetAddr &addr);
+		Area takeUntil(const char *const c) const;
 
-		String theImage;
+		static const String TheTargetIpMacro;
+
+		String theImage; // NAME @ REALM : PASSWORD
 		bool isValid;
 };
 

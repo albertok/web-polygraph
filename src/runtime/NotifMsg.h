@@ -47,10 +47,10 @@ class StatusNotifMsg: public NotifMsg {
 		NetDouble theConnUse;  // req / connection
 		NetDouble theErrRatio;
 
-		int theXactTotCnt;     // total so far
-		int theErrTotCnt;      // total so far
-		int theSockInstCnt;    // at the moment
-		int theCat;            // entry category (aka "side")
+		Counter theXactTotCnt;  // total so far
+		Counter theErrTotCnt;   // total so far
+		Counter theSockInstCnt; // at the moment
+		int theCat;             // entry category (aka "side")
 };
 
 // status message forwarded by the first recepient

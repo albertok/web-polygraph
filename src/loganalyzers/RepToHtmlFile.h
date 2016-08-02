@@ -45,9 +45,11 @@ class RepToHtmlFile: public XmlRenderer {
 		String relativeUrl(const String &from, const String &to) const;
 		String location(const String &key) const;
 
+		static String JavascriptInclude(const String &file);
+		static String StylesheetInclude(const String &file, const String &media = "");
+
 	protected:
-		static Map<String*> TheLocations; // global file names
-		mutable Map<String*> theLocations;      // local names
+		static PtrMap<String*> TheLocations; // global file names
 
 		BlobDb &theDb;
 		ostream *theStream;

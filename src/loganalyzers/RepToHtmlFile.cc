@@ -16,7 +16,7 @@
 #include "loganalyzers/RepToHtmlFile.h"
 
 
-Map<String*> RepToHtmlFile::TheLocations;
+PtrMap<String*> RepToHtmlFile::TheLocations;
 
 
 void RepToHtmlFile::Location(BlobDb &db, const ReportBlob &blob, const String &fname) {
@@ -68,13 +68,20 @@ void RepToHtmlFile::render(const XmlDoc &doc) {
 }
 
 void RepToHtmlFile::renderReportBlob(const ReportBlob &blob) {
-	static const String onePageSummaryStyles =
-		"[id=\"summary.1page\"] h1, [id=\"summary.1page\"] h1 * { font-size: 16px }"\
-		"[id=\"summary.1page\"] * { font-size: 12px }";
-	*theStream
-		<< "<html><head><style type=\"text/css\">"
-		<< onePageSummaryStyles
-		<< "</style></head><body>";
+	static const String includes = JavascriptInclude("jquery") +
+		JavascriptInclude("jquery.jqplot") +
+		JavascriptInclude("jqplot.canvasTextRenderer") +
+		JavascriptInclude("jqplot.canvasAxisLabelRenderer") +
+		JavascriptInclude("jqplot.cursor") +
+		JavascriptInclude("jqplot.enhancedLegendRenderer") +
+		JavascriptInclude("jquery-ui-1.8.18.custom") +
+		JavascriptInclude("ReportFigures") +
+		StylesheetInclude("jquery.jqplot") +
+		StylesheetInclude("jquery-ui-1.8.18.custom") +
+		StylesheetInclude("Print", "print") +
+		StylesheetInclude("ReportFigures");
+	*theStream << "<!DOCTYPE html><html><head>" << includes <<
+		"</head><body>";
 	renderBlob(blob);
 	*theStream << "</body></html>" << endl;
 }
@@ -227,6 +234,7 @@ void RepToHtmlFile::renderBlobInclude(const XmlTag &tag) {
 }
 
 void RepToHtmlFile::renderBlobPtr(const XmlTag &tag) {
+	if (tag.attrs()->has("key")) {
 	const String &key = tag.attrs()->value("key");
 	if (const String loc = location(key)) {
 		*theStream << "<a href=\"" << loc << "\">";
@@ -234,10 +242,12 @@ void RepToHtmlFile::renderBlobPtr(const XmlTag &tag) {
 		*theStream << "</a>";
 		return;
 	}
+	}
 
 	*theStream << "<font color='gray'>";
 
 	if (!tag.attrs()->has("maybe_null")) {
+		const String &key = tag.attrs()->value("key");
 		// XXX: we should output a link to the no-link error explanation
 		if (theDb.has(key))
 			cerr << "internal_error: no location for blob '" << key << "'" << endl;
@@ -436,4 +446,20 @@ String RepToHtmlFile::location(const String &key) const {
 		return relativeUrl(theLocation, loc);
 	else
 		return 0;
+}
+
+String RepToHtmlFile::JavascriptInclude(const String &file) {
+	static const String prefix = "<script language=\"javascript\" "
+		"type=\"text/javascript\" src=\"javascripts/";
+	static const String suffix = ".js\"></script>";
+	return prefix + file + suffix;
+
+}
+
+String RepToHtmlFile::StylesheetInclude(const String &file, const String &media) {
+	String s = "<link rel=\"stylesheet\" type=\"text/css\" ";
+	if (media)
+		s += "media=\"" + media + "\" ";
+	s += "href=\"stylesheets/" + file + ".css\" />";
+	return s;
 }

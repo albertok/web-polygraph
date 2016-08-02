@@ -23,6 +23,7 @@ class OptGrp: public Array<Opt*> {
 		virtual bool canParseAnonym() const { return false; }
 
 		virtual bool validate() const { return true; }
+		virtual String ExpandMacros(const Opt &opt, const String &str) const { return str; }
 
 		void share(OptGrp *other);
 };
@@ -35,14 +36,14 @@ class Opt {
 
 		void cmdLine(CmdLine *aCmdLine) { theCmdLine = aCmdLine; }
 
-		const bool set(const String &name, const String &val);
+		bool set(const String &name, const String &val);
 		virtual void report(ostream &) const = 0;
 		virtual bool visible() const { return true; } // use in reports
 
 		const String &name() const { return theName; }
 		const String &type() const { return theType; }
 		const String &descr() const { return theDescr; }
-		const bool wasSet() const { return isSet; }
+		bool wasSet() const { return isSet; }
 
 	protected:
 		virtual bool parse(const String &name, const String &val) = 0;

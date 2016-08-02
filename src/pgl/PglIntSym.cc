@@ -24,7 +24,7 @@
 String IntSym::TheType = "int";
 
 
-IntSym::IntSym(int aVal = -1): ExpressionSym(TheType), theVal(aVal) {
+IntSym::IntSym(const Value aVal = -1): ExpressionSym(TheType), theVal(aVal) {
 }
 
 bool IntSym::isA(const String &type) const {
@@ -124,7 +124,7 @@ ExpressionSym *IntSym::operRange(int otherEnd) const {
 
 	const int step = theVal <= otherEnd ? +1 : -1;
 	// not optimized; could use IntRangeArrayItem instead
-	for (int i = theVal; step*i <= step*otherEnd; i += step) {
+	for (Value i = theVal; step*i <= step*otherEnd; i += step) {
 		arr->add(IntSym(i)); 
 	}
 

@@ -16,8 +16,6 @@ CltOpts TheCltOpts;
 CltOpts::CltOpts():
 	theProxyAddr(this,      "proxy <host:port>",   "proxy location", NetAddr()),
 
-	thePorts(this,          "ports <port_range>",  "port range for explicit binding"),
-
 	theLoadableModules(this,"loadable_modules <filenames>", "dynamic modules to load"),
 
 	theIcpTout(this,        "icp_tout <time>",     "how long to wait for an ICP_HIT reply", Time::Sec(2)),

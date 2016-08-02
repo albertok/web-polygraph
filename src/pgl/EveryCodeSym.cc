@@ -3,10 +3,10 @@
  * Copyright 2003-2011 The Measurement Factory
  * Licensed under the Apache License, Version 2.0 */
 
+#include "base/polygraph.h"
 #include "pgl/pgl.h"
 
 #include "pgl/PglCodeSym.h"
-#include "pgl/DutStateSym.h"
 #include "pgl/GoalSym.h"
 #include "pgl/EveryCodeSym.h"
 

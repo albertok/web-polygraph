@@ -19,6 +19,7 @@
 
 ScatteredFig::ScatteredFig(): theStex1(0), theStex2(0), thePhase(0),
 	theTrace(0) {
+	theDataStyle = "points";
 }
 
 void ScatteredFig::stats(const Stex *aStex1, const Stex *aStex2, const PhaseInfo *aPhase) {
@@ -27,43 +28,27 @@ void ScatteredFig::stats(const Stex *aStex1, const Stex *aStex2, const PhaseInfo
 	thePhase = aPhase;
 	theTrace = &thePhase->trace();
 	Assert(theStex1 && theStex2 && theTrace);
+
+	theAxisX1.label(theStex1->name() + ", " + theStex1->unit());
+	theAxisY1.label(theStex2->name() + ", " + theStex2->unit());
 }
 
-void ScatteredFig::setCtrlOptions() {
-	theLabelX1 = theStex1->name() + ", " + theStex1->unit();
-	theLabelY1 = theStex2->name() + ", " + theStex2->unit();
-	theDataStyle = "points";
-	ReportFigure::setCtrlOptions();
-}
-
-int ScatteredFig::createCtrlFile() {
-	if (ReportFigure::createCtrlFile() < 0)
-		return -1;
-
-	addPlotLine("", theLabelY1);
-	addedAllPlotLines();
+int ScatteredFig::addPlotData() {
+	addPlotLine("");
 
 	int pointCount = 0;
 	for (int i = 0; i < theTrace->count(); ++i)
 		pointCount += dumpDataLine(theTrace->winStats(i));
-
+	addedLineData();
 	return pointCount;
 }
 
 int ScatteredFig::dumpDataLine(const StatIntvlRec &r) {
-	bool bothKnown = dumpAxis(theStex1, r);
-	*theCtrlFile << ' ';
-	bothKnown = dumpAxis(theStex2, r) && bothKnown;
-	*theCtrlFile << endl;
-	return bothKnown ? 1 : 0;
-}
-
-bool ScatteredFig::dumpAxis(const Stex *stex, const StatIntvlRec &r) {
-	if (stex->valueKnown(r)) {
-		*theCtrlFile << stex->value(r);
-		return true;
-	} else {
-		*theCtrlFile << '?';
-		return false;
+	const bool bothKnown = theStex1->valueKnown(r) &&
+		theStex2->valueKnown(r);
+	if (bothKnown) {
+		addDataPoint(theStex1->value(r), theStex2->value(r));
+		return 1;
 	}
+	return 0;
 }

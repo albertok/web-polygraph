@@ -29,15 +29,15 @@ class SslCommand {
 		typedef enum { stUnknown, stMustRun, stSuccess, stError } State;
 
 	public:
-		static SslCommand Make(ostringstream &os, const char *descr, const SslWrap *aWrap);
-		SslCommand(const String aPfx, const char *aDescr, const SslWrap *aWrap);
+		static SslCommand Make(ostringstream &os, const String &descr, const SslWrap *aWrap);
+		SslCommand(const String aPfx, const String &aDescr, const SslWrap *aWrap);
 
-		String addOutput(const char *argName, const char *argSuffix);
+		String addOutput(const String &argName, const String &argSuffix);
 		bool runIfNeeded();
 
 	protected:
 		String calcKey(const String &cmd) const;
-		String calcFileName(const char *suffix) const;
+		String calcFileName(const String &suffix) const;
 
 	private:
 		const SslWrap *theWrap;
@@ -54,13 +54,14 @@ class SslCommand {
 SslCommand::States SslCommand::TheStates;
 
 SslWrap::SslWrap(): canShare(false), theProtocolSel(0), theRsaKeySizeSel(0),
-	theCipherSel(0), theResumpProb(-1), theSessionCacheSize(-1),
-	doVerifyPeerCertificate(true) {
+	theCertificatesIdx(0), theCipherSel(0), theResumpProb(-1),
+	theSessionCacheSize(-1), theCompression(-1), doVerifyPeerCertificate(true),
+	doGenerateCertificates(false), isGenerageCertificatesSet(false) {
 
-	theServerReqPem = TheUnknownFileName + "-serverreq.pem";
-	theServerKeyPem = TheUnknownFileName + "-serverkey.pem";
-	theServerCertPem = TheUnknownFileName + "-servercert.pem";
-	theServerChainPem = TheUnknownFileName + "-serverchain.pem";
+	theReqPem = TheUnknownFileName + "-req.pem";
+	theKeyPem = TheUnknownFileName + "-key.pem";
+	theCertPem = TheUnknownFileName + "-cert.pem";
+	theChainPem = TheUnknownFileName + "-chain.pem";
 	theCASerialFile = TheUnknownFileName + "-cert.srl";
 
 	// init before we open many sockets or OpenSSL < v0.9.8c may crash
@@ -92,8 +93,10 @@ void SslWrap::configure(const SslWrapSym &cfg) {
 	}
 	configureProtocols(cfg);
 	configureRsaKeySizes(cfg);
+	configureCertificates(cfg);
 	configureCiphers(cfg);
 	configureSharing(cfg);
+	configureCompression(cfg);
 
 	cfg.sessionResumpt(theResumpProb);
 	cfg.sessionCacheSize(theSessionCacheSize);
@@ -183,6 +186,19 @@ void SslWrap::configureRsaKeySizes(const SslWrapSym &cfg) {
 		theRsaKeySizeSel->rndGen(GlbRndGen("rsa_key_sizes"));
 }
 
+void SslWrap::configureCertificates(const SslWrapSym &cfg) {
+	cfg.certificates(theCertificates);
+
+	isGenerageCertificatesSet =
+		cfg.generateCertificates(doGenerateCertificates);
+	if (isGenerageCertificatesSet && doGenerateCertificates &&
+		!theCertificates.empty()) {
+		Comment << cfg.loc() << "cannot generate SSL certificates "
+			"(generate_certificates=true) and use existing ones "
+			"(certificates=...) at the same time" << endc << xexit;
+	}
+}
+
 void SslWrap::configureCiphers(const SslWrapSym &cfg) {
 	if (cfg.ciphers(theCiphers, theCipherSel))
 		theCipherSel->rndGen(GlbRndGen("ssl_ciphers"));
@@ -203,6 +219,23 @@ void SslWrap::configureSharing(const SslWrapSym &cfg) {
 	}
 }
 
+void SslWrap::configureCompression(const SslWrapSym &cfg) {
+	if (cfg.compression(theCompression)) {
+		if (!SslCtx::IsCompressionConfigurable()) {
+			Comment << cfg.loc() << "error: OpenSSL library does not " <<
+				"expose compression controls via SSL_OP_NO_COMPRESSION API;" <<
+				" cannot use PGL SslWrap::compression." << endc << xexit;
+		}
+
+		if (theCompression <= 0)
+			theCompression = 0;
+		else
+		if (theCompression >= 1)
+			theCompression = 1;
+	}
+	// else use OpenSSL defaults
+}
+
 Size SslWrap::selectRsaKeySize() const {
 	if (!theRsaKeySizeSel)
 		return Size::Bit(1024);
@@ -215,6 +248,11 @@ String SslWrap::selectCipher() const {
 		return String("ALL");
 	const int idx = (int)theCipherSel->trial();
 	return *theCiphers[idx];
+}
+
+bool SslWrap::disableCompression() const {
+	static RndGen *rng = LclRndGen("SslWrap::compression");
+	return theCompression >= 0 ? !rng->event(theCompression) : false;
 }
 
 int SslWrap::sessionCacheSize() const {
@@ -230,7 +268,7 @@ const String &SslWrap::sharingPath() const {
 }
 
 SslCtx *SslWrap::makeClientCtx(const NetAddr &addr) const {
-	SslCtx *ctx = makeCtx(addr);
+	SslCtx *ctx = makeCtx(false);
 
 	ctx->setVerify(doVerifyPeerCertificate ? SSL_VERIFY_PEER : SSL_VERIFY_NONE);
 
@@ -241,10 +279,9 @@ SslCtx *SslWrap::makeClientCtx(const NetAddr &addr) const {
 	if (ctx->loadVerifyLocations(theRootCertificate, String()))
 		return ctx;
 
-	Comment << "loadVerifyLocations() failed to load root certificate"
-		<< endc;
+	PrintErrors(Comment << "error: failed to load root certificate from " <<
+		theRootCertificate) << endc;
 
-	ReportErrors();
 	exit(2);
 	return ctx;
 }
@@ -258,7 +295,7 @@ int SslWrap_passwdCb(char *buf, int size, int, void *) {
 #endif
 
 SslCtx *SslWrap::makeServerCtx(const NetAddr &addr) const {
-	SslCtx *ctx = makeCtx(addr);
+	SslCtx *ctx = makeCtx(true);
 
 	// Use SSL_VERIFY_NONE because Robots do not provide certificates
 	// and some man-in-the-middle proxies do not like SSL_VERIFY_PEER.
@@ -267,81 +304,99 @@ SslCtx *SslWrap::makeServerCtx(const NetAddr &addr) const {
 
 	// ctx->setDefaultPasswdCb(&SslWrap_passwdCb); // not needed due to -nodes
 
-	// servers need a private key and the root CA cert
-	if (makeSrvPrivateKey(ctx) && makeSrvCert(ctx))
-		return ctx;
-
-	exit(2);
 	return ctx;
 }
 
-SslCtx *SslWrap::makeCtx(const NetAddr &) const {
+SslCtx *SslWrap::makeCtx(const bool isServer) const {
 	const SslCtx::SslProtocol protocol =
 		(SslCtx::SslProtocol)theProtocolSel->trial();
 	const String cipher = selectCipher();
-	return new SslCtx(protocol, cipher);
-}
+	SslCtx *const ctx = new SslCtx(protocol, cipher);
 
-bool SslWrap::makeSrvCert(SslCtx *ctx) const {
-	if (!makeServerCert() || !makeServerCertChain())
-		return false;
-
-	if (!ctx->useCertificateChainFile(theServerChainPem)) {
-		Comment << "error: failed to use certificate chain from "
-			<< theServerChainPem << endc;
-		ReportErrors();
-		return false;
+	if (!theCertificates.empty()) {
+		theChainPem = *theCertificates[theCertificatesIdx];
+		theCertificatesIdx =
+			(theCertificatesIdx + 1) % theCertificates.count();
+	} else {
+		if (isGenerageCertificatesSet) {
+			// do not generate certificates if explicitly set
+			if (!doGenerateCertificates)
+				return ctx;
+		} else {
+			// do not generate certificates on clients by default
+			if (!isServer)
+				return ctx;
+		}
+		if (!generateCert(isServer ? "server" : "client"))
+			exit(2);
 	}
 
-	return true;
+	if (!ctx->usePrivateKeyFile(theChainPem)) {
+		PrintErrors(Comment << "error: failed to use private key from " <<
+			theChainPem) << endc << xexit;
+	}
+
+	if (!ctx->useCertificateChainFile(theChainPem)) {
+		PrintErrors(Comment << "error: failed to use certificate chain from " <<
+			theChainPem) << endc << xexit;
+	}
+
+	if (disableCompression())
+		Assert(ctx->disableCompression()); // checked by configureCompression()
+
+	return ctx;
 }
 
-bool SslWrap::makeServerCert() const {
-	// to make a server certificate, we need the CA public key
+bool SslWrap::generateCert(const String &kind) const {
+	return makePrivateKey(kind) && makeCert(kind) && makeCertChain(kind);
+}
+
+bool SslWrap::makeCert(const String &kind) const {
+	// to make a certificate, we need the CA private key
 	// and the CA certificate
 
 	// this command assumes passphrase-less root/CA key
 	ostringstream os;
 	os << "openssl x509"
 		<< " -req"
-		<< " -in " << theServerReqPem
+		<< " -in " << theReqPem
 		<< " -sha1"
-		<< " -extensions usr_cert";
+		<< " -extfile " << theSslConfigFile;
 
 	if (theRootCertificate) {
 		os << " -CA " << theRootCertificate
 			<< " -CAkey " << theRootCertificate;
 	} else {
-		os << " -signkey " << theServerKeyPem;
+		os << " -signkey " << theKeyPem;
 	}
 
 	os << " -CAcreateserial"
 		<< ends;
 
-	SslCommand cmd = SslCommand::Make(os, "x509 key generation", this);
+	SslCommand cmd = SslCommand::Make(os, "x509 " + kind + " key generation", this);
 
 	// Use -CAserial option because diskless drones probably won't
 	// be able to write the serial file in their current directory.
 	// It is not clear whether the serial should be sharing group-specific.
-	theCASerialFile = cmd.addOutput(" -CAserial ", "cert.srl");
+	theCASerialFile = cmd.addOutput(" -CAserial ", kind + "-cert.srl");
 
-	theServerCertPem = cmd.addOutput(" -out ", "servercert.pem");
+	theCertPem = cmd.addOutput(" -out ", kind + "-cert.pem");
 	return cmd.runIfNeeded();
 }
 
-bool SslWrap::makeServerCertChain() const {
+bool SslWrap::makeCertChain(const String &kind) const {
 	// To create a certificate chain, we must concatenate certificates
 	ostringstream os;
-	os << "cat " << theServerCertPem << ' ' << theServerKeyPem;
+	os << "cat " << theCertPem << ' ' << theKeyPem;
 	if (theRootCertificate)
 		os << ' ' << theRootCertificate;
 
-	SslCommand cmd = SslCommand::Make(os, "certificate chain creation", this);
-	theServerChainPem = cmd.addOutput(" > ", "serverchain.pem");
+	SslCommand cmd = SslCommand::Make(os, kind + " certificate chain creation", this);
+	theChainPem = cmd.addOutput(" > ", kind + "-chain.pem");
 	return cmd.runIfNeeded();
 }
 
-bool SslWrap::makeSrvPrivateKey(SslCtx *ctx) const {
+bool SslWrap::makePrivateKey(const String &kind) const {
 	const Size keylen = selectRsaKeySize();
 	ostringstream os;
 	os << "openssl req"
@@ -351,48 +406,44 @@ bool SslWrap::makeSrvPrivateKey(SslCtx *ctx) const {
 		<< " -config " << theSslConfigFile
 		<< ends;
 
-	SslCommand cmd = SslCommand::Make(os, "server private key generation", this);
-	theServerKeyPem = cmd.addOutput(" -keyout ", "serverkey.pem");
-	theServerReqPem = cmd.addOutput(" -out ", "serverreq.pem");
-	if (!cmd.runIfNeeded())
-		return false;
-	
-	if (!ctx->usePrivateKeyFile(theServerKeyPem)) {
-		Comment << "error: failed to use private key from " << 
-			theServerKeyPem << endc;
-		ReportErrors();
-		return false;
-	}
-
-	return true;
+	SslCommand cmd = SslCommand::Make(os, kind + " private key generation", this);
+	theKeyPem = cmd.addOutput(" -keyout ", kind + "-key.pem");
+	theReqPem = cmd.addOutput(" -out ", kind + "-req.pem");
+	return cmd.runIfNeeded();
 }
 
-void SslWrap::ReportErrors() {
+// starts and ends printing with a new line if there is an error stack to print
+// prints nothing otherwise
+std::ostream &SslWrap::PrintErrors(std::ostream &os) {
 	const char *fname;
 	int line;
-	ostream &os = Comment << "SSL error stack:" << endl;
+	bool printedHeader = false;
 	while (const unsigned long e = SslMisc::ErrGetErrorLine(&fname, &line)) {
-		os << "\t" << fname << ":" << line << ": " <<
+		if (!printedHeader) {
+			os << endl << "SSL error stack:" << endl;
+			printedHeader = true;
+		}
+		os << "\t* " << fname << ":" << line << ": " <<
 			SslMisc::ErrErrorString(e) << endl;
 	}
-	os << endc;
+	return os;
 }
 
-SslCommand SslCommand::Make(ostringstream &os, const char *descr,
+SslCommand SslCommand::Make(ostringstream &os, const String &descr,
 	const SslWrap *wrap) {
 	const String prefix = os.str().c_str();
 	streamFreeze(os, false);
 	return SslCommand(prefix, descr, wrap);
 }
 
-SslCommand::SslCommand(const String aPrefix, const char *aDescr,
+SslCommand::SslCommand(const String aPrefix, const String &aDescr,
 	const SslWrap *aWrap): theWrap(aWrap), 
 	thePrefix(aPrefix), theDescr(aDescr),
 	theState(stUnknown) {
 	theKey = calcKey(thePrefix);
 }
 
-String SslCommand::addOutput(const char *argName, const char *argSuffix) {
+String SslCommand::addOutput(const String &argName, const String &argSuffix) {
 	String argValue = calcFileName(argSuffix);
 	theSuffix += argName;
 	theSuffix += argValue;
@@ -451,8 +502,6 @@ String SslCommand::calcKey(const String &cmd) const {
 	const String path = theWrap->sharingPath();
 	Assert(path.len() > 0);
 	xstd::ChecksumAlg alg;
-	const int seed = LclPermut(rndSslSeed);
-	alg.update(reinterpret_cast<const char*>(&seed), sizeof(seed)); // necessary for SMP
 	alg.update(cmd.data(), cmd.len());
 	alg.update(path.data(), path.len());
 	alg.final();
@@ -460,7 +509,7 @@ String SslCommand::calcKey(const String &cmd) const {
 	return key(0, 8);  // first 8 MD5 chars; should be more than enough
 }
 
-String SslCommand::calcFileName(const char *suffix) const {
+String SslCommand::calcFileName(const String &suffix) const {
 	return theWrap->sharingPath() + theKey + '-' + suffix;
 }
 

@@ -158,9 +158,9 @@ bool RegEx::reMatch(const char *str, Matches &matches, int flags) const {
 			correction.rm_so = matches[0].rm_so;
 #		endif
 	}
-	matches.count(matches.capacity());
+	matches.resize(matches.capacity());
 	const int res =
-		regexec(this, str, matches.capacity(), matches.items(), iFlags);
+		regexec(this, str, matches.count(), matches.items(), iFlags);
 	if (res == 0) {
 		// readjust offsets if we were faking REG_STARTEND support above
 		if (correction.rm_so > 0) {

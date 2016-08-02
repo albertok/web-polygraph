@@ -6,6 +6,7 @@
 #ifndef POLYGRAPH__RUNTIME_CONNECTION_H
 #define POLYGRAPH__RUNTIME_CONNECTION_H
 
+#include "xstd/Gss.h"
 #include "xstd/Queue.h"
 #include "xstd/NetAddr.h"
 #include "xstd/Socket.h"
@@ -53,11 +54,47 @@ class Connection {
 
 		class NtlmAuth {
 			public:
-				NtlmAuth(): state(ntlmNone), useSpnegoNtlm(false) {}
+				NtlmAuth() { reset(); }
+
+				void reset();
 
 				NtlmAuthState state;
 				bool useSpnegoNtlm;
 				String hdrRcvdT2;
+				// XXX: out of place, rework connection auth state
+				Gss::Context gssContext; // GSS authentication context
+		};
+
+		class LayeredSsl {
+			public:
+				LayeredSsl() { reset(); }
+				bool multiLayered() const { return lastLayer > 0; }
+				const Ssl *active() const { return netLayer(); }
+				const Ssl *activeFirst() const { return theSsl[0]; }
+				const Ssl *activeSecond() const { return theSsl[1]; }
+				bool dataPending() const;
+				Size read(char *buf, Size sz);
+				Size write(const char *buf, Size sz);
+				bool setIO(int fd);
+				bool addSsl(Ssl *ssl);
+				bool resumeSession(SslSession *session);
+				bool reusedSession() const;
+				int getError(int e);
+				const char *getErrorString(int e);
+				bool shutdown(int &res);
+				operator const void *() const { return netLayer(); }
+				void reset();
+				void close();
+
+			private:
+				// the SSL layer receiving raw network bytes
+				// always exists if SSL is activated
+				Ssl *netLayer() { return theSsl[lastLayer]; }
+				const Ssl *netLayer() const { return theSsl[lastLayer]; }
+
+			private:
+				Ssl *theSsl[2];
+				int lastLayer;
 		};
 
 	public:
@@ -87,11 +124,17 @@ class Connection {
 		bool socksAuthed() const;
 		Size socksWrite();
 
-		bool sslConfigured() const { return theSslCtx != 0; }
-		const Ssl *sslActive() const { return theSsl; }
+		bool sslConfigured() const { return theSslCtxOrigin != 0; }
+		const Ssl *sslActive() const;
+		const Ssl *sslActiveProxy() const;
 		bool sslActivate();
-		SslSession *sslSession();
-		void sslSessionForget();
+		bool sslActivateProxy();
+		SslSession *sslSession() { return theSslSessionOrigin; }
+		SslSession *sslSessionProxy() { return theSslSessionProxy; }
+		const SslSession *sslSession() const { return theSslSessionOrigin; }
+		void sslSessionForget() { theSslSessionOrigin = 0; }
+		void sslSessionForgetProxy() { theSslSessionProxy = 0; }
+		bool sslSessionReused() const;
 
 		bool connect(const NetAddr &addr, const SockOpt &opt, PortMgr *aPortMgr, const NetAddr &socksProxy = NetAddr());
 		bool accept(Socket &s, const SockOpt &opt, bool &fatal);
@@ -106,6 +149,7 @@ class Connection {
 		void mgr(ConnMgr *aMgr) { theMgr = aMgr; }
 		void logCat(int aLogCat) { theLogCat = aLogCat; }
 		void useSsl(const SslCtx *aCtx, SslSession *aSess);
+		void useSslProxy(const SslCtx *aCtx, SslSession *aSess);
 
 		bool pipelineable() const;
 		bool reusable() const;
@@ -113,6 +157,7 @@ class Connection {
 		void useLevelLimit(int aLimit) { theUseLevelLmt = aLimit; }
 		int useCnt() const { return theUseCnt; }
 		int useLevel() const { return theUseLvl; }
+		void increaseUseCountLimit() { ++theUseCountLmt; }
 		void startUse();
 		void finishUse();
 		bool inUse() const { return theUseLvl > 0; }
@@ -124,6 +169,8 @@ class Connection {
 		bool tunneling() const { return theTunnel.known() && theTunnel != raddr(); }
 		const NetAddr &tunnelEnd() const { return theTunnel; }
 		void tunnelEnd(const NetAddr &addr) { theTunnel = addr; }
+		void setTunnelEstablished();
+		bool tunnelEstablished() const { return isTunnelEstablished; }
 
 		Time openTime() const { return theOpenTime; }
 		int ioCnt() const { return theRd.theIOCnt + theWr.theIOCnt; }
@@ -137,21 +184,23 @@ class Connection {
 		bool hasCredentials() const;
 		bool genCredentials(UserCred &cred) const;
 
-		void reportErrorLoc() const;
+		std::ostream &print(std::ostream &os) const;
 
 	public:
 		QueuePlace<Connection> idleConnections;
 
 	protected:
-		void sslStart(int role);
+		void sslStart(int role, const bool toProxy);
 		bool sslAccept();
-		bool sslConnect();
+		bool sslConnect(const bool toProxy);
 		Size sslRead(Size ioSz);
 		Size sslWrite(Size ioSz);
 		bool sslCloseNow();
 		bool sslCloseAsync(FileScanUser *u, bool &fatal);
 		void sslForget();
 		void sslError(int err, const char *operation);
+		bool sslToOrigin() const { return !theSslCtxProxy ||
+		                                  theSsl.multiLayered(); }
 
 		void socksStart();
 		void socksEnd();
@@ -179,13 +228,19 @@ class Connection {
 		NtlmAuth theProxyNtlmState; // proxy NTLM authentication state
 		NtlmAuth theOriginNtlmState; // origin NTLM authentication state
 
+		// outsiders should treat these as const
+		bool usedSsl: 1; // there was at least an attempt to use SSL
+		bool usedSocks: 1; // there was at least an attempt to use SOCKS
+
 	protected:
 		Socket theSock;
 		NetAddr theAddr;
 		mutable ConnMgr *theMgr;
 		PortMgr *thePortMgr;     // used to pass address to bind call
-		const SslCtx *theSslCtx; // set by owner to request ssl encription
-		SslSession *theSslSession; // set by owner if resumption is needed
+		const SslCtx *theSslCtxOrigin; // set by owner to request ssl encription
+		const SslCtx *theSslCtxProxy;
+		SslSession *theSslSessionOrigin; // set by owner if resumption is needed
+		SslSession *theSslSessionProxy;
 
 		NetAddr theSocksProxy;  // the SOCKS proxy address if used
 		NetAddr theTunnel;      // the other end of the tunnel if tunneling
@@ -210,6 +265,8 @@ class Connection {
 		bool isLastUse;         // this must be the last use of the conn
 		bool isFirstUse;	// connection has just been established
 		bool isSocksAuthed;	// authenticated with SOCKS proxy
+		bool isSslEstablished;  // whether SSL session is established
+		bool isTunnelEstablished; // whether CONNECT tunnel is established
 		bool wasAnnounced;	// true if connection open event was sent
 
 	private:
@@ -220,7 +277,7 @@ class Connection {
 		// used only during initial connection negotiation
 		Socks *theSocks;
 
-		Ssl *theSsl;            // created internally if needed
+		LayeredSsl theSsl;      // created internally if needed
 };
 
 #endif

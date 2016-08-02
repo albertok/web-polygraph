@@ -11,33 +11,23 @@
 ContentMgr TheContentMgr;
 
 
-ContentMgr::ContentMgr():
-	theCfgCounter(0), theNormalContentStart(0), didInit(false) {
-}
-
-void ContentMgr::init() {
+void ContentMgr::configure() {
 	makeFakeContentType(TheForeignContentId, "foreign");
 	makeFakeContentType(TheBodilessContentId, "bodiless");
 	makeFakeContentType(TheUnknownContentId, "unknown");
 
-	theNormalContentStart = theCfgCounter;
+	ContType::NoteNormalContentStart();
 }
 
 ContentCfg *ContentMgr::makeCfg() {
-	if (!didInit) {
-		didInit = true;
-		init();
-	}
-
-	ContentCfg *cfg = new ContentCfg(theCfgCounter++);
-	return cfg;
+	return new ContentCfg(theCfgCounter++);
 }
 
 void ContentMgr::makeFakeContentType(int &id, const String &kind) {
 	ContentCfg *const cfg = makeCfg();
 	cfg->theKind = kind;
 	id = cfg->id();
-	ContTypeStat::RecordKind(id, kind);
+	ContType::Record(id, kind);
 	theCfgs.append(cfg);
 	theSyms.append(0);
 }

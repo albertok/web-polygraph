@@ -11,6 +11,7 @@
 
 class WrBuf;
 class ContentCfg;
+class HttpPrinter;
 
 class BodyIter {
 	public:
@@ -20,7 +21,7 @@ class BodyIter {
 
 		void contentCfg(const ContentCfg *cfg) { theContentCfg = cfg; }
 		void oidCfg(const ObjId &anOid, int aHash) { theOid = anOid; theContentHash = aHash; }
-		void contentSize(Size aContentSize);
+		void contentSize(Size aContentSize, Size aSuffixSize);
 
 		virtual void start(WrBuf *aBuf);
 		virtual void stop() {}
@@ -36,28 +37,35 @@ class BodyIter {
 		bool canPour() const; // can add to buffer and buffer has space
 		bool pouredAll() const; // has someting to add to buffer
 		virtual bool pour();  // fills the buffer; false if unrecoverable error
-		virtual void putHeaders(ostream &os) const;
+		virtual void putHeaders(HttpPrinter &hp) const;
 
 		operator void *() const { return pouredAll() ? 0 : (void*)-1; }
 
 		void putBack();
 
 	protected:
+		/* pouring methods for "typical" body parts */
 		void pourPrefix();
-		virtual bool pourBody() = 0;
+		virtual bool pourMiddle();
+		void pourSuffix();
+
+		// pours the requested number of random bytes (of an appropriate kind)
+		// returns whether anything was poured
+		bool pourRandom(const Size upToSize);
+
 		virtual void calcContentSize() const;
-		Size sizeLeft() const { return theContentSize.known() ?
-			theContentSize - theBuiltSize : theContentSize; }
+		Size middleSizeLeft() const;
 
 	protected:
 		const ContentCfg *theContentCfg;
 		ObjId theOid;  // XXX: replace with a pointer when ObjRec is removed
 		WrBuf *theBuf;
 		RndGen theRng;
-		mutable Size theContentSize;
+		mutable Size theContentSize; // including prefix and suffix, if any
+		mutable Size theSuffixSize;
 		int theContentHash;
 
-		Size theBuiltSize;
+		Size theBuiltSize; // including prefix and suffix, if any
 };
 
 #endif

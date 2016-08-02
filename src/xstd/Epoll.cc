@@ -35,11 +35,8 @@ void Epoll::configure() {
 	theFD = xepoll_create(fdLimit());
 	Must(theFD >= 0);
 
-	theHotties.stretch(fdLimit());
-	theHotties.count(fdLimit());
-
-	theInterests.stretch(fdLimit());
-	theInterests.count(fdLimit());
+	theHotties.resize(fdLimit());
+	theInterests.resize(fdLimit());
 
 	theEventsCount = -1;
 	theLastSweepId = 0;

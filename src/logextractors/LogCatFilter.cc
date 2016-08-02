@@ -11,9 +11,8 @@
 #include "base/polyLogCats.h"
 
 
-LogCatFilter::LogCatFilter(int aCat): theActiveCats(lgcEnd), theCat(lgcAll) {
-	theActiveCats.count(lgcEnd);
-	theActiveCats.memset(0);
+LogCatFilter::LogCatFilter(int aCat): theCat(lgcAll) {
+	theActiveCats.resize(lgcEnd);
 	if (aCat >= 0)
 		logCat(aCat);
 }

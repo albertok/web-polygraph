@@ -11,6 +11,7 @@
 #include "runtime/StatPhase.h"
 #include "runtime/StatPhaseMgr.h"
 #include "runtime/ErrorMgr.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/polyErrors.h"
 
@@ -22,7 +23,7 @@ ErrorMgr::ErrorMgr() {
 
 void ErrorMgr::printError(const SrcLoc &loc, ErrorRec *rec, int logCat) {
 	Assert(rec);
-	const int totCnt = TheStatPhaseMgr->errors(logCat).count();
+	const Counter totCnt = TheStatPhaseMgr->errors(logCat).count();
 	Comment(0) << loc << "error: " << rec->count() << '/' << totCnt 
 		<< ' ' << *rec << endc;
 	rec->noteReport(TheOpts.theErrorTout);

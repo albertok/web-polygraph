@@ -32,20 +32,27 @@ class BufPool: public Farm<char> {
 
 class RndBuf {
 	public:
-		RndBuf(Size aCapacity);
+		// KISS: same constant capacity for all content kinds
+		// TODO: increase to improve effective randomness?
+		enum { Capacity = 16*1024 };
+
+		RndBuf(const int minChar, const int maxChar);
 		~RndBuf();
 
 		Size capacity() const { return theCapacity; }
 
-		const char *bufAt(Size off) const;
+		const char *bufAt(const Size off) const { return theBuf + (off % theCapacity); }
 
 	protected:
 		char *theBuf;
 		Size theCapacity;
 };
 
+// buffers pre-filled with random content to randomize other buffers
+RndBuf *TheRndText = 0;
+RndBuf *TheRndBinary = 0;
+
 static BufPool *TheBufPool = 0;
-static RndBuf *TheRndBuf = 0;     // pre-filled to rnd-ize other buffers
 
 
 /* IOBuf */
@@ -88,28 +95,27 @@ void IOBuf::copyContent(IOBuf &buf, Size maxSize) const {
 Size IOBuf::RandomOffset(Size seed, Size off) {
 	if (!Should(seed >= 0))
 		seed = 0;
-	const Size cap = TheRndBuf->capacity();
 	// prevent int overflow; seed and off could be large
-	return ((seed % cap) + (off % cap)) % cap;
+	return ((seed % RndBuf::Capacity) + (off % RndBuf::Capacity)) % RndBuf::Capacity;
 }
 
-void IOBuf::RandomFill(ostream &os, Size rndOffset, Size sz) {
+void IOBuf::RandomFill(ostream &os, Size rndOffset, Size sz, const RndBuf &rndBuf) {
 	if (!Should(rndOffset >= 0))
 		rndOffset = 0;
-	os.write(TheRndBuf->bufAt(rndOffset % TheRndBuf->capacity()), sz);
+	os.write(rndBuf.bufAt(rndOffset), sz);
 }
 
-void IOBuf::appendRnd(Size rndOffset, Size sz) {
+void IOBuf::appendRnd(Size rndOffset, Size sz, const RndBuf &rndBuf) {
 	Assert(spaceSize() >= sz);
 	ofixedstream os(space(), spaceSize());
-	RandomFill(os, rndOffset, sz);
+	RandomFill(os, rndOffset, sz, rndBuf);
 	appended((std::streamoff)os.tellp());
 }
 
-Size IOBuf::appendRndUpTo(Size rndOff, Size size) {
+Size IOBuf::appendRndUpTo(Size rndOff, Size size, const RndBuf &rndBuf) {
 	Assert(size >= 0);
 	const Size sz = Min(spaceSize(), size);
-	appendRnd(rndOff, sz); // stuff with random data
+	appendRnd(rndOff, sz, rndBuf); // stuff with random data
 	return sz;
 }
 
@@ -133,7 +139,7 @@ void IOBuf::pack() {
 		reset();
 	} else
 	if (theOutOff) {
-		memcpy(theBuf, content(), contSize());
+		memmove(theBuf, content(), contSize());
 		theInOff -= theOutOff;
 		theOutOff = 0;
 	}
@@ -163,8 +169,9 @@ void IOBuf::unzip() {
 
 void WrBuf::overwrite(int offset, const char *buf, Size sz) {
 	Assert(0 <= offset && offset <= contSize());
+	Assert(contSize() - Size(offset) >= sz);
 	if (sz > 0)
-		memcpy(theBuf+offset, buf, sz);
+		memmove(theBuf+offset, buf, sz);
 }
 
 
@@ -172,7 +179,8 @@ void WrBuf::overwrite(int offset, const char *buf, Size sz) {
 
 BufPool::BufPool(Size aBufCap):
 	theBufCap(aBufCap), theRepLvl(Size::MB(20)) {
-	Assert(TheRndBuf);
+	Assert(TheRndText);
+	Assert(TheRndBinary);
 }
 
 void BufPool::bufCap(Size aBufCap) {
@@ -197,14 +205,19 @@ char *BufPool::gen() {
 
 /* RndBuf */
 
-RndBuf::RndBuf(Size aCapacity): theBuf(0), theCapacity(aCapacity) {
+RndBuf::RndBuf(const int minChar, const int maxChar):
+	theBuf(0), theCapacity(Capacity) {
+	Assert(0 <= minChar && minChar <= 255);
+	Assert(0 <= maxChar && maxChar <= 255);
+	Assert(minChar <= maxChar);
+
 	const Size cap = theCapacity * 2; // more to allow random offsets
 	theBuf = new char[cap];
 
 	RndGen rng;
 	for (int i = 0; i < theCapacity; ++i) {
-		const char c = (char)rng(33, 127);
-		// to assist with HTML parsing and HTTP header generatio,
+		const char c = static_cast<char>(rng(minChar, maxChar));
+		// to assist with HTML parsing and HTTP header generation,
 		// substitute '<' and '"' with a space
 		theBuf[i] = (c == '<' || c == '"') ? ' ' : c; 
 	}
@@ -216,24 +229,33 @@ RndBuf::~RndBuf() {
 	theBuf = 0;
 }
 
-const char *RndBuf::bufAt(Size off) const {
-	Assert(off < theCapacity);
-	return theBuf + off;
-}
-
 /* initialization */
 
 int IOBufInit::TheUseCount = 0;
 
 void IOBufInit::init() {
-	const Size bufCap = 16*1024;  // XXX: hardcoded IO buf capacity
+	Assert(RndBuf::Capacity > 0);
 
-	TheRndBuf = new RndBuf(bufCap);
-	TheBufPool = new BufPool(bufCap);
+	TheRndText = new RndBuf(33, 127);
+	TheRndBinary = new RndBuf(0, 255);
+
+	// I/O buffer capacity should not exceed RndBuf capacity. However,
+	// we have not checked whether decoupling the two is safe otherwise.
+	TheBufPool = new BufPool(RndBuf::Capacity); // XXX: hardcoded IO buf
 }
 
 void IOBufInit::clean() {
 	delete TheBufPool; TheBufPool = 0;
-	delete TheRndBuf; TheRndBuf = 0;
+	delete TheRndBinary; TheRndBinary = 0;
+	delete TheRndText; TheRndText = 0;
 }
 
+const RndBuf &RndText() {
+	Assert(TheRndText);
+	return *TheRndText;
+}
+
+const RndBuf &RndBinary() {
+	Assert(TheRndBinary);
+	return *TheRndBinary;
+}

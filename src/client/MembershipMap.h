@@ -41,7 +41,7 @@ class MembershipMap {
 		String groupNameAt(int rangedIdx) const;
 		void collectUsedGroupNames(Array<String*> &groupNames, const Range &range) const;
 
-		bool exactGroupMatch(const String &groupName, const char *userName, int memberIdx) const;
+		bool exactGroupMatch(const String &groupName, const int memberIdx) const;
 		bool regexGroupMatch(RegEx *regex, const char *userName, int memberIdx, int flags, int *errNo) const;
 		bool groupBelongs(int groupIdx, int groupRangeBeg, int groupRangeSize) const;
 		Range calcGroupRange(int memberIdx) const;

@@ -11,6 +11,7 @@
 #include "pgl/PglRecSym.h"
 
 class NetAddr;
+class DnsCacheSym;
 
 // parameters for object life cycle model
 class DnsResolverSym: public RecSym {
@@ -26,6 +27,7 @@ class DnsResolverSym: public RecSym {
 		bool servers(Array<NetAddr*> &srvs) const;
 		Time timeout() const;
 		String queryType() const;
+		DnsCacheSym *cache() const;
 
 	protected:
 		virtual SynSym *dupe(const String &dType) const;

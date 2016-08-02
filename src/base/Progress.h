@@ -28,8 +28,8 @@ class Progress {
 	public:
 		Progress();
 
-		int xacts() const { return theXactCnt; }
-		int errs() const { return theErrCnt; }
+		Counter xacts() const { return theXactCnt; }
+		Counter errs() const { return theErrCnt; }
 		Time time() const;
 
 		void success() { theXactCnt++; }
@@ -43,11 +43,13 @@ class Progress {
 		ProtoProgress socks;
 		ProtoProgress ssl;
 		ProtoProgress ftp;
+		ProtoProgress connect;
+		ProtoProgress authing;
 
 	protected:
 		Time theTimestamp; // place to keep Clock after load()
-		int theXactCnt;    // all successful completions
-		int theErrCnt;     // all failed transactions
+		Counter theXactCnt; // all successful completions
+		Counter theErrCnt; // all failed transactions
 };
 
 extern Progress TheProgress;

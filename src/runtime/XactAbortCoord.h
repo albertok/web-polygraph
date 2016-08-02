@@ -6,16 +6,15 @@
 #ifndef POLYGRAPH__RUNTIME_XACTABORTCOORD_H
 #define POLYGRAPH__RUNTIME_XACTABORTCOORD_H
 
+#include "xstd/Rnd.h"
 #include "xstd/Size.h"
-
-class RndGen;
 
 // info required to compute whether and where to abort a transaction
 class XactAbortCoord {
 	public:
 		XactAbortCoord();
 
-		void configure(int whether, int where);
+		void configure(const RndGen::Seed whether, const RndGen::Seed where);
 		void reset();
 
 		operator void*() const { return
@@ -24,12 +23,12 @@ class XactAbortCoord {
 		// negative if no abort
 		Size pos(Size hdrSize, Size bodySize) const;
 
-		int whether() const { return theWhetherState; }
-		int where() const { return theWhereState; }
+		RndGen::Seed whether() const { return theWhetherState; }
+		RndGen::Seed where() const { return theWhereState; }
 
 	protected:
-		int theWhetherState;
-		int theWhereState;
+		RndGen::Seed theWhetherState;
+		RndGen::Seed theWhereState;
 };
 
 #endif

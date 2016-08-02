@@ -26,6 +26,7 @@
 #include "csm/ContentCfg.h"
 #include "csm/oid2Url.h"
 #include "runtime/globals.h"
+#include "runtime/HttpPrinter.h"
 #include "runtime/httpText.h"
 #include "runtime/polyErrors.h"
 #include "runtime/CompoundXactInfo.h"
@@ -35,8 +36,8 @@
 #include "runtime/HttpCookies.h"
 #include "runtime/HttpDate.h"
 #include "runtime/LogComment.h"
+#include "runtime/ObjUniverse.h"
 #include "runtime/PageInfo.h"
-#include "runtime/PubWorld.h"
 #include "runtime/SharedOpts.h"
 #include "runtime/StatPhaseMgr.h"
 #include "runtime/StatPhaseSync.h"
@@ -63,12 +64,20 @@ void HttpCltXact::reset() {
 
 	theActualRepType = -1;
 
+	theProxyAuthScheme = authNone;
+
 	theReqFlags = 0;
 }
 
-HttpAuthScheme HttpCltXact::proxyAuth() const {
+// called just once to learn about the authentication scheme at request making
+// time, to avoid confusion if the scheme changes while we wait for a response
+void HttpCltXact::freezeProxyAuth() {
 	Assert(theOwner);
-	return theOwner->proxyAuthScheme(theOid);
+	theProxyAuthScheme = theOwner->proxyAuthSchemeNow(theOid);
+}
+
+bool HttpCltXact::needGssContext() const {
+	return !didGssContextAttempt && theProxyAuthScheme == authNegotiate;
 }
 
 PipelinedCxm *HttpCltXact::getPipeline() {
@@ -101,17 +110,33 @@ void HttpCltXact::pipeline(PipelinedCxm *aMgr) {
 }
 
 void HttpCltXact::exec(Connection *const aConn) {
-	CltXact::exec(aConn);
-
+	theConn = aConn;
 	theOwner->cfg()->selectAbortCoord(theAbortCoord);
 
 	Should (!theConn->tunneling() || theConn->sslConfigured());
 	if (theConn->sslConfigured() && !theConn->sslActive()) {
-		if (theConn->tunneling())
+		if (theConn->tunneling()) {
 			theOid.connect(true);
-		else
+			if (!theCompound) { // set when authenticatING CONNECT
+				createCompound();
+				theCompound->connectState = CompoundXactInfo::opIng;
+			} else {
+				ShouldUs(theCompound->connectState == CompoundXactInfo::opIng);
+			}
+		} else
 			theConn->sslActivate();
+	} else if (theOid.connect()) {
+		// clear CONNECT flag inherited from parent xaction
+		theOid.connect(false);
+		ShouldUs(theCause);
+		ShouldUs(theCause && theCause->partOf() != 0);
+		if (ShouldUs(theCompound)) {
+			ShouldUs(theCompound->connectState == CompoundXactInfo::opIng);
+			theCompound->connectState = CompoundXactInfo::opDone;
+		}
 	}
+
+	CltXact::exec(aConn);
 
 	if (!theMgr)
 		theMgr = SingleCxm::Get(); // may be changed to PipelinedCxm later
@@ -125,7 +150,8 @@ void HttpCltXact::finish(Error err) {
 		redirect();
 
 	// special actions for objects with bodies
-	if (!theOid.head() && theBodyParser && theBodyParser->used()) {
+	if (actualRepType() != TheBodilessContentId && theBodyParser &&
+		theBodyParser->used()) {
 		// check MD5
 		if (!err && !theOid.aborted() && theRepHdr.theChecksum.set()) {
 			theCheckAlg.final();
@@ -161,14 +187,19 @@ void HttpCltXact::finish(Error err) {
 		theMgr->noteDone(this);
 	}
 
-	if (theAuthXact) {
-		++theAuthXact->exchanges;
-		theAuthXact->reqSize += theReqSize.actual();
-		theAuthXact->repSize += theRepSize.actual();
-		if (theHttpStatus != RepHdr::sc407_ProxyAuthRequired || theError) {
-			theAuthXact->lifeTime = TheClock - theAuthXact->startTime;
-			theAuthXact->final = true;
-		}
+	if (!err && theOid.connect() && theHttpStatus == RepHdr::sc200_OK) {
+		// CONNECT tunnel established
+		theConn->setTunnelEstablished();
+		theConn->sslActivate();
+		theConn->increaseUseCountLimit();
+		doRetry = true;
+	}
+
+	if (theCompound) {
+		++theCompound->exchanges;
+		theCompound->reqSize += theReqSize.actual();
+		theCompound->repSize += theRepSize.actual();
+		theCompound->finishTime = TheClock; // other xacts may extend
 	}
 
 	if (theOid.aborted())
@@ -177,11 +208,10 @@ void HttpCltXact::finish(Error err) {
 	CltXact::finish(err);
 }
 
-// XXX: the needMore value and the return value are unused
-bool HttpCltXact::controlledPostRead(bool &needMore) {
+// XXX: the needMore parameter value and the return value are unused
+bool HttpCltXact::controlledPostRead(bool &) {
 	if (theState == stHdrWaiting) {
-		const Error err = getHeader();
-		if (err || (theOid.connect() && theState == stBodyWaiting)) {
+		if (const Error err = getHeader()) {
 			finish(err);
 			return false;
 		}
@@ -202,6 +232,7 @@ Error HttpCltXact::getHeader() {
 		Error err = interpretHeader();
 
 		if (theRepHdr.theStatus != RepHdr::sc100_Continue) {
+			theOwner->noteResponseReceived();
 			// dump reply header after interpretHeader() to dump more oid flags
 			static int respCount = 0;
 			if (!respCount++ || TheOpts.theDumpFlags(dumpRep, dumpHdr))
@@ -345,33 +376,39 @@ bool HttpCltXact::controlledPostWrite(Size &size, bool &needMore) {
 }
 
 void HttpCltXact::makeReq(WrBuf &buf) {
-	ofixedstream os(buf.space(), buf.spaceSize());
+	HttpPrinter hp(buf.space(), buf.spaceSize());
 
 	if (theState == stConnWaiting) {
 		if (theOid.connect())
-			makeConnectReq(os);
+			makeConnectReq(hp);
 		else
-			makeExplicitReq(os);
+			makeExplicitReq(hp);
 		newState(stSpaceWaiting);
 	}
 }
 
 // make a CONNECT request
-void HttpCltXact::makeConnectReq(ostream &os) {
-	os << rlpConnect;
-	Oid2UrlHost(theOid, true, os);
-	makeReqVersion(os);
-	makeHopByHopHdrs(os);
+void HttpCltXact::makeConnectReq(HttpPrinter &hp) {
+	hp << rlpConnect;
+	Oid2UrlHost(theOid, true, hp);
+	makeReqVersion(hp);
+
+	hp << hfpHost;
+	Oid2UrlHost(theOid, true, hp);
+	hp << crlf;
+
+	hp.putHeaders(theOwner->cfg()->httpHeaders());
+	makeHopByHopHdrs(hp);
 
 	static int reqCount = 0;
-	finishReqHdrs(os, !reqCount++);
+	finishReqHdrs(hp, !reqCount++);
 
 	// no body for CONNECT requests
 	theReqOid.type(TheBodilessContentId);
 }
 
 // make a non-CONNECT request
-void HttpCltXact::makeExplicitReq(ostream &os) {
+void HttpCltXact::makeExplicitReq(HttpPrinter &hp) {
 	Assert(the100ContinueState == csNone);
 	Assert(!theReqContentCfg);
 	Assert(!theBodyIter);
@@ -395,12 +432,12 @@ void HttpCltXact::makeExplicitReq(ostream &os) {
 
 	// make headers
 	{
-		makeReqMethod(os);
-		makeEndToEndHdrs(os);
-		makeHopByHopHdrs(os);
-		makeCookies(os); // last, to know buffer space left
+		makeReqMethod(hp);
+		makeEndToEndHdrs(hp);
+		makeHopByHopHdrs(hp);
+		makeCookies(hp); // last, to know buffer space left
 		static int reqCount = 0;
-		finishReqHdrs(os, !reqCount++);
+		finishReqHdrs(hp, !reqCount++);
 	}
 
 	// where we should abort
@@ -423,6 +460,7 @@ void HttpCltXact::finishReqHdrs(ostream &os, bool forceDump) {
 		fullSize += theReqBodySize;
 	theReqSize.expect(fullSize);
 	theReqSize.got(buf.space() - reqStart);
+	theOwner->noteRequestSent();
 
 	// dump request header
 	if (forceDump || TheOpts.theDumpFlags(dumpReq, dumpHdr))
@@ -452,101 +490,115 @@ void HttpCltXact::makeReqVersion(ostream &os) {
 		os << rlsHttp1p1;
 }
 
-void HttpCltXact::makeEndToEndHdrs(ostream &os) {
+void HttpCltXact::makeEndToEndHdrs(HttpPrinter &hp) {
 
 	// send full URL only if we are talking directly to a proxy
 	if (theOwner->proxy(theOid) && !theConn->tunneling())
-		Oid2Url(theOid, os);
+		Oid2Url(theOid, hp);
 	else
-		Oid2UrlPath(theOid, os);
+		Oid2UrlPath(theOid, hp);
 
-	makeReqVersion(os);
+	makeReqVersion(hp);
+
+	/* user-configured headers */
+
+	if (theReqContentCfg)
+		hp.putHeaders(theReqContentCfg->mimeHeaders());
+	hp.putHeaders(theOwner->cfg()->httpHeaders());
 	
 	/* request-header fields */
 
-	os << hfAccept;
-	if (const String *codings = theOwner->cfg()->theAcceptedContentCodings)
-		os << hfpAcceptEncoding << *codings << crlf;
+	hp.putHeader(hfAccept);
+	if (const String *codings = theOwner->cfg()->theAcceptedContentCodings) {
+		if (hp.putHeader(hfpAcceptEncoding))
+			hp << *codings << crlf;
+	}
 
-	os << hfpHost;
-	Oid2UrlHost(theOid, false, os);
-	os << crlf;
+	hp.putHeader(hfpHost);
+	Oid2UrlHost(theOid, false, hp) << crlf;
 
 	if (theOid.imsAny() && olcTimes().lmt() >= 0) {
+		if (hp.putHeader(hfpIMS)) {
 		const Time t = theOid.ims200() ?
 			(olcTimes().lmt() - Time::Sec(1)) : 
 			(olcTimes().lmt() + Time::Sec(1));
-		HttpDatePrint(os << hfpIMS, t) << crlf;
+			HttpDatePrint(hp, t) << crlf;
+		}
 		theReqFlags |= xfValidation;
 	}
 
-	if (theOid.reload())
-		os << hfReload;
+	if (theOid.reload()) {
+		hp.putHeader(hfCcReload);
+		hp.putHeader(hfPragmaReload);
+	}
 
 	if (theOid.range()) {
-		RangeCfg::RangesInfo res = theOwner->makeRangeSet(os, theOid, *theRepContentCfg);
+		RangeCfg::RangesInfo res = theOwner->makeRangeSet(hp, theOid, *theRepContentCfg);
 		theRangeCount = res.theCount;
 		theRangesSize = res.theTotalSize;
 	}
 
 	/* entity-header fields */
 
-	os << hfpXXact << TheGroupId << ' ' << theId << ' ' << hex << theReqFlags << dec << crlf;
+	if (hp.putHeader(hfpXXact))
+		hp << TheGroupId << ' ' << theId << ' ' << hex << theReqFlags << dec << crlf;
 
 	// send public world info
 	if (!theOid.foreignUrl()) {
 		if (const HostCfg *host = TheHostMap->at(theOid.viserv())) {
-			const PubWorld &pubWorld = *host->thePubWorld;
-			os << hfpXLocWorld << pubWorld.localSlice() << crlf;
-
-			if (const PubWorldSlice *slice = pubWorld.sliceToSync())
-				os << hfpXRemWorld << *slice << crlf;
+			const ObjUniverse &universe = *host->theUniverse;
+			if (const ObjWorld *const world = universe.localWorldToSync())
+				if (hp.putHeader(hfpXLocWorld))
+					hp << *world << crlf;
+			if (const ObjWorld *const world = universe.worldToSync())
+				if (hp.putHeader(hfpXRemWorld))
+					hp << *world << crlf;
 		}
 
-		if (theSrvRep)
-			os << hfpXTarget << theSrvRep->addr() << crlf;
+		if (theSrvRep && hp.putHeader(hfpXTarget))
+			hp << theSrvRep->addr() << crlf;
 	}
 
-	os << hfpXAbort << theAbortCoord.whether() 
+	if (hp.putHeader(hfpXAbort)) {
+		hp << theAbortCoord.whether()
 		<< ' ' << theAbortCoord.where() << crlf;
+	}
 
-	// report our readiness to change phase
-	os << hfpXPhaseSyncPos << TheStatPhaseMgr.phaseSyncPos() << crlf;
+	putPhaseSyncPos(hp, TheStatPhaseMgr.phaseSyncPos());
 
 	if (theReqContentCfg &&
 		theReqContentCfg->calcChecksumNeed(theReqOid))
-		putChecksum(*theReqContentCfg, theReqOid, os);
+		putChecksum(*theReqContentCfg, theReqOid, hp);
 
 	if (theBodyIter) {
-		theBodyIter->putHeaders(os);
+		theBodyIter->putHeaders(hp);
 		const String &pfx(theReqContentCfg->url_pfx(theReqOid.hash()));
 		const String &ext(theReqContentCfg->url_ext(theReqOid.hash()));
-		if (pfx || ext)
-			os
-				<< hfpContDisposition << '"'
-				<< pfx << theReqOid.name() << ext
-				<< '"' << crlf;
+		if ((pfx || ext) &&
+			hp.putHeader(hfpContDisposition))
+			hp << '"' << pfx << theReqOid.name() << ext << '"' << crlf;
 	}
 
 	Assert(the100ContinueState != csDone);
 	if (the100ContinueState == csWaiting)
-		os << hfExpect100Continue;
+		hp.putHeader(hfExpect100Continue);
 
-	makeOriginAuthHdr(os);
+	makeOriginAuthHdr(hp);
 }
 
-void HttpCltXact::makeHopByHopHdrs(ostream &os) {
+void HttpCltXact::makeHopByHopHdrs(HttpPrinter &hp) {
 	/* general-header fields */
 	// persistency indication depends on HTTP version
+	// TODO: Do not send Connection with CONNECT; it is unusable/misleading
 	if (theOwner->httpVersion() <= HttpVersion(1,0)) {
 		if (theConn->reusable())
-			os << (theOwner->proxy(theOid) ? hfConnAlivePxy : hfConnAliveOrg);
+			hp.putHeader(theOwner->proxy(theOid) ? hfConnAlivePxy : hfConnAliveOrg);
 	} else {
 		if (!theConn->reusable())
-			os << (theOwner->proxy(theOid) ? hfConnClosePxy : hfConnCloseOrg);
+			hp.putHeader(theOwner->proxy(theOid) ? hfConnClosePxy : hfConnCloseOrg);
 	}
 
-	makeProxyAuthHdr(os);
+	makeProxyAuthHdr(hp);
 }
 
 void HttpCltXact::makeCookies(ostream &os) {
@@ -583,39 +635,61 @@ void HttpCltXact::makeCookies(ostream &os) {
 	}
 }
 
-void HttpCltXact::makeProxyAuthHdr(ostream &os) {
-	const HttpAuthScheme scheme(theOwner->proxyAuthScheme(theOid));
+void HttpCltXact::makeProxyAuthHdr(HttpPrinter &hp) {
+	const HttpAuthScheme scheme(theProxyAuthScheme);
 	Connection::NtlmAuth &ntlmState(theConn->theProxyNtlmState);
-	makeAuthHdr(hfpProxyAuthorization, scheme, ntlmState, os);
+	makeAuthHdr(true, hfpProxyAuthorization, scheme, ntlmState, hp);
 }
 
-void HttpCltXact::makeOriginAuthHdr(ostream &os) {
+void HttpCltXact::makeOriginAuthHdr(HttpPrinter &hp) {
 	const HttpAuthScheme scheme(theOwner->originAuthScheme(theOid));
 	Connection::NtlmAuth &ntlmState(theConn->theOriginNtlmState);
-	makeAuthHdr(hfpAuthorization, scheme, ntlmState, os);
+	makeAuthHdr(false, hfpAuthorization, scheme, ntlmState, hp);
 }
 
-void HttpCltXact::makeAuthHdr(const String &header, const HttpAuthScheme scheme, Connection::NtlmAuth &ntlmState, ostream &os) {
+void HttpCltXact::makeAuthHdr(const bool proxyAuth, const String &header,
+	const HttpAuthScheme scheme, Connection::NtlmAuth &ntlmState,
+	HttpPrinter &hp) {
 	theOid.authCred(false);
 	switch (ntlmState.state) {
 		case ntlmNone: { // Initiating auth
 			if (scheme == authNtlm) {
-				makeAuthorization(header, scheme, os);
-				NtlmAuthPrintT1(os);
-				os << crlf;
+				if (!makeAuthorization(header, scheme, hp))
+					throw errAuthHeaderClash;
+				NtlmAuthPrintT1(hp);
+				hp << crlf;
 				ntlmState.state = ntlmSentT1;
 			} else
 			if (scheme == authNegotiate) {
-				makeAuthorization(header, scheme, os);
-				NegoNtlmAuthPrintT1(os, ntlmState.useSpnegoNtlm);
-				os << crlf;
-				ntlmState.state = ntlmSentT1;
+				// TODO: support Kerberos auth for origin servers
+				if (!proxyAuth)
+					throw errNegotiateOrigin;
+
+				if (!makeAuthorization(header, scheme, hp))
+					throw errAuthHeaderClash;
+
+				if (theOwner->usingKerberos()) {
+					if (gssContext(ntlmState))
+						gssContext(ntlmState).printToken(hp);
+					else {
+						if (ReportError(errKerberosCtxState)) {
+							Comment << "robot " << theOwner->id() <<
+								": invalid Kerberos context" << endc;
+						}
+						throw errOther;
+					}
+				} else {
+					NegoNtlmAuthPrintT1(hp, ntlmState.useSpnegoNtlm);
+					ntlmState.state = ntlmSentT1;
+				}
+				hp << crlf;
 			} else
 			if (scheme == authBasic) {
-				if (theOwner->credentialsFor(theOid, theCred)) {
-					makeAuthorization(header, scheme, os);
-					PrintBase64(os, theCred.image().data(), theCred.image().len());
-					os << crlf;
+				if (genCredentials()) {
+					if (!makeAuthorization(header, scheme, hp))
+						throw errAuthHeaderClash;
+					PrintBase64(hp, theCred.image().data(), theCred.image().len());
+					hp << crlf;
 				}
 			} else {
 				Should(scheme == authNone);
@@ -624,21 +698,20 @@ void HttpCltXact::makeAuthHdr(const String &header, const HttpAuthScheme scheme,
 			break;
 		}
 		case ntlmSentT1: {
-			if (theOwner->credentialsFor(theOid, theCred)) {
-				Area aUser = theCred.name();
-				String sUser(aUser.data(), aUser.size());
-				Area aPass = theCred.password();
-				String sPass(aPass.data(), aPass.size());
-				makeAuthorization(header, scheme, os);
-				if (NegoNtlmAuthPrintT3(os,
+			if (genCredentials()) {
+				if (!makeAuthorization(header, scheme, hp))
+					throw errAuthHeaderClash;
+				const Area user = theCred.name();
+				const Area pass = theCred.password();
+				if (NegoNtlmAuthPrintT3(hp,
 					ntlmState.hdrRcvdT2.cstr(),
-					sUser.cstr(),
-					sPass.cstr(),
+					String(user).cstr(),
+					String(pass).cstr(),
 					ntlmState.useSpnegoNtlm)) {
-					os << crlf;
+					hp << crlf;
 					ntlmState.state = ntlmSentT3;
 				} else {
-					os << crlf;
+					hp << crlf;
 					ntlmState.state = ntlmError;
 				}
 			} else {
@@ -658,18 +731,21 @@ void HttpCltXact::makeAuthHdr(const String &header, const HttpAuthScheme scheme,
 	}
 }
 
-void HttpCltXact::makeAuthorization(const String &header, const HttpAuthScheme scheme, ostream &os) {
-	os << header;
+bool HttpCltXact::makeAuthorization(const String &header, const HttpAuthScheme scheme, HttpPrinter &hp) {
+	if (!hp.putHeader(header))
+		return false;
+
 	switch (scheme) {
 		case authNtlm:
-			os << "NTLM ";
+			hp << "NTLM ";
 			break;
 		case authNegotiate:
-			os << "Negotiate ";
+			hp << "Negotiate ";
 			break;
 		default:
-			os << "Basic ";
+			hp << "Basic ";
 	}
+	return true;
 }
 
 Error HttpCltXact::interpretHeader() {
@@ -688,28 +764,35 @@ Error HttpCltXact::interpretHeader() {
 			return errUnsupportedControlMsg;
 	}
 
-	if (theOid.connect() && theRepHdr.theStatus == RepHdr::sc200_OK) {
-		theRepSize.expect(theRepHdr.theHdrSize);
-		theActualRepType = TheBodilessContentId;
-		return 0;
-	}
-
 	if (const Error err = setStatusCode(theRepHdr.theStatus))
 		return err;
+
+	if (theRepHdr.theStatus < 400) { // 200..399
+		if (proxyStatAuth() != AuthPhaseStat::sNone ||
+			theOwner->originAuthScheme(theOid) != authNone)
+			theOwner->noteAuthed();
+	}
 
 	if (theSrvRep) // TODO: why is this done here and not earlier or later?
 		theSrvRep->noteRequest();
 
+	if ((theOid.connect() && theRepHdr.theStatus == RepHdr::sc200_OK))
+		theActualRepType = TheBodilessContentId;
+	else if (!theRepHdr.expectBody())
+		theActualRepType = TheBodilessContentId;
+	else if (theOid.head())
+		theActualRepType = TheBodilessContentId;
+	else if (theRepHdr.theStatus == RepHdr::sc200_OK)
+		theActualRepType = theOid.type();
+	else
+		theActualRepType = TheUnknownContentId;
+
 	// check content-length, set RepSize if possible
 	if (theRepHdr.expectBody()) {
-		if (theOid.head()) {
-			theActualRepType = TheBodilessContentId;
+		if ((theOid.connect() && theRepHdr.theStatus == RepHdr::sc200_OK) ||
+			theOid.head()) {
 			theRepSize.expect(theRepHdr.theHdrSize);
 		} else {
-			if (theRepHdr.theStatus == RepHdr::sc200_OK)
-				theActualRepType = theOid.type();
-			else
-				theActualRepType = TheUnknownContentId;
 			theRepSize.expectedBody(true);
 			if (theRepHdr.theTransferEncoding == MsgHdr::tcChunked) {
 				if (theRepHdr.theContSize >= 0) // MUST ignore
@@ -723,7 +806,6 @@ Error HttpCltXact::interpretHeader() {
 				return errPersistButNoCLen;
 		}
 	} else {
-		theActualRepType = TheBodilessContentId;
 		if (theRepHdr.theContSize >= 0)
 			return errUnexpectedCLen;
 		theRepSize.expect(theRepHdr.theHdrSize);
@@ -770,7 +852,7 @@ Error HttpCltXact::interpretHeader() {
 	// server's reply reached us
 	const bool firstHand = id().myMutant(theRepHdr.theXactId);
 
-	theOid.cachable(theRepHdr.isCachable);
+	theOid.cachable(!theOid.connect() && theRepHdr.isCachable);
 	theOid.hit(!firstHand && theRepHdr.theXactId && theOid.basic());
 
 	if (theOid.hit()) {
@@ -801,7 +883,7 @@ Error HttpCltXact::interpretHeader() {
 	checkFreshness();
 
 	// note if the server will close the connection
-	if (!theRepHdr.persistentConnection()) {
+	if (!theOid.connect() && !theRepHdr.persistentConnection()) {
 		theConn->lastUse(true);
 		theMgr->noteLastXaction(this);
 	}
@@ -865,41 +947,44 @@ void HttpCltXact::saveRepHeader() {
 void HttpCltXact::firstHandSync() {
 	// update public world info
 	if (theRepHdr.theRemWorld)
-		updatePubWorld(theRepHdr.theRemWorld);
+		updateUniverse(theRepHdr.theRemWorld);
 
 	if (theSrvRep)
 		theSrvRep->noteFirstHandResponse();
 
-	// sync phases
-	if (theRepHdr.thePhaseSyncPos >= 0 && theRepHdr.theGroupId)
-		TheStatPhaseSync.notePhaseSync(theRepHdr.theGroupId, theRepHdr.thePhaseSyncPos);
+	doPhaseSync(theRepHdr);
 }
 
 Error HttpCltXact::doForbidden() {
 	Error err;
 	if (theOwner->hasCredentials()) {
-		if (theCred.image()) { // authed
-			if (theCred.valid())
+		if (theCred.image()) { // sent credentials
+			if (theCred.valid()) // expected successful auth
 				err = errForbiddenAfterAuth;
 		} else
-		if (theAuthXact) // authing
+		if (theProxyAuthScheme != authNone ||
+			theOwner->originAuthScheme(theOid) != authNone) {
+			// started proxy or origin auth
 			err = errForbiddenDuringAuth;
-		else
+		} else
 			err = errForbiddenBeforeAuth;
 	} else
 		err = errForbiddenWoutCreds;
+	checkAuthEnd(true /* XXX: should not matter */, false, err);
 	return err;
 }
 
 Error HttpCltXact::doProxyAuth() {
 	const bool needed(theHttpStatus == RepHdr::sc407_ProxyAuthRequired);
 	Connection::NtlmAuth &ntlmState(theConn->theProxyNtlmState);
-	const Error err(doAuth(true, needed, ntlmState));
+	Gss::Error gssErr;
+	Error err = doAuth(true, needed, ntlmState, gssErr);
 	if (err && ReportError(err)) {
-		Comment << "robot: " << theOwner->host()
-			<< " credentials: " << theCred.image()
-			<< " proxy: " << theOwner->proxy(theOid) << endc;
+		reportAuthError(aupProxy, "while processing proxy response", gssErr, &ntlmState);
+		err = errOther;
 	}
+
+	checkAuthEnd(true, needed, err);
 	return err;
 }
 
@@ -909,21 +994,51 @@ Error HttpCltXact::doOriginAuth() {
 	if (theHttpStatus != RepHdr::sc407_ProxyAuthRequired) {
 		const bool needed(theHttpStatus == RepHdr::sc401_Unauthorized);
 		Connection::NtlmAuth &ntlmState(theConn->theOriginNtlmState);
-		err = doAuth(false, needed, ntlmState);
+		Gss::Error gssErr;
+		err = doAuth(false, needed, ntlmState, gssErr);
 		if (err && ReportError(err)) {
-			Comment << "robot: " << theOwner->host()
-				<< " credentials: " << theCred.image()
-				<< " origin: " << Oid2UrlHost(theOid) << endc;
+			reportAuthError(aupOrigin, "while processing origin server response", gssErr, &ntlmState);
+			err = errOther;
 		}
+		checkAuthEnd(false, needed, err);
 	}
 	return err;
+}
+
+void HttpCltXact::reportAuthError(const AuthPeer peer, const char *context, const Gss::Error gssErr, const Connection::NtlmAuth *ntlmState) {
+	startReportingAuthError(context, gssErr, ntlmState);
+
+	static std::map<HttpAuthScheme, String> stateScheme;
+	if (stateScheme.empty()) {
+		stateScheme[authBasic] = "Basic";
+		stateScheme[authNtlm] = "NTLM";
+		stateScheme[authNegotiate] = "Negotiate";
+		stateScheme[authFtp] = "FTP";
+	}
+
+	if (peer != aupUnknown) {
+		Comment << "\tauthentication peer: " <<
+			(peer >= aupProxy ? "proxy" : "origin server") << endl;
+	}
+	if (theRepHdr.theProxyAuthenticate.scheme != authNone)
+		Comment << "\treceived proxy authentication scheme: " << stateScheme[theRepHdr.theProxyAuthenticate.scheme] << endl;
+	const HttpAuthScheme proxyAuthSchemeExpected = theOwner->proxyAuthSchemeNow(theOid);
+	if (proxyAuthSchemeExpected != authNone &&
+		proxyAuthSchemeExpected != theRepHdr.theProxyAuthenticate.scheme)
+		Comment << "\texpected proxy authentication scheme: " << stateScheme[proxyAuthSchemeExpected] << endl;
+
+	if (theRepHdr.theOriginAuthenticate.scheme != authNone)
+		Comment << "\treceived oringin authentication scheme: " << stateScheme[theRepHdr.theOriginAuthenticate.scheme] << endl;
+
+	Comment << endc;
 }
 
 // For fresh connection auth scheme is determined by proxy response headers.
 // If NTLM or Negotiate auth is started for a connection it never changes later.
 // If a proxy changes auth scheme, all compound auth xactions that have not yet
 // finished authenticating will fail. Other xactions will not be affected.
-Error HttpCltXact::doAuth(const bool proxyAuth, const bool needed, Connection::NtlmAuth &ntlmState) {
+Error HttpCltXact::doAuth(const bool proxyAuth, const bool needed,
+	Connection::NtlmAuth &ntlmState, Gss::Error &gssErr) {
 	Error authError;
 
 	if (needed) { // denied
@@ -940,29 +1055,43 @@ Error HttpCltXact::doAuth(const bool proxyAuth, const bool needed, Connection::N
 					// sent nothing, proxy should signal disconnect, 
 					// NTLM authentication will resume once we reconnect
 					doRetry = true;
-					authError = startAuth(authNtlm);
+					authError = startAuth(proxyAuth, authNtlm);
 				} else
 				if (challenge.scheme == authNegotiate) {
-					ntlmState.useSpnegoNtlm = isSpnegoNtlm(challenge.params.cstr());
-					if (ntlmState.useSpnegoNtlm && theOwner->cfg()->theSpnegoAuthRatio >= 0) {
-					     static RndGen rng;
-					     ntlmState.useSpnegoNtlm = rng.event(theOwner->cfg()->theSpnegoAuthRatio);
+					if (theOwner->usingKerberos()) {
+						if (proxyAuth && gssContext(ntlmState)) {
+							if (!challenge.params || (gssErr =
+								gssContext(ntlmState).process(challenge.params))) {
+								ntlmState.state = ntlmError;
+								authError = errKerberosAuthFailed;
+								theOwner->noteKerberosFailure();
+								break;
+							}
+						} else
+							authError = startAuth(proxyAuth, authNegotiate);
+						doRetry = true;
+					} else {
+						ntlmState.useSpnegoNtlm = isSpnegoNtlm(challenge.params.cstr());
+						if (ntlmState.useSpnegoNtlm && theOwner->cfg()->theSpnegoAuthRatio >= 0) {
+							static RndGen rng;
+							ntlmState.useSpnegoNtlm = rng.event(theOwner->cfg()->theSpnegoAuthRatio);
+						}
+
+						// According to rfc4559 spnego-based negotiate auth is not supposed
+						// to be used by proxies (but can be passed transparently to servers),
+						// so we can't really say whether we need to retry here or what. Need
+						// to test on available clients and proxies.
+						doRetry = ntlmState.useSpnegoNtlm;
+
+						// sent nothing, in case of NTLMSSP proxy should signal disconnect,
+						// Negotiate authentication will resume once we reconnect
+						authError = startAuth(proxyAuth, authNegotiate);
 					}
-					
-					// According to rfc4559 spnego-based negotiate auth is not supposed
-					// to be used by proxies (but can be passed transparently to servers),
-					// so we can't really say whether we need to retry here or what. Need
-					// to test on available clients and proxies.
-					doRetry = ntlmState.useSpnegoNtlm;
-					
-					// sent nothing, in case of NTLMSSP proxy should signal disconnect, 
-					// Negotiate authentication will resume once we reconnect
-					authError = startAuth(authNegotiate);
 				} else
 				if (!theCred.image()) {
 					// sent nothing, Basic auth
 					doRetry = true;
-					authError = startAuth(authBasic);
+					authError = startAuth(proxyAuth, authBasic);
 				} else
 				if (theCred.valid()) { // sent valid Basic auth
 					authError = proxyAuth ? errProxyAuthAfterAuth : errOriginAuthAfterAuth;
@@ -971,6 +1100,11 @@ Error HttpCltXact::doAuth(const bool proxyAuth, const bool needed, Connection::N
 				break;
 			}
 			case ntlmSentT1: {
+				// If scheme was cached by Client, T1 header is
+				// sent without receiving preceding 401 or 407
+				// reply and theCompound may not be created yet.
+				if (!theCompound || theCompound->proxyAuthState == CompoundXactInfo::opNone)
+					authError = startAuth(proxyAuth, challenge.scheme);
 				ntlmState.hdrRcvdT2 = challenge.params;
 				doRetry = true; // continue processing in HopByHops
 				break;
@@ -988,9 +1122,12 @@ Error HttpCltXact::doAuth(const bool proxyAuth, const bool needed, Connection::N
 	} else { // allowed
 		switch (ntlmState.state) {
 			case ntlmNone: {
-				// succeeded at Basic Auth
-				if (theCred.image() && !theCred.valid()) { // sent invalid
+				// succeeded at Basic or Kerberos auth
+				if (theCred.image() && !theCred.valid()) // sent invalid
 					authError = proxyAuth ? errProxyAuthAllowed : errOriginAuthAllowed;
+				if (proxyAuth && theProxyAuthScheme == authNegotiate) {
+					ntlmState.state = ntlmDone;
+					gssContext(ntlmState).free();
 				}
 				break;
 			}
@@ -1012,17 +1149,36 @@ Error HttpCltXact::doAuth(const bool proxyAuth, const bool needed, Connection::N
 	return authError;
 }
 
-Error HttpCltXact::startAuth(const HttpAuthScheme scheme) {
-	if (theAuthXact)
-		return errAuthBug;
-
-	theAuthXact = CompoundXactInfo::Create();
-	theAuthXact->startTime = theStartTime;
-	if (theHttpStatus == RepHdr::sc401_Unauthorized)
-		theOwner->noteOriginAuthReq(this, scheme);
-	else
+Error HttpCltXact::startAuth(const bool proxyAuth, const HttpAuthScheme scheme) {
+	if (proxyAuth) {
 		theOwner->noteProxyAuthReq(this, scheme);
+		theProxyAuthScheme = scheme; // for proxyStatAuth() below to work
+		if (theCompound && theCompound->proxyAuthState != CompoundXactInfo::opNone)
+			return errAuthBug;
+		if (!theCompound)
+			createCompound();
+		theCompound->proxyAuthState = CompoundXactInfo::opIng;
+		theCompound->proxyStatAuth = proxyStatAuth();
+	} else {
+		// Currently, we do not record origin auth stats, so
+		// we do not need a compound transaction for it.
+		theOwner->noteOriginAuthReq(this, scheme);
+	}
 	return 0;
+}
+
+void HttpCltXact::checkAuthEnd(const bool proxyAuth, const bool needed, const Error &err) {
+	if (proxyAuth) {
+		if (needed && !err)
+			return; // we are not done yet
+
+		if (theCompound	&& theCompound->proxyAuthState == CompoundXactInfo::opIng)
+			theCompound->proxyAuthState = CompoundXactInfo::opDone;
+		// theCompound->proxyStatAuth is set on auth start
+	} else {
+		// Currently, we do not record origin auth stats, so
+		// we do not need a compound transaction for it.
+	}
 }
 
 Error HttpCltXact::handleAuth() {
@@ -1080,6 +1236,10 @@ BodyParser *HttpCltXact::selectBodyParser() {
 BodyParser *HttpCltXact::selectContentParser() {
 	// do not parse if we are not going to request embedded objects
 	if (theOwner->cfg()->theEmbedRecurRatio <= 0)
+		return AnyBodyParser::GetOne(this);
+
+	// do not parse if we are authenticating (TODO: except when auth failed)
+	if (authing())
 		return AnyBodyParser::GetOne(this);
 
 	// parse if content is markup
@@ -1221,6 +1381,14 @@ void HttpCltXact::dumpMatchingGroupNames(ostream &os, const MembershipMap *map) 
 		if (count)
 			os << ", ";
 		os << *i;
+	}
+}
+
+void HttpCltXact::createCompound() {
+	if (ShouldUs(!theCompound)) {
+		theCompound = CompoundXactInfo::Create(logCat());
+		theCompound->startTime = ShouldUs(theConn) ? theConn->useStart() : TheClock;
+		createdCompound = true;
 	}
 }
 
@@ -1434,4 +1602,15 @@ int HttpCltXact::cookiesSent() const {
 
 int HttpCltXact::cookiesRecv() const {
 	return theRepHdr.theCookieCount;
+}
+
+AuthPhaseStat::Scheme HttpCltXact::proxyStatAuth() const {
+	if (theProxyAuthScheme != authNegotiate)
+		return static_cast<AuthPhaseStat::Scheme>(theProxyAuthScheme);
+
+	// When HTTP Negotiate was used, we were doing pure Negotiate or Kerberos.
+	// Here, we assume that all Negotiate authentication is done using Kerberos
+	// tokens if Kerberos support is enabled in Client.
+	return theOwner->usingKerberos() ?
+		AuthPhaseStat::sKerberos : AuthPhaseStat::sNegotiate;
 }

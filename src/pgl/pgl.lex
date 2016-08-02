@@ -86,8 +86,11 @@ NUM_PERC_TOKEN = (inum | fpnum) $% .
 BOOL_FALSE_TOKEN = "no" | "false" | "off" .
 BOOL_TRUE_TOKEN = "yes" | "true" | "on" .
 
-TIME_TOKEN = timeScales | [inum | fpnum] timeScales2 .
-SIZE_TOKEN = sizeScales | [inum | fpnum] sizeScales .
+TIME_SCALE_TOKEN = timeScales .
+TIME_TOKEN = [inum | fpnum] timeScales2 .
+
+SIZE_SCALE_TOKEN = sizeScales .
+SIZE_TOKEN = [inum | fpnum] sizeScales .
 
 // keywords must preceed IDentifiers
 kw_if_TOKEN = "if" .

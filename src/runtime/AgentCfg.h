@@ -12,7 +12,9 @@
 class RndDistr;
 class AgentSym;
 class SslWrap;
+class MimeHeadersCfg;
 class StringSym;
+class XactAbortCoord;
 
 // agent configuration items that can be shared among multiple agents
 class AgentCfg {
@@ -25,13 +27,17 @@ class AgentCfg {
 		int selectHttpVersion();
 		bool selectSslWrap(const SslWrap *&wrap);
 		bool selectCookieSenderStatus();
+		void selectAbortCoord(XactAbortCoord &coord);
 
 		bool inCustomStatsScope(const int httpStatus) const;
+
+		const MimeHeadersCfg *httpHeaders() const { return theHttpHeaders; }
 
 	protected:
 		void configureCustomStatsScope(const AgentSym *const agent);
 		void configureSslWraps(const AgentSym *agent);
 		void configureHttpVersions(const AgentSym *agent);
+		void configureHttpHeaders(const AgentSym *agent);
 		void setCustomStatsScope(int value, const int range);
 
 		static const char *ParseCustomStatsScopeValue(const String &str, int &value, int &xCount);
@@ -45,7 +51,9 @@ class AgentCfg {
 		Array<SslWrap*> theSslWraps;   // local entries from TheSslWraps
 		RndDistr *theSslWrapSel;       // selects an SSL wrapper
 		RndDistr *theHttpVersionSel;   // selects HTTP version
+		MimeHeadersCfg *theHttpHeaders; // user-configured HTTP headers
 		double theCookieSenderProb;    // probability of sending cookies
+		double theAbortProb;           // prob of aborting a transaction
 };
 
 #endif

@@ -15,7 +15,8 @@ class TransFactor {
 	public:
 		TransFactor(const StatPhase *aPhase, const String &aName);
 
-		void configure(double beg, double end, const TransFactor *prev);
+		void configure(const double beg, const double end, const bool isFirst);
+		void noteStart(const TransFactor *const prev);
 
 		double beg() const { return theBeg; }
 		double end() const { return theEnd; }
@@ -26,6 +27,8 @@ class TransFactor {
 
 		void changeBy(double delta);
 		void setTo(double level);
+
+		void reportCfg(ostream &os) const;
 
 	protected:
 		const GoalRec &goal() const;

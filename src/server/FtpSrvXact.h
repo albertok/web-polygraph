@@ -72,7 +72,7 @@ class FtpSrvXact: public SrvXact {
 			disListening, // listening
 			disConnecting, // connecting
 			disWait, // waiting for RETR to start writing
-			disBusy, // writing
+			disBusy // writing
 		};
 		DataXferState theDataXferState;
 		DataIoState theDataIoState;

@@ -29,8 +29,8 @@ const NetAddr &ViservIterator::addr() const {
 	return host()->theAddr;
 }
 
-PubWorld *ViservIterator::pubWorld() const {
-	return host()->thePubWorld;
+ObjUniverse *ViservIterator::universe() const {
+	return host()->theUniverse;
 }
 
 ViservIterator &ViservIterator::operator ++() {
@@ -46,7 +46,7 @@ void ViservIterator::next() {
 void ViservIterator::sync() {
 	for (; !atEnd(); ++theIdx) {
 		HostCfg *host = TheHostMap->at(theIdx);
-		if (host && host->thePubWorld)
+		if (host && host->theUniverse)
 			return;
 	}	
 }

@@ -12,63 +12,85 @@
 #include "xstd/gadgets.h"
 #include "xstd/Rnd.h"
 
-// RND_MAX is INT_MAX if sizeof(int) is 4
-#define RND_MAX 0x7fffffff
+RndGen::Seed RndGen::TheDefSeed = 0;
 
-RndGen::State RndGen::TheDefSeed = 1;
+void RndGen::DefSeed(const Seed aSeed) {
+	Must(aSeed >= 0);
+	TheDefSeed = aSeed;
+}
 
-// a negative seed will be set (to the default value) before first use
-// see trial();
-RndGen::RndGen(State aSeed): theSeed(aSeed), theState(aSeed) {
+RndGen::RndGen(const Seed aSeed) {
 	if (aSeed >= 0)
 		seed(aSeed);
 	else
 		seed(TheDefSeed);
 }
 
-void RndGen::seed(State aSeed) {
+void RndGen::seed(const Seed aSeed) {
 	Assert(aSeed >= 0);
-	theSeed = aSeed;
-	theState = initState(aSeed);
+	// Zero seed is valid, but the first trial would return zero.
+	// Avoid this correlation.  Using int_max/2 is slightly better
+	// than 1: If you are testing rng and trying each seed one by
+	// one, seeds 0 and 1 will not produce the same results.
+	theSeed = aSeed > 0 ? aSeed : (numeric_limits<uint32_t>::max() / 2 | 1);
+
+	// Seed is 64bit, but they usually come from permutators that
+	// use 32bit seeds, so initialize 16-32 bits in the state with
+	// 8-24 bits from the seed.
+	// TODO: use 64bit integers in permutators?
+	theState.s0 = theSeed & 0xFFFF;
+	theState.s1 = (theSeed >> 8) & 0xFFFF;
+	theState.s2 = (theSeed >> 16) & 0xFFFF;
 }
 
-RndGen::State RndGen::initState(State aSeed) const {
-	return aSeed ? aSeed : (RND_MAX/2 | 1);
+RndGen::Seed RndGen::state() const {
+	return (static_cast<Seed>(theState.s2) << 32) |
+		(static_cast<Seed>(theState.s1) << 16) |
+		theState.s0;
 }
 
-RndGen::State RndGen::state() const {
-	return theSeed < 0 ? initState(TheDefSeed) : theState;
+void RndGen::state(const Seed aSeed) {
+	theState.s0 = aSeed & 0xFFFF;
+	theState.s1 = (aSeed >> 16) & 0xFFFF;
+	theState.s2 = (aSeed >> 32) & 0xFFFF;
 }
 
-void RndGen::state(State aState) {
-	Assert(aState); // can be negative
-	theState = aState;
-}
-
-// uniform on [0, 2^31)
-RndGen::State RndGen::ltrial() {
-	// set initial seed to default if still undefined
-	if (theSeed < 0)
-		seed(TheDefSeed);
-
-	// one can never get out of zero state
-	Assert(theState);
-
+uint32_t RndGen::trial32u() {
 	/*
-	 * Compute x[n + 1] = (7^5 * x[n]) mod (2^31 - 1).
-	 * From "Random number generators: good ones are hard to find",
-	 * Park and Miller, Communications of the ACM, vol. 31, no. 10,
-	 * October 1988, p. 1195.
+	 * Linear congruential generator:
 	 *
-	 * note: (2^31 - 1) == 127773 * (7^5) + 2836
+	 *   x[n + 1] = (a * x[n] + c) mod m
+	 *
+	 * Where:
+	 *
+	 *   m = 2^48 = 281474976710656
+	 *   a = 25214903917 = 0x5DEECE66D
+	 *   c = 11 = 0xB
+	 *
+	 * Aka the Unix rand48() generator.
 	 */
-	const int h = theState;
-	const int hi = h / 127773;
-	const int lo = h % 127773;
-	const int x = 16807 * lo - 2836 * hi;
+	const uint16_t a0 = 0xE66D;
+	const uint16_t a1 = 0xDEEC;
+	const uint16_t a2 = 0x5;
+	const uint16_t c = 0xB;
 
-	theState = x ? x : RND_MAX;
-	return x < 0 ? x + RND_MAX : x;
+	State newState;
+	uint32_t x = theState.s0 * a0 + c;
+	newState.s0 = x & 0xFFFF;
+	x >>= 16;
+
+	// may overflow, but we do not care about bits above 32
+	x += theState.s0 * a1 + theState.s1 * a0;
+	newState.s1 = x & 0xFFFF;
+	x >>= 16;
+
+	x += theState.s0 * a2 + theState.s1 * a1 + theState.s2 * a0;
+	newState.s2 = x & 0xFFFF;
+
+	theState = newState;
+
+	// take 32 higher bits because they have better randomness
+	return (theState.s2 << 16) | theState.s1;
 }
 
 

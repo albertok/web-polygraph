@@ -3,6 +3,7 @@
  * Copyright 2003-2011 The Measurement Factory
  * Licensed under the Apache License, Version 2.0 */
 
+#include "base/polygraph.h"
 #include "pgl/pgl.h"
 
 #include "xstd/String.h"
@@ -68,7 +69,6 @@ SynSymTblItem **StatSampleSym::memberItem(const String &name) {
 	static const String nameHead = "head.";
 	static const String namePost = "post.";
 	static const String namePut = "put.";
-	static const String nameConnect = "connect.";
 	static const String nameAbort = "abort.";
 	static const String nameXact = "xact.";
 	static const String namePopulus = "populus.";
@@ -82,6 +82,9 @@ SynSymTblItem **StatSampleSym::memberItem(const String &name) {
 	static const String nameSocks = "socks.";
 	static const String nameSsl = "ssl.";
 	static const String nameFtp = "ftp.";
+	static const String nameConnect = "connect.";
+	static const String nameAuthenticating = "authenticating.";
+	static const String nameBaselineRptm = "baseline.rptm.";
 	static const String namePage = "page.";
 	static const String nameOkXactCount = "ok_xact.count";
 	static const String nameErrXactRatio = "err_xact.ratio";
@@ -101,11 +104,11 @@ SynSymTblItem **StatSampleSym::memberItem(const String &name) {
 	const char *key = name.cstr();
 	const char *subKey = 0;
 
-	if (!s && name == "req.rate")
+	if (!s && name == "baseline.req.rate")
 		s = new NumSym(theRec.reqRate());
 
-	if (!s && name == "rep.rate")
-		s = new NumSym(theRec.reqRate());
+	if (!s && name == "baseline.rep.rate")
+		s = new NumSym(theRec.repRate());
 
 	if (!s && memberMatch(nameAllResponses, key, &subKey))
 		s = memberTmSz(subKey, theRec.reps());
@@ -152,9 +155,6 @@ SynSymTblItem **StatSampleSym::memberItem(const String &name) {
 	if (!s && memberMatch(namePut, key, &subKey))
 		s = memberTmSz(subKey, theRec.thePut);
 
-	if (!s && memberMatch(nameConnect, key, &subKey))
-		s = memberTmSz(subKey, theRec.theConnect);
-
 	if (!s && memberMatch(nameAbort, key, &subKey))
 		s = memberTmSz(subKey, theRec.theAbort);
 
@@ -198,6 +198,16 @@ SynSymTblItem **StatSampleSym::memberItem(const String &name) {
 
 	if (!s && memberMatch(nameFtp, key, &subKey))
 		s = memberProto(subKey, theRec.theFtpStat);
+
+	if (!s && memberMatch(nameConnect, key, &subKey))
+		s = memberProto(subKey, theRec.theConnectStat);
+
+	if (!s && memberMatch(nameAuthenticating, key, &subKey))
+		s = memberProto(subKey, theRec.theAuthingStat);
+
+	// TODO: Add access to other baseline details.
+	if (!s && memberMatch(nameBaselineRptm, key, &subKey))
+		s = memberAggr(subKey, theRec.theBaseline.duration.stats(), TimeSym::TheType);
 
 	if (!s && memberMatch(nameOkXactCount, key, &subKey))
 		s = new NumSym(theRec.theXactCnt);
@@ -243,6 +253,8 @@ SynSymTblItem **StatSampleSym::memberItem(const String &name) {
 
 	if (!s && memberMatch(nameCustomProjectedReps, key, &subKey))
 		s = memberTmSz(subKey, theRec.customProjectedReps());
+
+	// TODO: Add access to preliminary stats when we have them
 
 	if (!s)
 		return 0;

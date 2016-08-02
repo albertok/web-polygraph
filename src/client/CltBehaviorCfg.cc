@@ -17,6 +17,8 @@ void CltBehaviorCfg::configure(const ClientBehaviorSym *const aCltBehaviorSym) {
 	Assert(!theRobot && aCltBehaviorSym);
 	theRobot = aCltBehaviorSym;
 
+	theRobot->recurRatio(theRecurRatio);
+	configurePopModel();
 	configureReqTypes();
 	configureReqMethods();
 	configureRanges();

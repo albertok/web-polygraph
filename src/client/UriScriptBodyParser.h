@@ -37,7 +37,7 @@ class UriScriptBodyParser: public BodyParser {
 
 		void parseOpen(const ParseBuffer &buf);
 		void parseClose(const ParseBuffer &buf);
-		void parseBody(const ParseBuffer &buf);
+		void parseBody();
 		Size parseAny(const ParseBuffer &buf);
 
 		void parseVars();

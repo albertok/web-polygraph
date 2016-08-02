@@ -12,8 +12,7 @@
 class StatsSampleSym;
 class StatsSampleCfg;
 
-// schedules an initiates sampling
-
+// schedules and initiates sampling
 class StatsSampleMgr: public AlarmUser {
 	public:
 		StatsSampleMgr();
@@ -37,6 +36,7 @@ class StatsSampleMgr: public AlarmUser {
 		Array<StatsSampleCfg*> theCfgs;
 		int theStartCnt;     // how many samples were started
 		int thePendCfgCnt;   // how many cfgs will be addeded
+		bool didStart; // start() has been called already
 };
 
 extern StatsSampleMgr TheStatsSampleMgr;

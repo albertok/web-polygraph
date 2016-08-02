@@ -51,6 +51,7 @@ class SslCtx {
 		~SslCtx();
 
 		static bool IsProtocolSupported(const int protocol);
+		static bool IsCompressionConfigurable();
 
 		bool useCertificateChainFile(const String &fname);
 		bool usePrivateKeyFile(const String &fname);
@@ -58,6 +59,7 @@ class SslCtx {
 		void setDefaultPasswdCb(pem_password_cb *cb);
 		bool loadVerifyLocations(const String &fname, const String &dirName);
 		void setVerify(int mode) const;
+		bool disableCompression();
 
 		long sessionCacheMode(long mode);
 		long sessionCacheSize(long count);
@@ -86,6 +88,7 @@ class Ssl {
 		~Ssl();
 
 		bool setFd(int);
+		bool setBIO(Ssl *ssl);
 		void playRole(int role);
 		void playClientRole();
 		void playServerRole();
@@ -113,8 +116,8 @@ class Ssl {
 		bool addMode(long mode);
 
 	private:
-		Ssl(const Ssl &anSsl); // disable copying
-		Ssl &operator =(const Ssl &anSsl);
+		Ssl(const Ssl &anSsl); // not implemented
+		Ssl &operator =(const Ssl &anSsl); // not implemented
 
 	private:
 		static int TheLevel;

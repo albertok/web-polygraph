@@ -25,6 +25,7 @@ class Histogram: public LogObj {
 	public:
 		Histogram();
 		Histogram(Val aMin, Val aMax, int binCount);
+		Histogram(const Histogram &h);
 		virtual ~Histogram() {}
 
 		void limits(Val aMin, Val aMax, int binCount);
@@ -38,13 +39,14 @@ class Histogram: public LogObj {
 		virtual void add(const Histogram &h);
 		Histogram &operator +=(const Histogram &h);
 
+		bool sane() const { return stats().sane(); }
 		bool known() const { return stats().known(); }
 		const AggrStat &stats() const { return theStats; }
 
 		// extreme bins' counters
 		bool extreme(int bin) const { return !bin || bin == theBinMax; }
-		int underCount() const { return theBins[0]; }
-		int overCount() const { return theBins[theBinMax]; }
+		Counter underCount() const { return theBins[0]; }
+		Counter overCount() const { return theBins[theBinMax]; }
 
 		ostream &print(ostream &os, const String &pfx) const;
 		void report(double step, ostream &os) const;
@@ -55,13 +57,10 @@ class Histogram: public LogObj {
 		virtual Val bin2Val(int b) const = 0; // does not offset value
 
 		Val extract(int b) const { return bin2Val(b-1) + theValMin; }
-		int count(int b) const { return theBins[b]; }
-
-	private:
-		Histogram(const Histogram &) {}
+		Counter count(const int b) const { return theBins[b]; }
 
 	protected:
-		Array<int> theBins; // counters are stored here
+		Array<Counter> theBins; // counters are stored here
 		AggrStat theStats;
 		Val theValMin;
 		Val theValMax;
@@ -73,7 +72,7 @@ class Histogram: public LogObj {
 class HistogramBin {
 	public:
 		HistogramBin() { reset(); }
-		void reset() { idx = count = accCount = 0; min = sup = -1; }
+		void reset() { count = accCount = idx = 0; min = sup = -1; }
 
 		HistogramBin &operator +=(const HistogramBin &b);
 
@@ -81,8 +80,8 @@ class HistogramBin {
 		Histogram::Val min;
 		Histogram::Val sup; // max+1
 		int idx;
-		int count;
-		int accCount; // cumulative count
+		Counter count;
+		Counter accCount; // cumulative count
 };
 
 // constant iterator for a histogram

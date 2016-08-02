@@ -10,9 +10,9 @@
 
 #include "xstd/Clock.h"
 #include "xstd/gadgets.h"
+#include "runtime/ObjUniverse.h"
 #include "runtime/StatPhaseMgr.h"
 #include "runtime/StatPhase.h"
-#include "runtime/PubWorld.h"
 #include "runtime/Viservs.h"
 #include "runtime/HostMap.h"
 #include "runtime/LogComment.h"
@@ -31,17 +31,10 @@ WarmupPlan::WarmupPlan(const Array<int> &visIdx): thePlan(visIdx.count()) {
 }
 
 WarmupPlan::~WarmupPlan() {
-	TheStatPhaseMgr->unlock(StatPhase::ltWarmup);
-
-	const int visibleCnt = PubWorld::Count();
-
-	static bool didOnce = false;
-	if (!didOnce && ReadyCount() >= visibleCnt) {
-		Comment(3) << "fyi: server scan completed with all local robots"
-			<< " ready to hit all " << visibleCnt << " visible "
-			"servers" << endc;
-		didOnce = true;
-	}
+	// if Polygraph shutdowns before the warmup is complete, we
+	// may get here after the phases are deleted
+	if (*TheStatPhaseMgr)
+		TheStatPhaseMgr->unlock(StatPhase::ltWarmup);
 }
 
 int WarmupPlan::selectViserv() {
@@ -81,7 +74,7 @@ void WarmupPlan::ReportProgress() {
 	if (nextReport >= TheClock)
 		return;
 
-	const int visibleCnt = PubWorld::Count();
+	const int visibleCnt = ObjUniverse::Count();
 	const int readyCnt = ReadyCount();
 	const double readyPct = Percent(readyCnt, visibleCnt);
 

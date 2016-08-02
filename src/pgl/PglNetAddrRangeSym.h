@@ -27,7 +27,7 @@ class NetAddrRangeSym: public ContainerSym {
 
 		void range(PglNetAddrRange *aRange) { theRange = aRange; }
 
-		virtual void forEach(Visitor &v) const;
+		virtual void forEach(Visitor &v, RndGen *const rng = 0) const;
 
 		virtual ostream &print(ostream &os, const String &pfx) const;
 

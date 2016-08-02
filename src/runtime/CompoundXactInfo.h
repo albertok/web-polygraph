@@ -7,44 +7,44 @@
 #define POLYGRAPH__RUNTIME_COMPOUNDXACTINFO_H
 
 #include "base/CompoundXactStat.h"
+#include "base/AuthPhaseStat.h"
 
 class Xaction;
 
 // information shared among several transactions
 class CompoundXactInfo {
 	public:
-		static CompoundXactInfo *Create();
+		static CompoundXactInfo *Create(const int logCat);
 		static void Abandon(CompoundXactInfo *&info);
+		static void Share(CompoundXactInfo *info);
+
+		int logCat; // the logging "side" of individual transactions
+		int ccLevel; // number of alive individual transactions
 
 		Size reqSize; // accumulative size of requests
 		Size repSize; // accumulative size of responses
-		Time startTime; // when transaction started
-		Time lifeTime; // full transaction duration
-		unsigned int exchanges; // number of exchanges in transaction
+		Time startTime; // when the first individual transaction started
+		Time finishTime; // when the last individual transaction finished
+		unsigned int exchanges; // number of finished individual transactions
 
-		bool final; // true when compound transaction is completed
+		typedef enum { opNone, opIng, opDone } OpState; // operation progress
+		OpState connectState; // HTTP CONNECT progress
+		OpState proxyAuthState; // proxy authentication progress
+		AuthPhaseStat::Scheme proxyStatAuth; // authentication state
 
-		inline void record(CompoundXactStat &s) const;
+		// not expecting any new individual transactions
+		bool completed() const { return connectState != opIng && proxyAuthState != opIng; }
+
+		void record(CompoundXactStat &s) const;
+		void reset();
 
 	protected:
 		CompoundXactInfo();
 		~CompoundXactInfo();
 
-		void reset();
-
 	private:
 		CompoundXactInfo *theNext;
 		static CompoundXactInfo *TheFree;
 };
-
-/* inlined methods */
-
-inline
-void CompoundXactInfo::record(CompoundXactStat &s) const {
-	s.duration.record(lifeTime);
-	s.reqSize.record(reqSize);
-	s.repSize.record(repSize);
-	s.exchanges.record(exchanges);
-}
 
 #endif

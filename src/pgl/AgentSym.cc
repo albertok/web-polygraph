@@ -6,7 +6,6 @@
 #include "pgl/pgl.h"
 
 #include "xstd/String.h"
-#include "xstd/TblDistr.h"
 #include "pgl/PglRec.h"
 #include "pgl/PglDistrSym.h"
 #include "pgl/PglTimeSym.h"
@@ -15,15 +14,14 @@
 #include "pgl/SocketSym.h"
 #include "pgl/UniqIdSym.h"
 #include "pgl/PopModelSym.h"
-#include "pgl/SslWrapSym.h"
 #include "pgl/AgentSym.h"
+#include "pgl/MimeHeaderSym.h"
 
 
 
 String AgentSym::TheType = "Agent";
 
 static String strStringArr = "string[]";
-static String strSslWrapArr = "SslWrap[]";
 static String strAbort_prob = "abort_prob";
 static String strCookie_sender = "cookie_sender";
 static String strCustomStatsScope = "custom_stats_scope";
@@ -38,7 +36,8 @@ static String strTime_distr = "time_distr";
 static String strWorld = "world";
 static String strXact_lifetime = "xact_lifetime";
 static String strXact_think = "xact_think";
-static String strSslWraps = "ssl_wraps";
+static String strHttpHeaders = "http_headers";
+static String strMimeHeaderArr = "MimeHeader[]";
 
 
 AgentSym::AgentSym(const String &aType): HostsBasedSym(aType) {
@@ -55,7 +54,7 @@ AgentSym::AgentSym(const String &aType): HostsBasedSym(aType) {
 	theRec->bAdd(NumSym::TheType, strAbort_prob, 0);
 	theRec->bAdd(NumSym::TheType, strCookie_sender, 0);
 	theRec->bAdd(strStringArr, strCustomStatsScope, 0);
-	theRec->bAdd(strSslWrapArr, strSslWraps, 0);
+	theRec->bAdd(strMimeHeaderArr, strHttpHeaders, 0);
 }
 
 AgentSym::AgentSym(const String &aType, PglRec *aRec): HostsBasedSym(aType, aRec) {
@@ -112,7 +111,7 @@ PopModelSym *AgentSym::popModel() const {
 bool AgentSym::msgTypes(Array<StringSym*> &types, Array<double> &tprobs) const {
 	if (ArraySym *a = getArraySym(msgTypesField())) {
 		a->copyProbs(tprobs);
-		ArraySymExportM(StringSym, *a, StringSym::TheType, types);
+		a->exportA(types);
 		return true;
 	}
 	return false;
@@ -132,22 +131,12 @@ bool AgentSym::cookieSender(double &prob) const {
 
 bool AgentSym::customStatsScope(Array<StringSym*> &syms) const {
 	if (const ArraySym *const a = getArraySym(strCustomStatsScope)) {
-		ArraySymExportM(StringSym, *a, StringSym::TheType, syms);
+		a->exportA(syms);
 		return true;
 	}
 	return false;
 }
 
-bool AgentSym::sslWraps(Array<SslWrapSym*> &syms, RndDistr *&sel) const {
-	SynSymTblItem *wi = 0;
-	Assert(theRec->find(strSslWraps, wi));
-	if (!wi->sym())
-		return false; // undefined
-
-	ArraySym &a = (ArraySym&)wi->sym()->cast(ArraySym::TheType);
-	ArraySymExportM(SslWrapSym, a, SslWrapSym::TheType, syms);
-	Array<double> probs;
-	a.copyProbs(probs);
-	sel = TblDistr::FromDistrTable(type() + "-" + strSslWraps, probs);
-	return true;
+const ArraySym *AgentSym::httpHeaders() const {
+	return getArraySym(strHttpHeaders);
 }

@@ -19,7 +19,7 @@ class SingleRangeCfg: public RangeCfg {
 		SingleRangeCfg();
 
 		void configure(const SingleRangeSym &aSingleRange);
-		virtual RangesInfo makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const;
+		virtual RangesInfo makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const;
 
 	protected:
 		BigSize theFirstByteAbsolute;

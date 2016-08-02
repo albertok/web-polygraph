@@ -34,7 +34,7 @@ void PopModel::configure(const PopModelSym *cfg) {
 	}
 }
 
-void PopModel::choose(int lastOid, int wss, int hotSetPos, ObjId &oid) {
+void PopModel::choose(Counter lastOid, Counter wss, Counter hotSetPos, ObjId &oid) {
 	Assert(wss != 0);
 	Assert(lastOid > 0);
 
@@ -44,21 +44,24 @@ void PopModel::choose(int lastOid, int wss, int hotSetPos, ObjId &oid) {
 
 	// adjust params if we need a "hot" object
 	if (hot) {
-		wss = wss > 0 ? Max(1, (int)rint(wss*theHotSetFrac)) : lastOid;
+		wss = wss > 0 ? Max(1., rint(wss*theHotSetFrac)) : lastOid;
 		lastOid = MiniMax(wss, hotSetPos, lastOid);
 	}
 
-	const int offset = (0 < wss && wss < lastOid) ? lastOid-wss : 0;
-	const int oname = offset + theDistr->choose(rng, lastOid - offset);
+	const Counter offset = (0 < wss && wss < lastOid) ? lastOid-wss : 0;
+	const Counter oname = offset + theDistr->choose(rng, lastOid - offset);
 	Assert(0 < oname && oname <= lastOid);
 
 	const int searchSwing = rng.event(theBhrDiscr) ? 4 : 0;
-	pickBest(Max(1, oname-searchSwing), Min(oname+searchSwing, lastOid)+1, oid);
+	const Counter nameBeg =
+		Max(static_cast<Counter>(1), oname - searchSwing);
+	const Counter nameEnd = Min(oname + searchSwing, lastOid) + 1;
+	pickBest(nameBeg, nameEnd, oid);
 }
 
 // pick best from nameBeg to nameEnd, excluding nameEnd
-void PopModel::pickBest(int nameBeg, int nameEnd, ObjId &oid) {
-	const int defName = (nameBeg + nameEnd - 1) / 2;
+void PopModel::pickBest(const Counter nameBeg, const Counter nameEnd, ObjId &oid) {
+	const Counter defName = (nameBeg + nameEnd - 1) / 2;
 	oid.name(defName);
 
 	// foreign objects have unknown size and cachability status
@@ -70,20 +73,20 @@ void PopModel::pickBest(int nameBeg, int nameEnd, ObjId &oid) {
 	Assert(hcfg->theContent);
 
 	// apply size discrimination to "cachable" groups only
-	const ContentCfg *defCfg = hcfg->theContent->getDir(oid);
-	if (!defCfg->calcCachability(oid))
+	Assert(oid.type() >= 0);
+	const ContentCfg &ccfg = *TheContentMgr.get(oid.type());
+	if (!ccfg.calcCachability(oid))
 		return;
 
 	// find oid with the smallest response size
 	Size bestSize;
-	int bestName = -1;
-	for (int name = nameBeg; name < nameEnd; ++name) {
+	Counter bestName = -1;
+	for (Counter name = nameBeg; name < nameEnd; ++name) {
 		oid.name(name);
-		const ContentCfg *ccfg = hcfg->theContent->getDir(oid);
-		if (!ccfg->calcCachability(oid))
+		if (!ccfg.calcCachability(oid))
 			continue;
 
-		const Size sz = ccfg->calcRawRepSize(oid);
+		const Size sz = ccfg.calcRawRepSize(oid);
 		if (bestName < 0 || sz < bestSize) {
 			bestName = name;
 			bestSize = sz;
@@ -96,16 +99,17 @@ void PopModel::pickBest(int nameBeg, int nameEnd, ObjId &oid) {
 
 #if 0
 // pick best from nameBeg to nameEnd, excluding nameEnd
-void PopModel::pickBest(int nameBeg, int nameEnd, ObjId &oid) {
+void PopModel::pickBest(const Counter nameBeg, const Counter nameEnd, ObjId &oid) {
 	const HostCfg *hcfg = TheHostMap->at(oid.target());
 	Assert(hcfg);
 	Assert(hcfg->theContent);
 
 	// apply discrimination to "cachable" groups only
-	const int defName = (nameBeg + nameEnd - 1) / 2;
+	const Counter defName = (nameBeg + nameEnd - 1) / 2;
 	oid.name(defName);
-	const ContentCfg *defCfg = hcfg->theContent->getDir(oid);
-	if (!defCfg->calcCachability(oid))
+	Assert(oid.type() >= 0);
+	const ContentCfg &ccfg = *TheContentMgr.get(oid.type());
+	if (!ccfg.calcCachability(oid))
 		return;
 
 	// extract probabilities and calculate the sum
@@ -113,10 +117,10 @@ void PopModel::pickBest(int nameBeg, int nameEnd, ObjId &oid) {
 	probs.reset();
 	probs.stretch(nameEnd-nameBeg);
 	double sum = 0;
-	{for (int name = nameBeg; name < nameEnd; ++name) {
+	{for (Counter name = nameBeg; name < nameEnd; ++name) {
 		oid.name(name);
-		const ContentCfg *ccfg = hcfg->theContent->getDir(oid);
-		const double p = ccfg->calcCachability(oid) ? ccfg->recurrence() : 0.0;
+		const double p = ccfg.calcCachability(oid) ?
+			ccfg.recurrence() : 0.0;
 		probs.append(p);
 		sum += p;
 	}}
@@ -125,7 +129,7 @@ void PopModel::pickBest(int nameBeg, int nameEnd, ObjId &oid) {
 	static RndGen rng;
 	const double mark = sum*rng.trial(); // multiply once to avoid div in loop
 	double pos = 0;
-	{for (int i = 0, name = nameBeg; name < nameEnd; ++i, ++name) {
+	{for (Counter i = 0, name = nameBeg; name < nameEnd; ++i, ++name) {
 		const double p = probs[i];
 		if (pos <= mark && mark < pos + p) {
 			oid.name(name);

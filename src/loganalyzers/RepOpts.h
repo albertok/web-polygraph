@@ -25,10 +25,10 @@ class RepOpts: public OptGrp {
 		VersionOpt theVersOpt;
 		StrOpt theLabel;
 		StrArrOpt thePhases;
+		StrOpt theDataDir;
 		StrOpt theRepDir;
-		StrOpt theTmpDir;
 		StrOpt thePlotter;
-		Array<String*> theFiles;
+		PtrArray<String*> theFiles;
 };
 
 extern RepOpts TheRepOpts;

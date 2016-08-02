@@ -19,6 +19,8 @@ class TmSzHistStat {
 		OLog &store(OLog &log) const;
 		ILog &load(ILog &);
 
+		bool known() const { return time().known() || size().known(); }
+
 		const TimeHist &time() const { return theTm; }
 		const SizeHist &size() const { return theSz; }
 		TmSzStat aggr() const { return TmSzStat(theTm.stats(), theSz.stats()); }

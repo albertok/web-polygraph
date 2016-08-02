@@ -29,6 +29,60 @@ software.
 
 ---------------
 
-Fowler–Noll–Vo hash function implementation (src/xstd/gadgets.h file)
+Fowler–Noll–Vo hash function implementation (src/xstd/FNVHash.h file)
 is based on pseudo code from http://www.isthe.com/chongo/tech/comp/fnv/.
 FNV hash algorithms and source code are in public domain.
+
+---------------
+
+Web Polygraph includes other packages (import/ folder) which are
+property of their authors.  Below are brief copyright statements:
+
+* jQuery (included in jQuery UI and jqPlot)
+
+  Copyright 2011, John Resig
+  Dual licensed under the MIT or GPL Version 2 licenses.
+
+* Sizzle.js (included in jQuery)
+
+  Copyright 2011, The Dojo Foundation
+  Released under the MIT, BSD, and GPL Licenses.
+
+* jQuery UI
+
+  Copyright 2011, Brandon Aaron
+  Paul Bakaus (paulbakaus.com)
+  David Bolter
+  Rich Caloggero
+  Chi Cheng (cloudream@gmail.com)
+  Colin Clark (http://colin.atrc.utoronto.ca/)
+  Michelle D'Souza
+  Aaron Eisenberger (aaronchi@gmail.com)
+  Ariel Flesler
+  Bohdan Ganicky
+  Scott González
+  Marc Grabanski (m@marcgrabanski.com)
+  Klaus Hartl (stilbuero.de)
+  Scott Jehl
+  Cody Lindley
+  Eduardo Lundgren (eduardolundgren@gmail.com)
+  Todd Parker
+  John Resig
+  Patty Toland
+  Ca-Phun Ung (yelotofu.com)
+  Keith Wood (kbwood@virginbroadband.com.au)
+  Maggie Costello Wachs
+  Richard D. Worth (rdworth.org)
+  Jörn Zaefferer (bassistance.de)
+  Dual licensed under the MIT or GPL Version 2 licenses.
+
+* jqPlot
+
+  Copyright (c) 2009-2011 Chris Leonello
+  jqPlot is currently available for use in all personal or commercial
+  projects under both the MIT and GPL version 2.0 licenses. This means
+  that you can choose the license that best suits your project and use
+  it accordingly.
+
+Please refer to respective packages for detailed copyright and license
+information.

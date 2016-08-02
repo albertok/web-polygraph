@@ -20,6 +20,8 @@ libxstd_a_SOURCES = \
 	ResourceUsage.cc \
 	Checksum.h \
 	Checksum.cc \
+	CommandToBuffer.h \
+	CommandToBuffer.cc \
 	TokenIdentifier.h \
 	TokenIdentifier.cc \
 	PrefixIdentifier.h \
@@ -77,16 +79,30 @@ libxstd_a_SOURCES = \
 	\
 	Dns.h \
 	Dns.cc \
+	Gss.h \
+	Gss.cc \
+	Kerberos.h \
+	Kerberos.cc \
 	Ssl.h \
 	Ssl.cc \
 	\
 	ZLib.h \
 	ZLib.cc \
+	ZFStream.h \
+	ZFStream.cc \
+	\
+	CpuAffinitySet.h \
+	CpuAffinitySet.cc \
+	\
+	DirScanner.h \
+	DirScanner.cc \
 	\
 	Array.h \
+	Endian.h \
 	Future.h \
 	Heap.h \
 	History.h \
+	LruQueue.h \
 	Map.h \
 	Queue.h \
 	Ring.h \
@@ -109,6 +125,7 @@ libxstd_a_SOURCES = \
 	h/sys/resource.h \
 	h/sys/socket.h \
 	h/sys/sockio.h \
+	h/sys/stat.h \
 	h/sys/types.h \
 	\
 	h/dlfcn.h \
@@ -126,6 +143,7 @@ libxstd_a_SOURCES = \
 	h/epoll.h \
 	h/process.h \
 	h/regex.h \
+	h/sched.h \
 	h/signal.h \
 	h/string.h \
 	h/time.h \

@@ -26,7 +26,7 @@ Time SessionStats::duration() const {
 	return TheClock - theStart;
 }
 
-int SessionStats::xactCnt() const {
+Counter SessionStats::xactCnt() const {
 	return theXactCnt;
 }
 
@@ -34,10 +34,10 @@ BigSize SessionStats::fillSz() const {
 	return theFillSz;
 }
 
-int SessionStats::fillCnt() const {
+Counter SessionStats::fillCnt() const {
 	return theFillCnt;
 }
 
-int SessionStats::xactErrCnt() const {
+Counter SessionStats::xactErrCnt() const {
 	return theXactErrCnt;
 }

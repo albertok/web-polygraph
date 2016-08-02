@@ -6,7 +6,9 @@
 #include "base/polygraph.h"
 
 #include "xstd/h/os_std.h"
+#include "xstd/h/iomanip.h"
 
+#include "xstd/ZFStream.h"
 #include "xstd/gadgets.h"
 #include "base/ILog.h"
 #include "base/polyLogCats.h"
@@ -23,13 +25,15 @@ bool LogEntryPx::good() const {
 		0 < theSize && theSize <= 10*1024*1024;
 }
 
+// assume buffer size is at least TheLoadSize
 // XXX: we should log lgEnd/lgcEnd instead of using current constants!
-ILog &LogEntryPx::load(ILog &il) {
-	int h;
-	il >> theSize >> h;
+bool LogEntryPx::load(const void *const buf) {
+	const int *const ibuf = reinterpret_cast<const int *>(buf);
+	theSize = ntohl(ibuf[0]);
+	const int h = ntohl(ibuf[1]);
 	theTag = (h << 16) >> 16;
 	theCat = h >> 16; // XXX: assumes sizeof(int) == 32
-	return il;
+	return *this;
 }
 
 ostream &LogEntryPx::print(ostream &os) const {
@@ -41,10 +45,11 @@ ostream &LogEntryPx::print(ostream &os) const {
 
 /* ILog */
 
-ILog::ILog(): theStream(0), theEntryEnd(-1) {
+ILog::ILog(): theStream(0), theZStream(0), theEntryEnd(-1) {
 }
 
 ILog::~ILog() {
+	delete theZStream;
 }
 
 void ILog::stream(const String &aFileName, istream *aStream) {
@@ -53,23 +58,32 @@ void ILog::stream(const String &aFileName, istream *aStream) {
 	getHeader();
 }
 
+void ILog::stream(const ILog &log) {
+	log.theStream->clear();
+	log.theStream->seekg(0, ios::beg);
+	stream(log.theFileName, log.theStream);
+}
+
 // loads prefix of the current entry
 // transparently loads progress entries
 LogEntryPx ILog::begEntry() {
-	theEntryEnd = theStream->tellg();
-	while (theCurPx.load(*this)) {
-
-		if (theCurPx && !theCurPx.good()) {
+	theEntryEnd = pos();
+	char buf[LogEntryPx::TheLoadSize];
+	while (get(buf, LogEntryPx::TheLoadSize)) {
+		if (theCurPx.load(buf) && !theCurPx.good()) {
 			const streampos startOff = theEntryEnd;
 			clog << fileName() << ':' << theEntryEnd 
 				<< ": warning: corrupted log entry: " << theCurPx << endl;
 
 			do {
 				theEntryEnd += 1;
-				endEntry();
-				theCurPx.load(*this);
-			} while (*theStream && !(theCurPx.theTag == lgProgress && theCurPx.theSize > 0 && theCurPx.theSize < 1024));
-			if (!*theStream)
+				memmove(buf, buf + 1, LogEntryPx::TheLoadSize - 1);
+				buf[LogEntryPx::TheLoadSize - 1] = getc();
+			} while (!fail() && !(theCurPx.load(buf) &&
+				theCurPx.good() &&
+				theCurPx.theTag == lgProgress &&
+				theCurPx.theSize < 1024));
+			if (fail())
 				break;
 
 			clog << fileName() << ':' << theEntryEnd
@@ -88,7 +102,8 @@ LogEntryPx ILog::begEntry() {
 }
 
 void ILog::endEntry() {
-	theStream->seekg(theEntryEnd);
+	const int nextEntryOffset = theEntryEnd - pos();
+	ignore(nextEntryOffset);
 	theCurPx = LogEntryPx();
 }
 
@@ -104,10 +119,10 @@ void ILog::getHeader() {
 		exit(-2);
 	}
 
-	const int sver = 21;       // supported version
+	const int sver = 26;       // supported version
 	const int cver = geti();   // current log version
 	const int rver = geti();   // required min version to support
-	const int skip = geti();   // size of extra headers
+	int extraHdrSz = geti();   // size of extra headers
 
 	if (sver < rver) {
 		cerr << theFileName << ": log version " << cver << endl;
@@ -123,7 +138,32 @@ void ILog::getHeader() {
 		sleep(3);
 	}
 
-	theStream->ignore(skip);
+	const int zlibHdrSz = 32;
+	bool doCompression = false;
+	if (extraHdrSz >= zlibHdrSz) {
+		char buf[zlibHdrSz + 1];
+		get(buf, zlibHdrSz);
+		buf[zlibHdrSz] = '\0';
+		extraHdrSz -= zlibHdrSz;
+
+		if (!strcmp(buf, "zlib")) {
+			if (!zlib::Supported) {
+				cerr << theFileName << ": log file is "
+					"compressed with zlib" << endl <<
+					"this program was built without zlib "
+					"support" << endl << xexit;
+			}
+			doCompression = true;
+		} else {
+			cerr << theFileName << ": log file is compressed with "
+				<< buf << endl << "this program does not "
+				"support it" << endl << xexit;
+		}
+	}
+
+	ignore(extraHdrSz);
+	if (doCompression)
+		theZStream = new zlib::IFStream(*theStream);
 }
 
 int ILog::geti(int *&xs, int &count) {
@@ -145,4 +185,34 @@ String &ILog::gets(String &s) {
 	}
 	s = String();
 	return s;
+}
+
+bool ILog::get(void *const buf, const int len) {
+	char *const cbuf = reinterpret_cast<char *>(buf);
+	int count;
+	if (theZStream)
+		count = theZStream->read(cbuf, len);
+	else {
+		theStream->read(cbuf, len);
+		count = theStream->gcount();
+	}
+	return count == len;
+}
+
+bool ILog::fail() const {
+	return theZStream ? theZStream->fail() : theStream ? theStream->fail() :
+		true;
+}
+
+istream::pos_type ILog::pos() const {
+	return theZStream ? theZStream->pos() : theStream ? theStream->tellg() :
+		istream::pos_type(-1);
+}
+
+void ILog::ignore(const int n) {
+	Must(n >= 0);
+	if (theZStream)
+		theZStream->ignore(n);
+	else
+		theStream->ignore(n);
 }

@@ -18,17 +18,14 @@ class ContentSym;
 
 class ContentMgr: public ConfigSymMgr<ContentSym, ContentCfg> {
 	public:
-		ContentMgr();
-		int normalContentStart() const { return theNormalContentStart; }
+		ContentMgr(): theCfgCounter(0) {}
+		void configure();
 
 	protected:
-		void init();
 		virtual ContentCfg *makeCfg();
 		void makeFakeContentType(int &id, const String &kind);
 
 		int theCfgCounter;
-		int theNormalContentStart;
-		bool didInit; // init() was called
 };
 
 extern ContentMgr TheContentMgr;

@@ -26,8 +26,7 @@ class LoadTraceFig: public ReportTraceFigure {
 		void compareWith(const Stex *stex);
 
 	protected:
-		virtual int createCtrlFile();
-		virtual void setCtrlOptions();
+		virtual int addPlotData();
 
 		enum lineType { lnRate, lnBwidth };
 		int dumpDataLines(const LoadStex *stex, const lineType lt);

@@ -14,6 +14,8 @@
 #include "base/ForeignTrace.h"
 #include "runtime/LogComment.h"
 #include "client/ForeignWorld.h"
+#include "csm/ContentCfg.h"
+#include "pgl/PglSemx.h"
 
 
 int ForeignWorld::TheWss = 0;
@@ -24,6 +26,7 @@ ForeignWorld::ForeignWorld() {
 void ForeignWorld::configure(const String &aName) {
 	Assert(!id());
 	id(UniqId::Create());
+	type(TheForeignContentId);
 	theName = aName;
 
 	Comment(7) << "loading URL trace '" << theName << "'" << endc;
@@ -39,26 +42,37 @@ void ForeignWorld::configure(const String &aName) {
 void ForeignWorld::repeat(ObjId &oid, ObjSelector *sel) {
 	static const String tag("foreign");
 	oid.foreignUrl(tag); // hack: let underlying levels know the oid is foreign
+	setType(oid);
 	ObjWorld::repeat(oid, sel);
 	setUrl(oid);
 }
 
 void ForeignWorld::produce(ObjId &oid, RndGen &rng) {
+	setType(oid);
 	ObjWorld::produce(oid, rng);
 	incWss(TheWss);
 	setUrl(oid);
 }
 
+void ForeignWorld::setType(ObjId &oid) const {
+	Assert(oid.type() < 0);
+	oid.type(theType);
+}
+
 void ForeignWorld::setUrl(ObjId &oid) const {
 	Assert(oid.name() > 0);
 
-	static const String macro("${url_number}");
-	static const size_t size(8);
-	static char buf[size + 1];
+	static const String urlNumMacro("${url_number}");
+	static const String workerMacro("${worker}");
 
-	ofixedstream os(buf, size + 1);
+	static const size_t size(8);
+	static char urlNumBuf[size + 1];
+	ofixedstream os(urlNumBuf, size + 1);
 	os << hex << setfill('0') << setw(size) << oid.name();
-	buf[size] = '\0';
-	const String &url(*theUrls[oid.name() % theUrls.count()]);
-	oid.foreignUrl(ExpandMacro(url, macro, buf)); // now set real URL
+	urlNumBuf[size] = '\0';
+
+	String url(*theUrls[oid.name() % theUrls.count()]);
+	url = ExpandMacro(url, urlNumMacro, urlNumBuf);
+	url = ExpandMacro(url, workerMacro, PglSemx::WorkerIdStr());
+	oid.foreignUrl(url); // now set real URL
 }

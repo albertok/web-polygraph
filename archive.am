@@ -1,0 +1,13 @@
+# common rules for bundled archives
+
+EXTRA_DIST = $(ARCHIVE)
+
+$(DATA):
+	$(MKDIR_P) archive && \
+	cd archive && \
+	$(am__untar) < $(abs_srcdir)/$(ARCHIVE)
+
+clean-local:
+	-rm -rf archive
+
+.NOTPARALLEL:

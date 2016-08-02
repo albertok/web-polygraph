@@ -42,6 +42,8 @@ class String {
 		String(const String &s): theBuf(0) { set(s); }
 		String(const char *s): theBuf(0) { set(s); }
 		String(const char *s, int aLen);
+		explicit String(const Area &a);
+		explicit String(const std::string &s);
 		~String() { set(0); }
 
 		String &operator =(const String &s) { set(s); return *this; }
@@ -63,6 +65,7 @@ class String {
 		bool startsWith(const String &s) const;
 		bool prefixOf(const char *buf) const;
 		bool casePrefixOf(const char *buf, int l) const;
+		bool endsWith(const String &s) const;
 		bool endsWith(const char *buf, int l) const;
 		bool caseEndsWith(const char *buf, int l) const;
 
@@ -115,7 +118,7 @@ class String {
 };
 
 inline ostream &operator <<(ostream &os, const String &s) {
-	return os << s.cstr();
+	return s ? os.write(s.data(), s.len()) : os;
 }
 
 // slow but convenient

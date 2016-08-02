@@ -112,7 +112,7 @@ void SessionMgr::becomeIdle() {
 void SessionMgr::noteXactDone(CltXact *x) {
 	Assert(x);
 
-	// update stats
+	// update stats; XXX: this code does not account for compound transactions
 	const ObjId &oid = x->oid();
 	theStats.theXactCnt++;
 	if (oid.fill())

@@ -42,6 +42,7 @@ class NetAddr {
 		void addr(const String &addr) { theAddrA = addr; theAddrN.known(false); }
 		void addr(const InAddress &addr) { theAddrN = addr; theAddrA = 0; }
 		void port(int aPort) { thePort = aPort; }
+		void resolve(const InAddress &addr) { theAddrN = addr; }
 
 		ostream &print(ostream &os) const;
 

@@ -6,6 +6,7 @@
 #include "base/polygraph.h"
 
 #include "csm/ContentCfg.h"
+#include "runtime/HttpPrinter.h"
 #include "runtime/httpText.h"
 #include "runtime/IOBuf.h"
 
@@ -43,10 +44,6 @@ void RangeBodyIter::stop() {
 }
 
 bool RangeBodyIter::pour() {
-	return pourBody();
-}
-
-bool RangeBodyIter::pourBody() {
 	Assert(theProducer);
 
 	if (theCurrRange != theRanges.end()) {
@@ -150,21 +147,22 @@ void RangeBodyIter::putTerminator() {
 	theBuiltSize += added;
 }
 
-void RangeBodyIter::putHeaders(ostream &os) const {
+void RangeBodyIter::putHeaders(HttpPrinter &hp) const {
 	if (!multiRange()) {
-		BodyIter::putHeaders(os);
-		os
-			<< hfpContRange
-			<< (int)theRanges.front().theFirstByte << '-' << (int)theRanges.front().theLastByte
-			<< "/" << (int)fullEntitySize()
-			<< crlf;
-        } else
-		os << hfMultiRangeContType;
+		BodyIter::putHeaders(hp);
+		if (hp.putHeader(hfpContRange)) {
+			hp << (int)theRanges.front().theFirstByte
+				<< '-' << (int)theRanges.front().theLastByte
+				<< "/" << (int)fullEntitySize()
+				<< crlf;
+		}
+	} else
+		hp.putHeader(hfMultiRangeContType);
 }
 
 RangeBodyIter *RangeBodyIter::clone() const {
 	RangeBodyIter *const i = new RangeBodyIter(theRanges, theProducer->clone());
-	i->contentSize(theContentSize);
+	i->contentSize(theContentSize, theSuffixSize);
 	return i;
 }
 

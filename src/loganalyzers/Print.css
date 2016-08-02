@@ -1,0 +1,11 @@
+.HiddenWhenPrinted {
+	display: none;
+}
+
+[id="summary.1page"] * {
+	font-size: 12px
+}
+
+[id="summary.1page"] h1, [id="summary.1page"] h1 * {
+	font-size: 16px
+}

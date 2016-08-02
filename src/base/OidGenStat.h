@@ -19,7 +19,7 @@ class OidGenStat {
 		enum Interest { intNone = 0, intPrivate, intPublic, intForeign };
 
 	protected:
-		typedef int Table[8];
+		typedef Counter Table[8];
 
 	public:
 		OidGenStat();

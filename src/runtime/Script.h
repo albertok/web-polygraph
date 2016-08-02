@@ -32,6 +32,8 @@ class Script: public PglSemx {
 		virtual void execEveryCode(const EveryCodeSym &ecode);
 
 	protected:
+		int logCat() const;
+
 		SynSym *theCode;
 		Sampler *theSampler;
 };

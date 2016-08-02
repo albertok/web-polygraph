@@ -21,7 +21,7 @@ class StringIdentifier;
 // may be shared among many agents (see SslWraps)
 class SslWrap {
 	public:
-		static void ReportErrors();
+		static std::ostream &PrintErrors(std::ostream &os);
 
 	public:
 		SslWrap();
@@ -41,39 +41,46 @@ class SslWrap {
 		void checkProtocols(const SslWrapSym &cfg, const StringIdentifier &sidf);
 		void configureProtocols(const SslWrapSym &cfg);
 		void configureRsaKeySizes(const SslWrapSym &cfg);
+		void configureCertificates(const SslWrapSym &cfg);
 		void configureCiphers(const SslWrapSym &cfg);
 		void configureSharing(const SslWrapSym &cfg);
+		void configureCompression(const SslWrapSym &cfg);
 
-		SslCtx *makeCtx(const NetAddr &addr) const;
-		bool makeSrvCert(SslCtx *ctx) const;
-		bool makeSrvPrivateKey(SslCtx *ctx) const;
-		bool makeServerCert() const;
-		bool makeServerCertChain() const;
+		SslCtx *makeCtx(const bool isServer) const;
+		bool generateCert(const String &kind) const;
+		bool makePrivateKey(const String &kind) const;
+		bool makeCert(const String &kind) const;
+		bool makeCertChain(const String &kind) const;
 		Size selectRsaKeySize() const;
 		String selectCipher() const;
-		String needParam(const SslWrapSym &sym, String value, const char *pname) const;
+		bool disableCompression() const;
 
 	private:
 		String theSharingGroup;
 		String theRootCertificate;
 		String theSslConfigFile;
 
-		mutable String theServerReqPem;
-		mutable String theServerKeyPem;
-		mutable String theServerCertPem;
-		mutable String theServerChainPem;
+		mutable String theReqPem;
+		mutable String theKeyPem;
+		mutable String theCertPem;
+		mutable String theChainPem;
 		mutable String theCASerialFile;
 		String thePath;
 
 		RndDistr *theProtocolSel;
 		RndDistr *theRsaKeySizeSel;
 		Array<Size> theRsaKeySizes;
+		Array<String*> theCertificates;
+		mutable int theCertificatesIdx;
 		RndDistr *theCipherSel;
 		Array<String*> theCiphers;
 		double theResumpProb;
 		int theSessionCacheSize;
+		double theCompression;
 
 		bool doVerifyPeerCertificate;
+		bool doGenerateCertificates;
+		bool isGenerageCertificatesSet;
 };
 
 #endif

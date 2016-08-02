@@ -42,7 +42,7 @@ void PipelinedCxm::assumeReadControl(CltXact *x, CltXactMgr *oldMgr) {
 	theReaders.enqueue(x);
 }
 
-void PipelinedCxm::join(CltXact *x) {
+void PipelinedCxm::join(CltXact *) {
 	++theUseLevel;
 	// x is expected to call control() or release() eventually
 }
@@ -84,7 +84,7 @@ void PipelinedCxm::noteLastXaction(CltXact *x) {
 	conn()->theWr.stop(this);
 }
 
-void PipelinedCxm::resumeWriting(CltXact *x) {
+void PipelinedCxm::resumeWriting(CltXact *) {
 	Must(!conn()->theWr.theReserv);
 	conn()->theWr.start(this);
 	TheFileScanner->setPriority(conn()->sock().fd(), fsupBestEffort);

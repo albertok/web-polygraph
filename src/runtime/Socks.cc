@@ -285,13 +285,17 @@ int Socks::connectMessageSize() const {
 
 void Socks::reportError(const Error &error) const {
 	if (Should(error) && ReportError2(error, theConn.logCat())) {
-		if (error == errSocksRead || error == errSocksWrite)
-			Comment << "error: " << Error::Last() << endc;
+		if (error == errSocksRead)
+			Comment << "SOCKS read error: " << Error::Last() << endl;
+		else
+		if (error == errSocksWrite)
+			Comment << "SOCKS write error: " << Error::Last() << endl;
+		else
 		if (error == errSocksConnect) {
 			const int index =
-				theStatus > StatusMax ? StatusMax : theStatus;
-			Comment << "status: " << StatusStrings[index] << endc;
+				Min(theStatus, static_cast<char>(StatusMax));
+			Comment << "connect status: " << StatusStrings[index] << endl;
 		}
-		theConn.reportErrorLoc();
+		theConn.print(Comment << "on connection ") << endc;
 	}
 }

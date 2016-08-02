@@ -14,6 +14,7 @@
 #include "xstd/String.h"
 #include "xstd/NetAddr.h"
 #include "xstd/Array.h"
+#include "xstd/Endian.h"
 
 // some environments do not know better than #define these
 #ifdef getc
@@ -22,6 +23,10 @@
 #ifdef putc
 #	undef putc
 #endif
+
+namespace zlib {
+class OFStream;
+}
 
 // buffered binary output log
 class OLog {
@@ -42,6 +47,7 @@ class OLog {
 		void putb(bool b) { putc((char)(b ? 1 : 0)); }
 		void puti(int x) { x = htonl(x); put(&x, SizeOf(x)); }
 		void puti(const int *x, int count);
+		void puti64(int64_t x) { x = htobe64(x); put(&x, SizeOf(x)); }
 		void puts(const char *s, Size size) { puti(size); if (size) put(s, size); }
 		void puta(const struct sockaddr_storage &a) { put(&a, SizeOf(a)); }
 
@@ -56,6 +62,7 @@ class OLog {
 		void resize(Size minCap);
 
 		inline void put(const void *buf, Size size);
+		void write(const char *const buf, const Size size);
 		void overflow(const void *buf, Size size);
 
 		virtual void putHeader();
@@ -63,6 +70,7 @@ class OLog {
 
 	protected:
 		ostream *theStream;
+		zlib::OFStream *theZStream;
 		String theName;
 
 		char *theBuf;
@@ -104,6 +112,12 @@ OLog &operator <<(OLog &ol, bool b) {
 inline
 OLog &operator <<(OLog &ol, int x) {
 	ol.puti(x);
+	return ol;
+}
+
+inline
+OLog &operator <<(OLog &ol, const int64_t x) {
+	ol.puti64(x);
 	return ol;
 }
 
@@ -169,27 +183,17 @@ OLog &operator <<(OLog &ol, const Array<Item> &a) {
 }
 
 // store array of not-null pointers to items
-#ifdef COMPILER_CAN_HANDLE_NONTRIVIAL_TEMPLATES
 template <class Item>
 inline
-void OLogStorePtrs(OLog &ol, const Array<Item> &a) {
+OLog &operator <<(OLog &ol, const Array<Item *> &a) {
 	ol.puti(a.count());
 	for (int i = 0; i < a.count(); ++i) {
 		if (a[i])
 			ol << i << *a[i];
 	}
 	ol << -1;
+	return ol;
 }
-#else
-#	define OLogStorePtrs(ol, a) { \
-	(ol).puti((a).count()); \
-	for (int i = 0; i < (a).count(); ++i) { \
-		if ((a)[i]) \
-			ol << i << *(a)[i]; \
-	} \
-	(ol) << -1; \
-}
-#endif
 
 /* inlined methods */
 

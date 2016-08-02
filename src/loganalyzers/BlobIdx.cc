@@ -13,8 +13,8 @@
 
 static const String strKey = "key";
 
-BlobIdx::BlobIdx(int aCapacity): theHash(aCapacity), theCount(0) {
-	theHash.count(theHash.capacity());
+BlobIdx::BlobIdx(int aCapacity): theCount(0) {
+	theHash.resize(aCapacity);
 }
 
 void BlobIdx::add(const ReportBlob *blob) {
@@ -84,9 +84,8 @@ void BlobIdx::grow() {
 	Array<const ReportBlob *> oldHash;
 	oldHash = theHash;
 
-	theHash.memset(0);
-	theHash.stretch(2*theHash.capacity() + 1);
-	theHash.count(theHash.capacity());
+	theHash.clear();
+	theHash.resize(2*theHash.capacity() + 1);
 
 	for (int i = 0; i < oldHash.count(); ++i) {
 		if (oldHash[i])

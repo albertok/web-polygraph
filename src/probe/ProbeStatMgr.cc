@@ -69,19 +69,17 @@ double ProbeLinkRec::bitRate(const AggrStat &s) const {
 }
 
 static
-OLog &operator <<(OLog &log, const ProbeLinkRec *rp) {
-	Assert(rp);
+OLog &operator <<(OLog &log, const ProbeLinkRec &rp) {
 	log << ((int)0);
-	rp->store(log);
+	rp.store(log);
 	return log;
 }
 
 static
-ILog &operator >>(ILog &log, ProbeLinkRec *&rp) {
-	rp = new ProbeLinkRec;
+ILog &operator >>(ILog &log, ProbeLinkRec &rp) {
 	int dummy = 0;
 	log >> dummy;
-	rp->load(log);
+	rp.load(log);
 	return log;
 }
 

@@ -31,6 +31,7 @@ class ContentDbase {
 
 		const String &name() const { return theName; }
 		int count() const; // number of entries
+		bool hasLinkOrPage() const; // at least one cdbeLink or cdbePage entry
 		double entrySizeMean() const; // mean entry size
 		const CdbEntry *entry(int pos) const { return theEntries[pos]; }
 

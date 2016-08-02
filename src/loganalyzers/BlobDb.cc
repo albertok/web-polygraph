@@ -115,6 +115,14 @@ XmlNode &BlobDb::ptr(const String &key, const XmlNodes &context) {
 	return *thePtrs.last();
 }
 
+XmlNode &BlobDb::nullPtr(const XmlNodes &context) {
+	XmlTag t("blob_ptr");
+	t << XmlAttr::Int("maybe_null", true);
+	t << context;
+	thePtrs << t;
+	return *thePtrs.last();
+}
+
 XmlTag BlobDb::reportNote(const String &id, const XmlNode &note) {
 	static const String key("notes.");
 

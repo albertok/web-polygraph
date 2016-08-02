@@ -27,27 +27,19 @@ void PointTraceFig::stats(const Stex *aStex1, const Stex *aStex2, const PhaseInf
 	theStex1 = aStex1;
 	theStex2 = (aStex2 && hasDataLines(aStex2)) ? aStex2 : 0;
 	Assert(theStex1 && theTrace);
+
+	theAxisY1.label(theStex1->unit());
+	if (theStex2)
+		theAxisY2.label(theStex2->unit());
 }
 
-void PointTraceFig::setCtrlOptions() {
-	theLabelY1 = theStex1->unit();
+int PointTraceFig::addPlotData() {
+	addPlotLine(theStex1->name());
 	if (theStex2)
-		theLabelY2 = theStex2->unit();
-	ReportTraceFigure::setCtrlOptions();
-}
-
-int PointTraceFig::createCtrlFile() {
-	if (ReportTraceFigure::createCtrlFile() < 0)
-		return -1;
-
-	addPlotLine(theStex1->name(), theStex1->unit());
-	if (theStex2)
-		addPlotLine(theStex2->name(), theStex2->unit());
-	addedAllPlotLines();
+		addPlotLine(theStex2->name(), true);
 
 	int pointCount = 0;
 	pointCount += dumpDataLines(theStex1);
-	*theCtrlFile << 'e' << endl;
 	if (theStex2)
 		pointCount += dumpDataLines(theStex2);
 	return pointCount;
@@ -67,17 +59,14 @@ int PointTraceFig::dumpDataLines(const PointStex *stex) {
 	int pointCount = 0;
 	for (int i = 0; i < theTrace->count(); ++i)
 		pointCount += dumpDataLine(stex, theTrace->winPos(i), theTrace->winStats(i));
-
+	addedLineData();
 	return pointCount;
 }
 
 int PointTraceFig::dumpDataLine(const PointStex *stex, Time stamp, const StatIntvlRec &r) {
-	dumpTime(stamp);
 	if (stex->valueKnown(r)) {
-		*theCtrlFile << ' ' << stex->value(r) << endl;
+		addDataPoint(stamp, stex->value(r));
 		return 1;
-	} else {
-		*theCtrlFile << ' ' << '?' << endl;
-		return 0;
 	}
+	return 0;
 }

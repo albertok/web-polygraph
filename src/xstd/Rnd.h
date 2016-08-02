@@ -6,45 +6,64 @@
 #ifndef POLYGRAPH__XSTD_RND_H
 #define POLYGRAPH__XSTD_RND_H
 
+#include <limits>
+
 #include "xstd/h/iosfwd.h"
 #include "xstd/h/math.h"
+#include "xstd/h/stdint.h"
 
 // simple random generator
 // every generator gets its own seed and state
 // no virtual stuff as we do not need more than one type of generators
 class RndGen {
 	public:
-		typedef long State;
-		static State TheDefSeed;   // default seed
+		typedef int64_t Seed;
+		static void DefSeed(const Seed aSeed);
 
 	public:
-		RndGen(State aSeed = -1);
+		// a negative seed will be set (to the default value) before first use
+		RndGen(const Seed aSeed = -1);
 
 		// uniform[0,1)
-		double trial() { return ltrial()/2147483648.0; }
+		double trial() { return trial32()/2147483648.0; }
 		double operator ()() { return trial(); }
 
-		// uniform[0,2147483648)
-		long ltrial();
+		// uniform[0,2^32)
+		uint32_t trial32u();
+		// uniform[0,2^31)
+		int32_t trial32() { return trial32u() & numeric_limits<int32_t>::max(); }
+
+		// uniform[0,2^64)
+		uint64_t trial64u() { return (static_cast<uint64_t>(trial32u()) << 32) | trial32u(); }
+		// uniform[0,2^63)
+		int64_t trial64() { return trial64u() & numeric_limits<int64_t>::max(); }
 
 		// equiprob[lo,hi); "hi" is excluded inless hi==lo
 		double operator ()(double lo, double hi) { return lo + (hi-lo)*trial(); }
-		int operator ()(int lo, int hi) { return hi != lo ? lo + ltrial()%(hi-lo) : lo; }
+		int32_t operator ()(const int32_t lo, const int32_t hi) { return hi != lo ? lo + trial32u()%(hi-lo) : lo; }
+		int64_t operator ()(const int64_t lo, const int64_t hi) { return hi != lo ? lo + trial64u()%(hi-lo) : lo; }
 
 		// Bernoulli event with a given probability
 		bool event(double prob) { return trial() < prob; }
 
 		// get/change seed/state
-		State state() const;
-		void state(State state);
-		void seed(State seed);
+		void seed(const Seed aSeed);
 		void reset() { seed(theSeed); }
+		// We should return and accept State instead of Seed here, but
+		// current parsing/printing code cannot handle State type and
+		// we do not really lose any information during this conversion.
+		Seed state() const;
+		void state(const Seed aSeed); // use only with values returned by state()
 
 	protected:
-		State initState(State aSeed) const;
+		struct State {
+			uint16_t s0; // lower bits
+			uint16_t s1;
+			uint16_t s2; // higher bits
+		};
 
-	protected:
-		State theSeed;  // initial seed
+		static Seed TheDefSeed; // default seed
+		Seed theSeed; // initial seed
 		State theState; // current state
 };
 

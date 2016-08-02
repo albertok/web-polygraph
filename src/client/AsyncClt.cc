@@ -35,6 +35,9 @@ void AsyncClt::wakeUp(const Alarm &a) {
 }
 
 void AsyncClt::scheduleLaunch(Time lastLaunch) {
+	if (isIdle)
+		return;
+
 	Assert(!thePendAlarmCnt);
 	Assert(theThinkDistr);
 

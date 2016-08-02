@@ -7,6 +7,7 @@
 #define POLYGRAPH__BASE_AGGRSTAT_H
 
 #include "xstd/h/iosfwd.h"
+#include "xstd/h/stdint.h"
 #include "base/OLog.h"
 #include "base/ILog.h"
 
@@ -22,7 +23,7 @@
 // simple aggregate statisitcs
 class AggrStat {
 	public:
-		typedef int Val;
+		typedef int64_t Val;
 
 	public:
 		AggrStat();
@@ -37,7 +38,7 @@ class AggrStat {
 		AggrStat &operator +=(const AggrStat &s);
 
 		bool known() const { return count() > 0; }
-		int count() const { return theCount; }
+		Counter count() const { return theCount; }
 		Val min() const { return theMin; }
 		Val max() const { return theMax; }
 		double sum() const { return theSum; }
@@ -48,7 +49,7 @@ class AggrStat {
 		ostream &print(ostream &os, const String &pfx) const;
 
 	protected:
-		int theCount;
+		Counter theCount;
 		Val theMax;
 		Val theMin;
 		double theSum;

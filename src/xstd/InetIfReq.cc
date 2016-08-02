@@ -35,11 +35,10 @@ Inet6IfAliasReq::Inet6IfAliasReq(const String &name, const InAddress &addr, cons
 	Socket s;
 	Assert(s.create(PF_INET6, SOCK_DGRAM, 0));
 	strncpy(ifr.ifr_name, name.cstr(), IFNAMSIZ);
-	Must (ioctl(s.fd(), SIOCGIFINDEX, &ifr) < 0);
+	Must(ioctl(s.fd(), SIOCGIFINDEX, &ifr) >= 0);
 	s.close();
 	ifr6_ifindex = ifr.ifr_ifindex;
-	sockaddr_storage ss = addr.sockAddr(-1);
-	memcpy(&ifr6_addr, &ss, sizeof(ifr6_addr));
+	memcpy(&ifr6_addr, addr.rawOctets(), sizeof(ifr6_addr));
 	ifr6_prefixlen = mask.prefixlen();
 #endif
-};
+}

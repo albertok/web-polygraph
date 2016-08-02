@@ -3,6 +3,7 @@
  * Copyright 2003-2011 The Measurement Factory
  * Licensed under the Apache License, Version 2.0 */
 
+#include "base/polygraph.h"
 #include "pgl/pgl.h"
 
 #include <fstream>
@@ -191,16 +192,6 @@ class Normalizer {
 static MyOpts TheOpts;
 
 
-template <class A>
-inline
-void safeEject(A &a, int idx) {
-	if (idx+1 < a.count()) 
-		a.memmove(idx, &a.item(idx+1), a.count()-(idx+1));
-	a.pop();
-}
-
-
-
 /* MyOpt */
 
 bool MyOpts::validate() const {
@@ -265,11 +256,8 @@ ostream &RuleCondnItem::print(ostream &os) const {
 /* RuleCondnHash */
 
 RuleCondnHash::RuleCondnHash(const RuleCondn &aBase, int expCount):
-	theBase(aBase), theIds(expCount*3 + 1), 
-	theExpCount(expCount), theCount(0) {
-
-	theIds.count(theIds.capacity());
-	theIds.memset(0);
+	theBase(aBase), theExpCount(expCount), theCount(0) {
+	theIds.resize(expCount*3 + 1);
 }
 
 int RuleCondnHash::idxOf(const RuleCondnItem &i) const {
@@ -591,7 +579,7 @@ void Rules::prune() {
 			bad = *item(goodIdx) == r;
 		}
 		if (bad)
-			safeEject(*this, i);
+			eject(i);
 		else
 			++i;
 	}}
@@ -609,7 +597,7 @@ void Rules::sort() {
 	for (int i = 0; i < count(); ++i)
 		item(i)->sort();
 
-	qsort(theItems, count(), sizeof(*theItems), &cmpRules);
+	qsort(items(), count(), sizeof(*items()), &cmpRules);
 }
 
 void Rules::simplify() {
@@ -778,7 +766,7 @@ int main(int argc, char **argv) {
 	clog << argv[0] << ": sorting " << rules.count() << " rules ..." << endl;
 	rules.sort();
 
-	clog << argv[0] << ": symplifying..." << endl;
+	clog << argv[0] << ": simplifying..." << endl;
 	rules.simplify(); // prune based on order
 
 	clog << argv[0] << ": printing " << rules.count() << " rules ..." << endl;

@@ -29,6 +29,7 @@ GzipEncoder::GzipEncoder(int aLevel, BodyIter *aProducer):
 	theContentCfg = theProducer->contentCfg();
 	theContentHash = theProducer->contentHash();
 	theContentSize = Size(); // unknown
+	theSuffixSize = 0; // none (but theProducer may have it)
 }
 
 GzipEncoder::~GzipEncoder() {
@@ -40,10 +41,8 @@ void GzipEncoder::start(WrBuf *aBuf) {
 	Assert(theProducer);
 	theProducer->start(&theProducerBuf);
 
-	if (theEncoder)
-		theEncoder->init(theLevel);
-	else
-		theEncoder = new Deflator(theLevel);
+	delete theEncoder;
+	theEncoder = new zlib::Deflator(theLevel);
 }
 
 void GzipEncoder::stop() {
@@ -54,10 +53,6 @@ void GzipEncoder::stop() {
 }
 
 bool GzipEncoder::pour() {
-	return pourBody();
-}
-
-bool GzipEncoder::pourBody() {
 	while ((theProducer->canPour() || !theProducerBuf.empty() || theEncoder->needMoreSpace()) && this->canPour()) {
 		if (theProducer->canPour())
 			theProducer->pour();
@@ -69,7 +64,9 @@ bool GzipEncoder::pourBody() {
 			// compress
 			Size dataDelta, spaceDelta;
 			const bool donePouring = theProducer->pouredAll();
-			if (theEncoder->deflate(spaceDelta, dataDelta, donePouring)) {
+			const zlib::Stream::ZFlush flush = donePouring ?
+				zlib::Stream::zFinish : zlib::Stream::zNoFlush;
+			if (theEncoder->perform(spaceDelta, dataDelta, flush)) {
 				theProducerBuf.consumed(dataDelta);
 				theBuf->appended(spaceDelta);
 				theBuiltSize += spaceDelta;
@@ -87,6 +84,6 @@ bool GzipEncoder::pourBody() {
 
 GzipEncoder *GzipEncoder::clone() const {
 	GzipEncoder *const i = new GzipEncoder(theLevel, theProducer->clone());
-	i->contentSize(theContentSize);
+	i->contentSize(theContentSize, theSuffixSize);
 	return i;
 }

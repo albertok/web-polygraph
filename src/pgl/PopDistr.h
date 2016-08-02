@@ -6,6 +6,8 @@
 #ifndef POLYGRAPH__PGL_POPDISTR_H
 #define POLYGRAPH__PGL_POPDISTR_H
 
+#include "xstd/h/stdint.h"
+
 class RndGen;
 
 // popularity distribution interface
@@ -15,7 +17,7 @@ class PopDistr {
 		virtual ~PopDistr() {}
 
 		// selects an object name from [1, lastName] range
-		virtual int choose(RndGen &rng, int lastName) = 0;
+		virtual int64_t choose(RndGen &rng, int64_t lastName) = 0;
 
 		virtual ostream &print(ostream &os) const = 0;
 };

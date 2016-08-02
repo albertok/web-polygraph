@@ -11,7 +11,7 @@
 #include "xstd/String.h"
 #include "base/BStream.h"
 #include "runtime/LogComment.h"
-#include "runtime/PubWorld.h"
+#include "runtime/ObjUniverse.h"
 #include "runtime/HostMap.h"
 #include "runtime/Viservs.h"
 #include "runtime/SharedOpts.h"
@@ -20,7 +20,8 @@
 PersistWorkSetMgr ThePersistWorkSetMgr;
 
 enum PersistWorkSetMagic { pwsMagic1 = 0x506f6c79, pwsMagic2 = 0x57536574 };
-enum PersistWorkSetTags { pwsStart, pwsSeeds, pwsPubWorlds, pwsSideState };
+const int PersistWorkSetFormatVersion = 1;
+enum PersistWorkSetTags { pwsStart, pwsSeeds, pwsUniverses, pwsSideState };
 
 
 PersistWorkSetMgr::PersistWorkSetMgr(): theInStream(0), theOutStream(0),
@@ -123,8 +124,7 @@ void PersistWorkSetMgr::loadMagic() {
 
 	const bool res = 
 		theInStream->geti() == pwsMagic1 &&
-		theInStream->geti() == pwsMagic2 &&
-		theInStream->geti() == 0;
+		theInStream->geti() == pwsMagic2;
 	checkInput();
 
 	if (!res) {
@@ -132,12 +132,22 @@ void PersistWorkSetMgr::loadMagic() {
 			theInStream->name() << ", stopped" << endl;
 		exit(2);
 	}
+
+	const int formatVersion = theInStream->geti();
+	if (formatVersion != PersistWorkSetFormatVersion) {
+		cerr << here << "unsupported persistent working set file: " <<
+			theInStream->name() << endl <<
+			"file version: " << formatVersion << endl <<
+			"supported version: " << PersistWorkSetFormatVersion <<
+			endl;
+		exit(2);
+	}
 }
 
 void PersistWorkSetMgr::storeMagic() {
 	if (!theOutStream)
 		return;
-	*theOutStream << pwsMagic1 << pwsMagic2 << (int)0;
+	*theOutStream << pwsMagic1 << pwsMagic2 << PersistWorkSetFormatVersion;
 	checkOutput();
 }
 
@@ -171,42 +181,42 @@ void PersistWorkSetMgr::storeSeeds() {
 	checkOutput();
 }
 
-void PersistWorkSetMgr::loadPubWorlds() {
+void PersistWorkSetMgr::loadUniverses() {
 	if (!theInStream)
 		return;
 
-	const int pubWorldCount = theInStream->geti();
+	const int universeCount = theInStream->geti();
 	checkInput();
-	for (int i = 0; i < pubWorldCount; ++i) {
+	for (int i = 0; i < universeCount; ++i) {
 		NetAddr server;
-		PubWorld *pubWorld = new PubWorld;
-		*theInStream >> server >> *pubWorld;
+		ObjUniverse *universe = new ObjUniverse;
+		*theInStream >> server >> *universe;
 		checkInput();
 		if (HostCfg *host = TheHostMap->find(server)) {
-			PubWorld::Put(host, pubWorld);
+			ObjUniverse::Put(host, universe);
 		} else {
 			Comment << "error: visible server " << server << " in the " <<
 				"working set being loaded from " << theInStream->name() <<
 				" is not on the current configuration, skipping" << endc;
-			delete pubWorld;
+			delete universe;
 		}
 	}
 
-	// here we cannot check that all current viservers have stored pubWorlds
-	//PubWorld::DumpSlices(cerr << here);
+	// here we cannot check that all current viservers have stored universes
+	//Universe::DumpSlices(cerr << here);
 }
 
-void PersistWorkSetMgr::storePubWorlds() {
+void PersistWorkSetMgr::storeUniverses() {
 	if (!theOutStream)
 		return;
 
-	*theOutStream << PubWorld::Count();
+	*theOutStream << ObjUniverse::Count();
 	checkOutput();
 	for (ViservIterator i; !i.atEnd(); ++i)
-		*theOutStream << i.host()->theAddr << *i.pubWorld();
+		*theOutStream << i.host()->theAddr << *i.universe();
 	checkOutput();
 
-	//PubWorld::DumpSlices(cerr << here);
+	//Universe::DumpSlices(cerr << here);
 }
 
 IBStream *PersistWorkSetMgr::loadSideState() {

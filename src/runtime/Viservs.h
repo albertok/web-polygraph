@@ -8,7 +8,7 @@
 
 class HostCfg;
 class NetAddr;
-class PubWorld;
+class ObjUniverse;
 
 // iterates all visible servers, returning their HostCfg objects
 class ViservIterator {
@@ -19,7 +19,7 @@ class ViservIterator {
 		int viserv() const;
 		HostCfg *host() const;
 		const NetAddr &addr() const;
-		PubWorld *pubWorld() const;
+		ObjUniverse *universe() const;
 
 		ViservIterator &operator ++();
 		void next();

@@ -18,7 +18,6 @@ extern ostream &Oid2UrlPath(const ObjId &oid, ostream &os);
 
 // XXX: move to oidAlgos
 extern NetAddr Oid2UrlHost(const ObjId &oid);
-extern int Oid2ContType(const ObjId &oid);
 extern bool OidImpliesMarkup(const ObjId &oid, const ContentCfg *cfg = 0);
 extern String Oid2AuthPath(const ObjId &oid);
 

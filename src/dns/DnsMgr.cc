@@ -11,6 +11,7 @@
 #include "xstd/NetAddr.h"
 #include "runtime/Farm.h"
 #include "runtime/ErrorMgr.h"
+#include "runtime/LogComment.h"
 #include "runtime/polyErrors.h"
 #include "runtime/globals.h"
 #include "pgl/DnsResolverSym.h"
@@ -18,13 +19,17 @@
 #include "dns/DnsResp.h"
 #include "dns/DnsXact.h"
 #include "dns/DnsMgr.h"
+#include "dns/DnsCache.h"
 #include "client/Client.h"
 
 
 static ObjFarm<DnsXact> TheXacts;
 
-
-DnsMgr::DnsMgr(Client *anOwner): theOwner(anOwner), closeWithLast(false), theType(DnsMsg::typeA) {
+DnsMgr::DnsMgr(Client *anOwner):
+	theOwner(anOwner),
+	theCache(0),
+	closeWithLast(false),
+	theType(DnsMsg::typeA) {
 	Assert(theOwner);
 }
 
@@ -33,6 +38,7 @@ DnsMgr::~DnsMgr() {
 		TheFileScanner->clearRes(theReserv);
 	if (theSock)
 		theSock.close();
+	DnsCache::Destroy(theCache);
 }
 
 void DnsMgr::configure(const DnsResolverSym *cfg) {
@@ -55,14 +61,17 @@ void DnsMgr::configure(const DnsResolverSym *cfg) {
 	}
 
 	if (const String s = cfg->queryType()) {
-		if (0 == s.cmp("AAAA"))
+		if (s == "A")
+			theType = DnsMsg::typeA;
+		else if (s == "AAAA")
 			theType = DnsMsg::typeAAAA;
 		else
-			cerr << here << "unknown query type: " << s
-			<< endl << xexit;
+			cerr << cfg->loc() << "error: unknown DNS resolver query type: " << s << endl << xexit;
 	}
 
 	TheXacts.limit(1024); // magic, no good way to estimate
+
+	theCache = DnsCache::Create(cfg->cache()); // may be nil
 }
 
 const NetAddr &DnsMgr::addr() const {
@@ -72,18 +81,17 @@ const NetAddr &DnsMgr::addr() const {
 
 void DnsMgr::start() {
 	closeWithLast = false;
+	if (theCache)
+		theCache->use();
 }
 
 void DnsMgr::stop() {
-	clearCache();
+	if (theCache)
+		theCache->abandon();
 
 	closeWithLast = true;
 	if (!theXacts.count() && theSock)
 		theSock.close();
-}
-
-void DnsMgr::clearCache() {
-	// no cache yet
 }
 
 void DnsMgr::openSocket() {
@@ -95,9 +103,18 @@ void DnsMgr::openSocket() {
 	}
 }
 
-bool DnsMgr::needsLookup(const NetAddr &addr) const {
-	// all domain names require lookup -- cache is not yet implemeneted
-	return addr.isDomainName();
+DnsMgr::InstantLookupResult DnsMgr::instantLookup(const NetAddr &addr, NetAddr &ip) const {
+	if (!addr.isDomainName())
+		return dnsAlreadyAnIp;
+
+	if (!theCache)
+		return dnsNeedsAsyncLookup; // no caching is enabled
+
+	if (!theCache->find(addr.addrA(), ip)) // cache miss
+		return dnsNeedsAsyncLookup;
+
+	// cache hit
+	return dnsCacheHit;
 }
 
 // returns false if lookup is not possible
@@ -177,6 +194,10 @@ void DnsMgr::noteXactDone(DnsXact *x) {
 		}
 		if (theServers.count() > 1)
 			ReportError(errDnsAllSrvsFailed);
+	} else 
+	if (theCache) {
+		if (addr.addrN().known()) // negative caching not yet supported
+			theCache->insert(x->queryAddr().addrA(), addr);
 	}
 
 	const int idx = x->idx();

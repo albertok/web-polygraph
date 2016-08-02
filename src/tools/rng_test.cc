@@ -53,9 +53,9 @@ int main(int argc, char *argv[]) {
 		rngSeeded.seed(i);
 		rngPermut.seed(LclPermut(i));
 		cout
-			<< ' ' << rngCont.ltrial()
-			<< ' ' << rngSeeded.ltrial()
-			<< ' ' << rngPermut.ltrial()
+			<< ' ' << rngCont.trial32u()
+			<< ' ' << rngSeeded.trial32u()
+			<< ' ' << rngPermut.trial32u()
 			<< ' ' << uncorr(i)
 			<< endl;
 	}

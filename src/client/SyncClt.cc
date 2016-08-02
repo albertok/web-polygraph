@@ -16,6 +16,9 @@ void SyncClt::wakeUp(const Alarm &a) {
 }
 
 void SyncClt::scheduleLaunch(Time) {
+	if (isIdle)
+		return;
+
 	Assert(!thePendAlarmCnt);
 	Assert(!theThinkDistr);
 	tryLaunch(genXact());

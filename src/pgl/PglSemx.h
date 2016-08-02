@@ -7,6 +7,7 @@
 #define POLYGRAPH__PGL_PGLSEMX_H
 
 #include "xstd/Array.h"
+#include "xstd/h/iosfwd.h"
 #include "pgl/AddrSchemeSym.h"
 
 class SynSymTblItem;
@@ -31,6 +32,7 @@ class NetAddrRangeSym;
 class QualifSym;
 class DistrSym;
 class DynamicNameSym;
+class MimeHeaderSym;
 class PopDistrSym;
 class RegExSym;
 
@@ -42,6 +44,8 @@ class PglSemx {
 		virtual ~PglSemx();
 
 		virtual void interpret(const SynSym &s);
+		static void WorkerId(int wokerId);
+		static const char* WorkerIdStr();
 
 	protected:
 		void interpCode(const ParsSym &pgl);
@@ -76,6 +80,7 @@ class PglSemx {
 		NetAddrSym *makeAddrAtom(const TokenSym &s);
 		NetAddrRangeSym *makeAddrRange(const TokenSym &s);
 		QualifSym *makeQualif(const TokenSym &s);
+		MimeHeaderSym *makeMimeHeader(const TokenSym &s);
 		RegExSym *makeRegEx(const TokenSym &scopeName, const TokenSym &reSym);
 
 		ListSym *makeList(const ParsSym &pgl);
@@ -132,6 +137,7 @@ class PglSemx {
 		RegExSym *orItems(const ContainerSym &items);
 		DynamicNameSym *dynamicName(const NetAddrSym &addr, const NumSym &prob);
 		ContainerSym *dynamize(const String &cname, const ContainerSym &items, const NumSym &prob);
+		ostream &print(ostream &os, const ListSym &args, const unsigned int skip = 0);
 
 		String typeName(const ParsSym &pgl) const;
 		String objName(const ParsSym &pgl) const;
@@ -140,12 +146,16 @@ class PglSemx {
 		int anyToInt(const SynSym &s) const;
 		double anyToDouble(const SynSym &s) const;
 		void noCast(const SynSym &s, const String &totype) const;
+		void failedCast(const SynSym &s, const String &totype, const String &str) const;
 
 		void mustBeDefined(const ExpressionSym *const expr, const char *const descr, const SrcLoc &defaultLoc = SrcLoc()) const;
 		void unknownRhs(const ParsSym &pgl) const;
 
 	protected:
 		PglCtx *theCtx;    // current context
+
+		static int TheWorkerId;
+		static String TheWorkerIdStr;
 };
 
 #endif

@@ -10,10 +10,10 @@
 #include "pgl/PglNumSym.h"
 #include "pgl/HostsBasedSym.h"
 
+class MimeHeaderSym;
 class StringSym;
 class SocketSym;
 class PopModelSym;
-class SslWrapSym;
 
 // base class for robot and server symbols
 class AgentSym: public HostsBasedSym {
@@ -40,7 +40,7 @@ class AgentSym: public HostsBasedSym {
 		bool abortProb(double &p) const;
 		bool cookieSender(double &prob) const;
 		bool customStatsScope(Array<StringSym*> &syms) const;
-		bool sslWraps(Array<SslWrapSym*> &syms, RndDistr *&sel) const;
+		const ArraySym *httpHeaders() const;
 
 	protected:
 		virtual String msgTypesField() const = 0;

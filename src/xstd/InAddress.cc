@@ -232,8 +232,9 @@ int InAddress::compare(const InAddress &other) const {
 	return memcmp(rawOctets(), other.rawOctets(), len());
 }
 
-InAddress InAddress::NetMask(int bitCount) {
-	InAddress A = InAddress::IPvFour();
+InAddress InAddress::NetMask(const int family, int bitCount) {
+	InAddress A = family == AF_INET6 ? InAddress::IPvSix() :
+		InAddress::IPvFour();
 	A.isKnown = true;
 	Assert(0 <= bitCount && bitCount <= A.len()*8);
 	unsigned char *cp = A.rawOctets();

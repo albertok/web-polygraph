@@ -3,11 +3,14 @@
  * Copyright 2003-2011 The Measurement Factory
  * Licensed under the Apache License, Version 2.0 */
 
+#include "base/polygraph.h"
+
 #include "client/MultiRangeCfg.h"
 #include "pgl/MultiRangeSym.h"
 #include "xstd/rndDistrs.h"
 #include "base/RndPermut.h"
 #include "base/RangeGenStat.h"
+#include "runtime/HttpPrinter.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/httpText.h"
 #include "runtime/StatPhase.h"
@@ -54,13 +57,13 @@ void MultiRangeCfg::configure(const MultiRangeSym &aMultiRange) {
 			new ExpDistr(rnd_gen, theRangeLengthRelative->mean());
 }
 
-RangeCfg::RangesInfo MultiRangeCfg::makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const {
+RangeCfg::RangesInfo MultiRangeCfg::makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const {
 	RangeGenStat &rangeGenStat = TheStatPhaseMgr->rangeGenStat();
 	RangesInfo res;
 	res.theCount = 0;
 	res.theTotalSize = 0;
 
-	os << hfpRange;
+	const bool putHeader = hp.putHeader(hfpRange);
 	const int repSize = contentCfg.calcFullEntitySize(oid);
 
 	int first, last;
@@ -84,9 +87,11 @@ RangeCfg::RangesInfo MultiRangeCfg::makeRangeSet(ostream &os, const ObjId &oid, 
 			rangeGenStat.recordTotalSizeOver();
 			break;
 		}
-		os << first << '-' << last;
-		if (i < count - 1)
-			os << ',';
+		if (putHeader) {
+			hp << first << '-' << last;
+			if (i < count - 1)
+				hp << ',';
+		}
 
 		rangeGenStat.recordOneSize(last - first + 1);
 		res.theTotalSize += last - first + 1;
@@ -94,7 +99,8 @@ RangeCfg::RangesInfo MultiRangeCfg::makeRangeSet(ostream &os, const ObjId &oid, 
 
 		first = last + calculateGap(repSize);
 	}
-	os << crlf;
+	if (putHeader)
+		hp << crlf;
 	rangeGenStat.recordTotalSize(res.theTotalSize);
 
 	return res;

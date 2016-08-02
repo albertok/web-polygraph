@@ -6,7 +6,7 @@
 #ifndef POLYGRAPH__BASE_RNDPERMUT_H
 #define POLYGRAPH__BASE_RNDPERMUT_H
 
-#include <limits.h>
+#include <limits>
 
 #include "xstd/LibInit.h"
 
@@ -33,11 +33,11 @@ class RndPermutator {
 		void reseed(int seed);
 		
 		// use 2nd param if you need to map two numbers into one uniform var
-		int permut(int n, int m = 0) const;
+		int permut(const int64_t n, const int64_t m = 0) const;
 
 	protected:
 		inline void swap(int x, int y);
-		inline int item(int idx) const;
+		inline int item(const int64_t idx) const;
 
 	protected:
 		int *theTable;   // good random numbers
@@ -59,7 +59,9 @@ enum { rndNone = 0, rndContentSel, rndUnused1,
 	rndPglSemxIsDistr, rndRobotSymReqInterArrival,
 	rndSslSeed, rndSslSessionCache,
 	rndCookieSend, rndCookieCount, rndCookieSize,
-	rndReqBody, rndWorldSel, rndProtocolSel
+	rndReqBody, rndWorldSel, rndProtocolSel, rndHttpHeaders,
+	rndRamFilesStart,
+	rndEnd
 };
 
 // generate one seeded r.n.g. per group
@@ -72,12 +74,12 @@ extern RndPermutator &LclPermut(); // each process gets its own rnd numbers
 extern RndPermutator &GlbPermut(); // all processes share this set of numbers
 
 inline
-int LclPermut(int n, int m = 0) {
+int LclPermut(const int64_t n, const int64_t m = 0) {
 	return LclPermut().permut(n, m);
 }
 
 inline
-int GlbPermut(int n, int m = 0) {
+int GlbPermut(const int64_t n, const int64_t m = 0) {
 	return GlbPermut().permut(n, m);
 }
 
@@ -93,10 +95,10 @@ void RndPermutator::swap(int x, int y) {
 }
 
 inline 
-int RndPermutator::item(int idx) const {
+int RndPermutator::item(const int64_t idx) const {
 	return idx >= 0 ?
 		theTable[idx % theTableCap] :
-		theTable[(idx + INT_MAX) % theTableCap];
+		theTable[(idx + numeric_limits<int64_t>::max()) % theTableCap];
 }
 
 

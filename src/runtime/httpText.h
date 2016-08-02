@@ -8,6 +8,8 @@
 
 #include "xstd/String.h"
 
+extern bool KnownHeader(const String &header);
+
 // various HTTP header strings
 
 // protocol strings
@@ -41,9 +43,11 @@ extern const String hfConnAliveOrg;
 extern const String hfConnCloseOrg;
 extern const String hfConnAlivePxy;
 extern const String hfConnClosePxy;
-extern const String hfReload;
+extern const String hfCcReload;
+extern const String hfPragmaReload;
 extern const String hfCcCachable;
 extern const String hfCcUncachable;
+extern const String hfPragmaUncachable;
 extern const String hfExpect100Continue;
 
 // header field prefixes
@@ -76,9 +80,6 @@ extern const String hfpServer;
 extern const String hfpLocation;
 extern const String hfpProxyAuthorization;
 extern const String hfpAuthorization;
-extern const String hfpXRemWorld;
-extern const String hfpXXact;
-extern const String hfpXTarget;
 extern const String hfpContRange;
 extern const String hfpRange;
 extern const String hfpExpect;

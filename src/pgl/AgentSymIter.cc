@@ -37,13 +37,5 @@ void AgentSymIter::sync() {
 		const AgentSym *agent = theAgents[thePos];
 		if (agent->isA(theAgentType))
 			return;
-
-		if (includeProxies && agent->isA(ProxySym::TheType)) {
-			ProxySym *proxy = &(ProxySym&)agent->cast(ProxySym::TheType);
-			agent = proxy->side(theAgentType);
-			Assert(agent && agent->isA(theAgentType));
-			isAgentInProxy = true;
-			return;
-		}
 	}
 }

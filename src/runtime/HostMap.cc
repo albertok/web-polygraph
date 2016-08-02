@@ -14,8 +14,8 @@ HostMap *TheHostMap = 0;
 
 HostCfg::HostCfg(const NetAddr &anAddr)
 	: theAddr(anAddr), theProtocol(Agent::pUnknown),
-	theContent(0), theServerRep(0), thePubWorld(0),
-	isSslActive(false) {
+	theContent(0), theServerRep(0), theUniverse(0),
+	theHostsBasedCfg(0), isSslActive(false) {
 }
 
 
@@ -65,16 +65,16 @@ bool HostMap::sslActive(const NetAddr &addr) {
 	return false;
 }
 
-PubWorld *HostMap::findPubWorld(const NetAddr &addr) {
+ObjUniverse *HostMap::findUniverse(const NetAddr &addr) {
 	int idx = -1;
 	if (findIdx(addr, idx))
-		return at(idx)->thePubWorld;
+		return at(idx)->theUniverse;
 	return 0;
 }
 
-PubWorld *HostMap::findPubWorldAt(int idx) {
+ObjUniverse *HostMap::findUniverseAt(int idx) {
 	if (const HostCfg *const h = at(idx))
-		return h->thePubWorld;
+		return h->theUniverse;
 	return 0;
 }
 

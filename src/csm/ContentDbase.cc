@@ -29,6 +29,15 @@ int ContentDbase::count() const {
 	return theEntries.count();
 }
 
+bool ContentDbase::hasLinkOrPage() const {
+	for (int i = 0; i < count(); ++i) {
+		const int eType = entry(i)->type();
+		if (eType == cdbeLink || eType == cdbePage)
+			return true;
+	}
+	return false;
+}
+
 double ContentDbase::entrySizeMean() const {
 	const int cnt = count();
 	if (!cnt)

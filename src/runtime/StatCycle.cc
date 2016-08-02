@@ -67,7 +67,11 @@ void StatCycle::nextIntvl(Time wakeUpTime) {
 void StatCycle::restart() {
 	Assert(theIntvlStart > 0);
 	setDuration(theIntvlStart);
-	storeAll(TheOLog, lgStatCycleRec);
+	// Do not log stats collected while waiting: There should not be any, and
+	// adding empty records will affect naive global averages. This may need to
+	// be revisited: We are hiding this [lack of] information from testers.
+	if (!TheStatPhaseMgr.trafficWaiting())
+		storeAll(TheOLog, lgStatCycleRec);
 	if (TheReportCat > 0)
 		report(*theRecs[TheReportCat]);
 	for (int i = 0; i < theRecs.count(); ++i) {

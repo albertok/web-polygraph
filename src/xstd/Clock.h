@@ -32,17 +32,6 @@ class Clock {
 };
 
 // "Wall clock" or "official clock" (it is always advanced by UpdateClocks())
-extern Clock TheClock;
-
-
-// internal object to initialize Clock library, ignore
-class ClockLibCounter {
-	public:
-		ClockLibCounter();
-		~ClockLibCounter();
-	protected:
-		static int theUseCount;
-};
-static ClockLibCounter TheClockLibCounter;
+extern Clock &TheClock;
 
 #endif

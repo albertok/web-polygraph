@@ -7,6 +7,7 @@ SUBDIRS	= \
 	app \
 	beep \
 	icp \
+	kerberos \
 	runtime \
 	xparser \
 	pgl \
@@ -20,5 +21,7 @@ SUBDIRS	= \
 	tools \
 	probe \
 	monitor
+
+noinst_HEADERS = post-config.h
 
 include $(top_srcdir)/common.am

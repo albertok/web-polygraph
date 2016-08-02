@@ -10,6 +10,7 @@
 #include "runtime/Connection.h"
 #include "runtime/HostMap.h"
 #include "runtime/UserCred.h"
+#include "pgl/PglSemx.h"
 
 // Not in csm/oid2Url.h because pgl2ldif cannot link with that w/o bringing
 // in too many dependencies with it
@@ -31,6 +32,8 @@ NetAddr Oid2Target(const ObjId &oid) {
 }
 
 
+const String UserCred::TheTargetIpMacro = "${target_ip}";
+
 void UserCred::finalize(const ObjId &oid) {
 	finalize(Oid2Target(oid));
 }
@@ -39,13 +42,21 @@ void UserCred::finalize(const Connection &conn) {
 	finalize(conn.raddr());
 }
 
-Area UserCred::name() const {
+Area UserCred::name(bool &hasRealm) const {
+	hasRealm = false;
+
 	if (!isValid)
 		return Area::Empty();
 
-	const char *p = theImage.chr(':');
-	const int len = p ? p - theImage.data() : theImage.len();
-	return theImage.area(0, len);
+	int pos;
+	for (pos = 0; pos < theImage.len(); ++pos) {
+		if (theImage[pos] == '@')
+			hasRealm = true;
+		else
+		if (theImage[pos] == ':')
+			break;
+	}
+	return theImage.area(0, pos);
 }
 
 Area UserCred::password() const {
@@ -67,8 +78,8 @@ void UserCred::invalidate() {
 
 // does macro substitutions
 void UserCred::finalize(const NetAddr &addr) {
-	static const String macro("${target_ip}");
 	const String &replacement = addr.addrA();
 	Should(replacement.len());
-	theImage = ExpandMacro(theImage, macro, replacement);
+	theImage = ExpandMacro(theImage, TheTargetIpMacro, replacement);
+	theImage = ExpandMacro(theImage, "${worker}", PglSemx::WorkerIdStr());
 }

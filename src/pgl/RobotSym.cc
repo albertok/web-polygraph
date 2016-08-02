@@ -22,6 +22,7 @@
 #include "pgl/ClientBehaviorSym.h"
 #include "pgl/ContentSym.h"
 #include "pgl/DnsResolverSym.h"
+#include "pgl/KerberosWrapSym.h"
 #include "pgl/SessionSym.h"
 #include "pgl/RangeSym.h"
 #include "pgl/RobotSym.h"
@@ -78,6 +79,7 @@ static String strUploadContents = "upload_contents";
 static String strPassiveFtp = "passive_ftp";
 static String strSocksProb = "socks_prob";
 static String strSocksChainingProb = "socks_chaining_prob";
+static String strKerberosWrap = "kerberos_wrap";
 
 RobotSym::RobotSym(const String &aType): AgentSym(aType) {
 	theRec->bAdd(strAddrArr, strProxies, 0);
@@ -122,6 +124,7 @@ RobotSym::RobotSym(const String &aType): AgentSym(aType) {
 	theRec->bAdd(NumSym::TheType, strPassiveFtp, 0);
 	theRec->bAdd(NumSym::TheType, strSocksProb, 0);
 	theRec->bAdd(NumSym::TheType, strSocksChainingProb, 0);
+	theRec->bAdd(KerberosWrapSym::TheType, strKerberosWrap, 0);
 }
 
 RobotSym::RobotSym(const String &aType, PglRec *aRec): AgentSym(aType, aRec) {
@@ -179,6 +182,7 @@ bool RobotSym::recurRatio(double &ratio) const {
 bool RobotSym::spnegoRatio(double &ratio) const {
 	return getDouble(strSpnegoAuthRatio, ratio);
 }
+
 bool RobotSym::embedRecurRatio(double &ratio) const {
 	return getDouble(strEmbed_recur, ratio);
 }
@@ -292,7 +296,7 @@ bool RobotSym::acceptedContentCodings(Array<String*> &codings) const {
 bool RobotSym::interests(Array<StringSym*> &istrs, Array<double> &iprobs) const {
 	if (ArraySym *a = getArraySym(strInterests)) {
 		a->copyProbs(iprobs);
-		ArraySymExportM(StringSym, *a, StringSym::TheType, istrs);
+		a->exportA(istrs);
 		return true;
 	}
 	return false;
@@ -324,7 +328,7 @@ RndDistr *RobotSym::cookiesKeepLimit() const {
 
 bool RobotSym::ranges(Array<const RangeSym*> &syms, RndDistr *&sel) const {
 	if (ArraySym *a = getArraySym(strRanges)) {
-		ArraySymExportM(RangeSym, *a, RangeSym::TheType, syms);
+		a->exportA(syms);
 		Array<double> probs;
 		a->copyProbs(probs);
 		sel = TblDistr::FromDistrTable(type() + "-" + strRanges, probs);
@@ -347,7 +351,7 @@ bool RobotSym::reqBodyRecurrence(double &f) const {
 
 bool RobotSym::reqContents(const String &param, Array<ContentSym*> &syms, RndDistr *&sel) const {
 	if (ArraySym *a = getArraySym(param)) {
-		ArraySymExportM(ContentSym, *a, ContentSym::TheType, syms);
+		a->exportA(syms);
 		Array<double> probs;
 		a->copyProbs(probs);
 		sel = TblDistr::FromDistrTable(type() + "-" + strPostContents, probs);
@@ -374,4 +378,9 @@ bool RobotSym::haveReqMethods() const {
 
 bool RobotSym::haveReqTypes() const {
 	return getArraySym(strReq_types);
+}
+
+const KerberosWrapSym *RobotSym::kerberosWrap() const {
+	const SynSym *const s = getRecSym(strKerberosWrap);
+	return s ? &((KerberosWrapSym&)s->cast(KerberosWrapSym::TheType)) : 0;
 }

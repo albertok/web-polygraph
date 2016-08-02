@@ -13,7 +13,10 @@
 #include "base/Progress.h"
 #include "base/ProtoIntvlStat.h"
 
-ProtoIntvlStat::ProtoIntvlStat(): theProgress(0), theErrXacts(0) {
+ProtoIntvlStat::ProtoIntvlStat():
+	updateProgress(false),
+	theProgress(0),
+	theErrXacts(0) {
 }
 
 void ProtoIntvlStat::progress(ProtoProgress *aProgress) {
@@ -46,6 +49,16 @@ bool ProtoIntvlStat::active() const {
 bool ProtoIntvlStat::sane() const {
 	return theDoneXacts.sane() && theXactLvl.sane() &&
 		theConnLvl.sane() && theErrXacts >= 0;
+}
+
+void ProtoIntvlStat::recordXact(const Time &rptm, const Size &sz, const bool hit) {
+	// Hack: We are called for both StatCycle and StatPhase stats but
+	// theProject is global and only one ProtoIntvlStat should update it.
+	if (updateProgress) {
+		Assert(theProgress);
+		++theProgress->successes;
+	}
+	theDoneXacts.record(rptm, sz, hit);
 }
 
 void ProtoIntvlStat::keepLevel(const ProtoIntvlStat &s) {
@@ -123,7 +136,7 @@ ostream &ProtoIntvlStat::print(ostream &os, const String &pfx, Time duration) co
 void ProtoIntvlStat::linePrint(ostream &os, int offset, Time duration, bool includeLevels) const {
 	Assert(theProgress);
 
-	if (theProgress->successes <= 0)
+	if (!active())
 		return;
 
 	os << endl

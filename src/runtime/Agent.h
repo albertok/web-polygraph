@@ -62,7 +62,7 @@ class Agent {
 	protected:
 		void configure(const AgentSym *cfg, const NetAddr &aHost);
 		Socket makeSocket(const NetAddr &addr);
-		void selectHttpVersion(AgentCfg &cfg);
+		void selectHttpVersion();
 
 	protected:
 		UniqId theId;            // unique agent id (random struct)

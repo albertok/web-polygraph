@@ -35,7 +35,7 @@ void ErrorStat::newHash() {
 	theHash = new ErrorHash(251);
 }
 
-bool ErrorStat::record(const Error &e, ErrorRec *&rec, int count) {
+bool ErrorStat::record(const Error &e, ErrorRec *&rec, const Counter count) {
 	Assert(count);
 
 	rec = theHash->findOrAdd(e);
@@ -57,7 +57,7 @@ ErrorStat &ErrorStat::operator =(const ErrorStat &es) {
 	return *this;
 }
 
-int ErrorStat::count(const Error &e) const {
+Counter ErrorStat::count(const Error &e) const {
 	if (const ErrorRec *rec = theHash->find(e))
 		return rec->count();
 	else

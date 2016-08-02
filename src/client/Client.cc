@@ -16,15 +16,15 @@
 #include "base/polyLogCats.h"
 #include "base/polyLogTags.h"
 #include "runtime/AddrMap.h"
+#include "runtime/CompoundXactInfo.h"
 #include "runtime/HostMap.h"
-#include "runtime/PubWorld.h"
 #include "runtime/HttpCookies.h"
+#include "runtime/ObjUniverse.h"
 #include "runtime/StatPhase.h"
 #include "runtime/StatPhaseMgr.h"
 #include "runtime/LogComment.h"
 #include "runtime/ErrorMgr.h"
-#include "runtime/EphPortMgr.h"
-#include "runtime/ExpPortMgr.h"
+#include "runtime/PortMgr.h"
 #include "runtime/PersistWorkSetMgr.h"
 #include "runtime/PopModel.h"
 #include "runtime/polyBcastChannels.h"
@@ -34,6 +34,9 @@
 #include "runtime/SslWrap.h"
 #include "runtime/SslWraps.h"
 #include "runtime/UserCred.h"
+#include "runtime/BcastSender.h"
+#include "runtime/ProxyCfg.h"
+#include "pgl/ProxySym.h"
 #include "csm/BodyIter.h"
 #include "csm/ContentSel.h"
 #include "csm/ContentCfg.h"
@@ -41,6 +44,7 @@
 #include "csm/oid2Url.h"
 #include "pgl/RobotSym.h"
 #include "dns/DnsMgr.h"
+#include "kerberos/Mgr.h"
 #include "client/CltConnMgr.h"
 #include "client/CltOpts.h"
 #include "client/CltXact.h"
@@ -53,7 +57,6 @@
 
 
 CltSharedCfgs Client::TheSharedCfgs;
-PtrArray<PortMgr*> Client::ThePortMgrs;
 XactFarm<CltXact> *Client::TheFtpXacts = 0;
 XactFarm<CltXact> *Client::TheHttpXacts = 0;
 ObjFarm<IcpCltXact> Client::TheIcpXacts;
@@ -70,21 +73,24 @@ void Client::HttpFarm(XactFarm<CltXact> *aFarm) {
 }
 
 Client::Client(): thePrivCache(0), theCfg(0), 
-	theConnMgr(0), theDnsMgr(0), theSessionMgr(0),
+	theConnMgr(0), theDnsMgr(0), theKerberosMgr(0), theSessionMgr(0),
+	theProxySslCtx(0),
 	theCcXactLvl(0), theExtraLaunchLvl(0), theCookiesKeepLimit(0),
 	theIcpClient(0),
 	theFtpProxyAuth(authNone), theHttpProxyAuth(authNone),
 	usePassiveFtp(true),
+	isRunning(false),
 	isIdle(false) {
-	theChannels.append(TheInfoChannel);
 	theChannels.append(TheLogCfgChannel);
 	theChannels.append(TheLogStateChannel);
+	theChannels.append(ThePhasesEndChannel);
 	startListen();
 }
 
 Client::~Client() {
 	delete theConnMgr;
 	delete theDnsMgr;
+	delete theKerberosMgr;
 	delete theSessionMgr;
 	delete thePrivCache;
 }
@@ -92,9 +98,9 @@ Client::~Client() {
 void Client::configure(const RobotSym *cfg, const NetAddr &aHost) {
 	Assert(aHost.port() < 0); // remove later
 
-	Agent::configure(cfg, aHost);
-
 	theCfg = TheSharedCfgs.getConfig(cfg);
+
+	Agent::configure(cfg, aHost);
 
 	int pcCap = 0;
 	if (cfg->privCache(pcCap))
@@ -114,7 +120,7 @@ void Client::configure(const RobotSym *cfg, const NetAddr &aHost) {
 		srvCnt = theCfg->viservCount();
 	theConnMgr = new CltConnMgr;
 	theConnMgr->configure(theSockOpt, this, srvCnt);
-	theConnMgr->portMgr(cfgPortMgr());
+	theConnMgr->portMgr(PortMgr::Get(theHost));
 	theConnMgr->idleTimeout(cfg->idlePconnTimeout());
 
 	const SslWrap *sslWrap = 0;
@@ -123,8 +129,26 @@ void Client::configure(const RobotSym *cfg, const NetAddr &aHost) {
 		theConnMgr->configureSsl(theSslCtx, sslWrap);
 	}
 
+	HostCfg *cfgHttpProxy = 0;
+	if (theHttpProxyAddr && (cfgHttpProxy = TheHostMap->find(theHttpProxyAddr))) {
+		if (cfgHttpProxy->isSslActive && cfgHttpProxy->theHostsBasedCfg) {
+			const ProxySym &proxySym = dynamic_cast<const ProxySym&>
+				(cfgHttpProxy->theHostsBasedCfg->cast(ProxySym::TheType));
+
+			ProxyCfg *proxyCfg = TheProxySharedCfgs.getConfig(&proxySym);
+			sslWrap = 0;
+			if (proxyCfg->selectSslWrap(sslWrap)) {
+				theProxySslCtx = sslWrap->makeClientCtx(theHttpProxyAddr);
+				theConnMgr->configureProxySsl(theProxySslCtx, sslWrap);
+			}
+		}
+	}
+
 	theDnsMgr = new DnsMgr(this);
 	theDnsMgr->configure(cfg->dnsResolver());
+
+	if (const KerberosWrapSym *const s = cfg->kerberosWrap())
+		theKerberosMgr = new Kerberos::Mgr(*this, *s);
 
 	if (theCfg->theBusyPeriod) {
 		theSessionMgr = new SessionMgr(this);
@@ -145,8 +169,7 @@ void Client::configure(const RobotSym *cfg, const NetAddr &aHost) {
 	configureReqIds(theReqPostIds, theCfg->thePostContents);
 	configureReqIds(theReqUploadIds, theCfg->theUploadContents);
 
-	theViservsHostInfo.stretch(theCfg->viservLimit());
-	theViservsHostInfo.count(theViservsHostInfo.capacity());
+	theViservsHostInfo.resize(theCfg->viservLimit());
 
 	theCfg->selectFtpMode(usePassiveFtp); // sticky selection
 
@@ -159,6 +182,8 @@ void Client::configure(const RobotSym *cfg, const NetAddr &aHost) {
 void Client::start() {
 	Assert(theConnMgr);
 	Assert(theDnsMgr);
+	ShouldUs(!isRunning);
+	isRunning = true;
 
 	Agent::start();
 
@@ -173,6 +198,9 @@ void Client::start() {
 }
 
 void Client::stop() {
+	ShouldUs(isRunning);
+	isRunning = false;
+
 	if (theSessionMgr)
 		theSessionMgr->stop();
 	else
@@ -186,13 +214,17 @@ void Client::stop() {
 void Client::becomeBusy() {
 	isIdle = false;
 
-	selectHttpVersion(*theCfg);
+	thePeriodMessages.clear();
 
 	theMemberships.reset();
 	theCfg->selectCredentials(theCredentials);
 	theCfg->findMemberships(theCredentials, theMemberships);
 
 	Broadcast(TheSessionBegChannel, this);
+
+	if (theKerberosMgr && hasCredentials())
+		theKerberosMgr->becomeBusy();
+
 	scheduleLaunch(TheClock);
 }
 
@@ -212,7 +244,9 @@ void Client::becomeIdle() {
 		launchCanceled(dequeSuspXact());
 	theExtraLaunchLvl = 0;
 
-	theDnsMgr->clearCache();
+	if (theKerberosMgr)
+		theKerberosMgr->becomeIdle();
+
 	theConnMgr->closeAllIdle();
 
 	for (int i = 0; i < theViservsHostInfo.count(); ++i) {
@@ -239,6 +273,8 @@ void Client::describe(ostream &os) const {
 				os << ", ";
 		}
 		if (theHttpProxyAddr) {
+			if (theProxySslCtx)
+				os << "https://";
 			os << theHttpProxyAddr << " (http";
 			if (theFtpProxyAddr == theHttpProxyAddr)
 				os << " and ftp)";
@@ -252,10 +288,6 @@ void Client::describe(ostream &os) const {
 	}
 }
 
-void Client::noteInfoEvent(BcastChannel *ch, InfoEvent ev) {
-	Assert(ch == TheInfoChannel);
-}
-
 void Client::noteLogEvent(BcastChannel *ch, OLog &log) {
 	if (ch == TheLogCfgChannel) {
 		log << bege(lgCltCfg, lgcCltSide);
@@ -267,6 +299,17 @@ void Client::noteLogEvent(BcastChannel *ch, OLog &log) {
 			<< theSeqvId 
 			<< ende;
 	}
+}
+
+void Client::noteMsgStrEvent(BcastChannel *ch, const char *) {
+	Assert(ch == ThePhasesEndChannel);
+	if (isRunning)
+		stop();
+}
+
+void Client::noteKerberosFailure() {
+	if (theKerberosMgr)
+		theKerberosMgr->noteAuthFailure();
 }
 
 void Client::noteXactDone(CltXact *x) {
@@ -298,9 +341,15 @@ void Client::noteXactDone(CltXact *x) {
 		return;
 	}
 
-	if (retry && tryLaunch(retry))
+	if (retry && tryLaunch(retry)) {
+		// no lvl increment if we are continuing the same compound transaction
+		if (Xaction *cause = retry->cause())
+			if (cause->preliminary())
+				return;
+		++theExtraLaunchLvl;
 		return;
-		
+	}
+
 	// push waiting xactions forward
 	if (theLaunchDebts.count() && !theConnMgr->atHardConnLimit()) {
 		resumeXact();
@@ -394,26 +443,62 @@ bool Client::tryLaunch(CltXact *x) {
 			return false;
 
 		// should we lookup the next hop address?
-		if (theDnsMgr->needsLookup(x->nextTcpHop())) {
-			// async call unless fails immediately
-			if (theDnsMgr->lookup(x->nextTcpHop(), x))
-				return true;
-			launchFailed(x);
-			return false;
+		NetAddr addr;
+		switch (theDnsMgr->instantLookup(x->nextTcpHop(), addr)) {
+			case DnsMgr::dnsAlreadyAnIp:
+				break; // just continue with the transaction
+			case DnsMgr::dnsCacheHit:
+				setNextHopIp(x, addr);
+				break; // and now continue with the transaction
+			case DnsMgr::dnsNeedsAsyncLookup:
+				// async call unless fails immediately
+				if (theDnsMgr->lookup(x->nextTcpHop(), x))
+					return true; // wait for Client::noteAddrLookup()
+				launchFailed(x);
+				return false;
 		}
 	}
 
 	x->lifeTimeLimit(selectLifetime());
 
-	// check if we should postpone the xaction
-	if (!x->conn() && theConnMgr->atHardConnLimit())
-		return suspendXact(x);
+	// check if we should postpone the xaction due to open connection limit
+	if (!x->conn() && theConnMgr->atHardConnLimit()) {
+		static EventCounter stats("configured robot open connection limit");
+		return suspendXact(x, stats);
+	}
+
+	return authAndLaunch(x);
+}
+
+bool Client::authAndLaunch(CltXact *x) {
+	Assert(x);
+
+	x->freezeProxyAuth(); // we have to do it before calling needGssContext()
+
+	// Do this after theConnMgr->atHardConnLimit() check, so that authenticator
+	// we get now does not become "stale" while we wait for an HTTP conn slot.
+	if (theKerberosMgr && x->needGssContext()) { // Kerberos context needed
+		// TODO: support Kerberos CC limits, even though suspending here
+		// may make our open_conn_lmt slot unavailable again, requiring
+		// authenticator re-generation or making authenticator stale?
+		// Also, the lifetime timer may expire while we createGssContext().
+		Assert(!theKerberosMgr->atXactLimit());
+		if (theKerberosMgr->createGssContext(proxy(x->oid()), *x)) {
+			return true; // wait for Client::noteGssContext()
+		} else {
+			x->reportAuthError(CltXact::aupAssumedProxy, "while creating GSS context");
+			launchFailed(x);
+			return false;
+		}
+	}
 
 	return launch(x);
 }
 
-bool Client::suspendXact(CltXact *x) {
+bool Client::suspendXact(CltXact *x, EventCounter &stats) {
 	if (theCfg->theWaitXactLmt < 0 || theLaunchDebts.count() < theCfg->theWaitXactLmt) {
+		if (!stats.count++)
+			Comment(5) << "warning: suspending xaction(s) due to " << stats.what << endc;
 		theLaunchDebts.enqueue(x);
 		Broadcast(TheWaitBegChannel, x);
 		return true;
@@ -429,7 +514,7 @@ bool Client::suspendXact(CltXact *x) {
 }
 
 void Client::resumeXact() {
-	launch(dequeSuspXact());
+	authAndLaunch(dequeSuspXact());
 }
 
 // called with nil x unless called by a lifetime-expired xaction
@@ -460,6 +545,13 @@ void Client::recycleXact(CltXact *x) {
 	// recycle x and xactions that caused it
 	// stop if a xaction still has kids
 	while (x && x->finished() && x->childCount() == 0) {
+
+		// If x is the last part alive, end the compound transaction.
+		if (const CompoundXactInfo *compound = x->partOf()) {
+			if (compound->ccLevel <= 1)
+				Broadcast(TheCompoundXactEndChannel, compound);
+		}
+
 		CltXact *cause = x->cause();
 		if (cause)
 			cause->noteChildGone(x);
@@ -494,8 +586,8 @@ void Client::genOid(ObjId &oid) {
 	else {
 		selectViserv(oid);
 		selectTarget(oid);
-		selectObj(oid);
 		selectContType(oid);
+		selectObj(oid);
 	}
 	selectScheme(oid);
 	selectReqType(oid);
@@ -509,7 +601,7 @@ void Client::selectViserv(ObjId &oid) {
 	const int viserv = theCfg->selectViserv();
 	HostCfg *host = TheHostMap->at(viserv);
 	Assert(host);
-	Assert(host->thePubWorld);
+	Assert(host->theUniverse);
 	Assert(host->theServerRep);
 	oid.viserv(viserv);
 }
@@ -534,19 +626,23 @@ void Client::selectObj(ObjId &oid) {
 
 	OidGenStat &oidGenStat = TheStatPhaseMgr->oidGenStat();
 
-	PubWorld &pubWorld = *TheHostMap->findPubWorldAt(oid.viserv());
-	const bool needRepeat = rng.event(theCfg->theRecurRatio*
+	ObjUniverse &universe = *TheHostMap->findUniverseAt(oid.viserv());
+	const CltCfg &cfg = behavior(oid, &CltBehaviorCfg::haveRecurRatio);
+	const bool needRepeat = rng.event(cfg.theRecurRatio*
 		TheStatPhaseMgr->recurFactor().current());
-	const bool canRepeat = pubWorld.canRepeat();
-	const bool repeatable = needRepeat && canRepeat;
-
-	if (repeatable)
-		pubWorld.repeat(oid, theCfg->thePopModel);
-	else
-		pubWorld.produce(oid, rng);
-
+	const bool canRepeat = universe.canRepeat(oid.type());
+	const bool forceRepeat = canRepeat && !universe.canProduce(oid.type());
 	oidGenStat.recordNeed(needRepeat, OidGenStat::intPublic);
-	oidGenStat.recordGen(repeatable, OidGenStat::intPublic);
+
+	if (canRepeat && (needRepeat || forceRepeat)) {
+		const CltCfg &popModelCfg =
+			behavior(oid, &CltBehaviorCfg::havePopModel);
+		universe.repeat(oid, popModelCfg.thePopModel);
+		oidGenStat.recordGen(true, OidGenStat::intPublic);
+	} else {
+		universe.produce(oid, rng);
+		oidGenStat.recordGen(false, OidGenStat::intPublic);
+	}
 }
 
 void Client::selectContType(ObjId &oid) {
@@ -554,8 +650,8 @@ void Client::selectContType(ObjId &oid) {
 	const HostCfg *hcfg = TheHostMap->at(oid.target());
 	Assert(hcfg);
 	Assert(hcfg->theContent);
-	const ContentCfg *ccfg = hcfg->theContent->getDir(oid);
-	oid.type(ccfg->id());
+	const ContentCfg &ccfg = hcfg->theContent->getDir();
+	oid.type(ccfg.id());
 }
 
 void Client::selectScheme(ObjId &oid) {
@@ -620,7 +716,7 @@ void Client::selectAnyTarget(ObjId &oid, int niamIdx) {
 
 // find a target that has requested oid type
 void Client::selectTypedTarget(ObjId &oid, int niamIdx) {
-	Assert(oid.type() >= TheContentMgr.normalContentStart());
+	Assert(oid.type() >= ContType::NormalContentStart());
 	for (AddrMapAddrIter i = TheAddrMap->addrIter(niamIdx); i; ++i) {
 		int targetIdx = -1;
 		Assert(TheHostMap->find(i.addr(), targetIdx));
@@ -667,8 +763,6 @@ void Client::selectForeignObj(ObjId &oid) {
 		foreignWorld.produce(oid, rng);
 		oidGenStat.recordGen(false, OidGenStat::intForeign);
 	}
-
-	oid.type(TheForeignContentId);
 }
 
 bool Client::credentialsFor(ObjId &oid, UserCred &cred) const {
@@ -793,17 +887,39 @@ void Client::notePeerAsked(IcpCltXact *q) {
 	tryLaunch(x);
 }
 
+void Client::setNextHopIp(CltXact *x, const NetAddr &ip) const {
+	Assert(ip.addrN().known());
+	// We only got the IP address. Host name and port should not change.
+	const NetAddr addr(ip.addrN(), x->nextTcpHop().port());
+	// TODO: use addr.resolve(ip.addrN()) instead if we can rewrite the
+	// !nextTcpHop.isDomainName() assertion in Client::launch to hasIp().
+	// const NetAddr addr(x->nextTcpHop()); addr.resolve(ip);
+
+	if (x->nextTcpHop() == x->nextHighHop())
+		x->nextHighHop(addr);
+	x->nextTcpHop(addr);
+}
+
 void Client::noteAddrLookup(const NetAddr &addr, CltXact *x) {
 	Assert(x);
 
 	// successful lookup?
 	if (addr) {
-		if (x->nextTcpHop() == x->nextHighHop())
-			x->nextHighHop(addr);
-		x->nextTcpHop(addr);
+		setNextHopIp(x, addr);
 		tryLaunch(x);
 	} else {
 		launchFailed(x);
+	}
+}
+
+// TODO: change profile to (CltXact *x, ccache *)
+void Client::noteGssContext(CltXact &x, const bool success) {
+	if (success) {
+		x.noteGssContext();
+		tryLaunch(&x);
+	} else {
+		x.reportAuthError(CltXact::aupAssumedProxy, "while obtaining a Kerberos ticket");
+		launchFailed(&x);
 	}
 }
 
@@ -838,22 +954,6 @@ bool Client::setNextHopAddr(CltXact *x) const {
 PortMgr *Client::portMgr() {
 	Assert(theConnMgr);
 	return theConnMgr->portMgr();
-}
-
-// slow, used during configuration only
-PortMgr *Client::cfgPortMgr() {
-	// slowly check if we already have a port mgr for our host
-	for (int i = 0; i < ThePortMgrs.count(); ++i) {
-		if (ThePortMgrs[i]->addr() == theHost)
-			return ThePortMgrs[i];
-	}
-
-	// create new port manager
-	PortMgr *mgr = TheCltOpts.thePorts.set() ?
-		(PortMgr*) new ExpPortMgr(theHost, TheCltOpts.thePorts.lo(), TheCltOpts.thePorts.hi()) :
-		(PortMgr*) new EphPortMgr(theHost);
-	ThePortMgrs.append(mgr);
-	return mgr;
 }
 
 void Client::configureReqIds(Array<ReqId> &ids, const Array<ContentCfg*> &cfgs) {
@@ -921,7 +1021,7 @@ ContentCfg *Client::selectReqContent(const ObjId &oid, ObjId &reqOid) {
 }
 
 // authNone is returned if no authentication has been required by the proxy yet
-HttpAuthScheme Client::proxyAuthScheme(const ObjId &oid) const {
+HttpAuthScheme Client::proxyAuthSchemeNow(const ObjId &oid) const {
 	if (oid.scheme() == Agent::pHTTP) {
 		return theHttpProxyAuth;
 	} else
@@ -1022,9 +1122,9 @@ const CltCfg &Client::behavior(const ObjId &oid, const CltBehaviorCfg::Predicate
 		theCfg);
 }
 
-RangeCfg::RangesInfo Client::makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const {
+RangeCfg::RangesInfo Client::makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const {
 	const CltCfg &cfg = behavior(oid, &CltBehaviorCfg::haveRanges);
-	return cfg.makeRangeSet(os, oid, contentCfg);
+	return cfg.makeRangeSet(hp, oid, contentCfg);
 }
 
 const Client::HostInfo *Client::hostInfo(const ObjId &oid) const {
@@ -1067,3 +1167,23 @@ Client::HostInfo::~HostInfo() {
 	delete cookies;
 	delete pathAuthMap;
 }
+
+
+/* MessageCounts */
+
+std::ostream &MessageCounts::print(ostream &os) const {
+	os << requests << " request headers sent";
+	if (responses)
+		os << ", " << responses << " final response headers received";
+	if (authed)
+		os << ", and " << authed << " responses authed";
+	return os;
+}
+
+bool operator ==(const MessageCounts &m1, const MessageCounts &m2)
+{
+	return m1.requests == m2.requests &&
+		m1.responses == m2.responses &&
+		m1.authed == m2.authed;
+}
+

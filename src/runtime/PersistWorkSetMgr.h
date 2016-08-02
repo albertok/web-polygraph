@@ -29,8 +29,8 @@ class PersistWorkSetMgr {
 		void loadSeeds();
 		void storeSeeds();
 
-		void loadPubWorlds();
-		void storePubWorlds();
+		void loadUniverses();
+		void storeUniverses();
 
 		IBStream *loadSideState();  // may be null
 		OBStream *storeSideState(); // may be null

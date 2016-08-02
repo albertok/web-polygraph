@@ -19,7 +19,8 @@ class Stex {
 	public:
 		typedef AggrStat StatPhaseRec::*AggrPtr;
 		typedef TmSzHistStat StatPhaseRec::*HistPtr;
-		typedef ContTypeStat StatPhaseRec::*ContTypePtr;
+		typedef ContType::AggrStat StatIntvlRec::*ContTypeAggrPtr;
+		typedef ContType::HistStat StatPhaseRec::*ContTypeHistPtr;
 		typedef HRHistStat StatPhaseRec::*HRHistPtr;
 		typedef CompoundXactStat StatPhaseRec::*CompoundPtr;
 		typedef TmSzStat StatIntvlRec::*TracePtr;
@@ -231,29 +232,54 @@ class AllRepsStex: public Stex {
 
 class ContTypeStex: public Stex {
 	public:
-		ContTypeStex(const String &aKey, const String &aName, int idx, ContTypePtr aContType);
-
-		virtual const TmSzStat *aggr(const PhaseInfo &phase) const;
+		virtual const TmSzHistStat *hist(const PhaseInfo &phase) const;
+		virtual const TmSzStat *trace(const StatIntvlRec &rec) const;
 
 		virtual void describe(XmlNodes &nodes) const;
 
 	protected:
-		int theIdx;
-		ContTypePtr theContType;
-		mutable TmSzStat theXactAggr;
+		ContTypeStex(const String &aKey, const String &aName, const int idx, const ContTypeAggrPtr aContTypeAggr, const ContTypeHistPtr aContTypeHist);
+
+		const int theIdx;
+		const ContTypeAggrPtr theContTypeAggr;
+		const ContTypeHistPtr theContTypeHist;
 };
+
+class RepContTypeStex: public ContTypeStex {
+	public:
+		RepContTypeStex(const String &aKey, const String &aName, const int idx);
+};
+
+class ReqContTypeStex: public ContTypeStex {
+	public:
+		ReqContTypeStex(const String &aKey, const String &aName, const int idx);
+};
+
 
 class AllContTypesStex: public Stex {
 	public:
-		AllContTypesStex(const String &aKey, const String &aName, ContTypePtr aContType);
-
-		virtual const TmSzStat *aggr(const PhaseInfo &phase) const;
+		virtual const TmSzHistStat *hist(const PhaseInfo &phase) const;
+		virtual const TmSzStat *trace(const StatIntvlRec &rec) const;
 
 		virtual void describe(XmlNodes &nodes) const;
 
 	protected:
-		ContTypePtr theContType;
-		mutable TmSzStat theXactAggr;
+		AllContTypesStex(const String &aKey, const String &aName, const ContTypeAggrPtr aContTypeAggr, const ContTypeHistPtr aContTypeHist);
+
+		const ContTypeAggrPtr theContTypeAggr;
+		const ContTypeHistPtr theContTypeHist;
+		mutable TmSzStat theAggrStat;
+		mutable TmSzHistStat theHistStat;
+};
+
+class AllRepContTypesStex: public AllContTypesStex {
+	public:
+		AllRepContTypesStex(const String &aKey, const String &aName);
+};
+
+class AllReqContTypesStex: public AllContTypesStex {
+	public:
+		AllReqContTypesStex(const String &aKey, const String &aName);
 };
 
 

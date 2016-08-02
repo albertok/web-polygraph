@@ -5,6 +5,7 @@
 
 #include "base/polygraph.h"
 
+#include "xstd/h/iomanip.h"
 #include "base/StatIntvlRec.h"
 #include "base/polyLogCats.h"
 #include "pgl/PglStringSym.h"
@@ -13,12 +14,14 @@
 #include "pgl/PglNumSym.h"
 #include "pgl/GoalSym.h"
 #include "pgl/StatSampleSym.h"
+#include "runtime/ErrorMgr.h"
 #include "runtime/StatIntvl.h"
 #include "runtime/DutWatchdog.h"
 #include "runtime/LogComment.h"
 #include "runtime/StatPhaseMgr.h"
 #include "runtime/StatPhase.h"
 #include "runtime/Script.h"
+#include "runtime/polyErrors.h"
 
 
 Script::Script(const SynSym &aCode): theCode(aCode.clone()), theSampler(0) {
@@ -126,15 +129,37 @@ void Script::callProc(const String &cname, const ListSym &args) {
 	}
 
 	if (cname == "print") {
-		ostream &os = Comment(5) << "script output: ";
-		for (int i = 0; i < args.count(); ++i) {
-			const SynSym *s = args[i];
-			if (s->isA(StringSym::TheType)) // remove quotes
-				os << ((const StringSym&)s->cast(StringSym::TheType)).val();
-			else
-				s->print(os);
+		// XXX: would not be needed when we start capturing
+		// cout into binary log
+		print(Comment(5), args) << endc;
+		return;
+	}
+
+	if (cname == "printV") {
+		if (args.count() >= 1) {
+			const int verbLevel = anyToInt(*args[0]);
+			print(Comment(verbLevel), args, 1) << endc;
+		} else if (ReportError(errPglScript)) {
+			Comment << args.loc() << "bad argument count for '" <<
+				cname << "': expected at least 1 argument, got "
+				<< args.count() << endc;
 		}
-		os << endc;
+		return;
+	}
+
+	if (cname == "reachedPositiveGoal") {
+		if (args.count() > 1) {
+			cerr << args.loc() << "bad argument count for '" <<
+				cname << "': expected at most 1 argument, got "
+				<< args.count() << endl << xexit;
+		}
+		String reason;
+		if (args.count() == 1) {
+			const StringSym &sym = (const StringSym&)
+				extractArg(cname, 0, args, StringSym::TheType);
+			reason = sym.val();
+		}
+		TheStatPhaseMgr->reachedPositiveGoal(reason);
 		return;
 	}
 
@@ -146,4 +171,8 @@ void Script::execEveryCode(const EveryCodeSym &ecode) {
 	dog->configure(ecode);
 	TheStatPhaseMgr->addWatchdog(dog);
 	dog->start();
+}
+
+int Script::logCat() const {
+	return lgcCltSide;
 }

@@ -158,6 +158,12 @@ int main(int argc, char *argv[]) {
 		}
 		Array<NetAddr*> aliases;
 		aliasParser.toAddrs(aliases);
+		for (int i = 0; i < aliases.count(); ++i) {
+			if (!aliases[i]->addrN().known()) {
+				cerr << "error: can't parse alias " << aliases[i]->addrA() << endl;
+				return -1;
+			}
+		}
 
 		InAddress netmask;
 		aliasParser.netmask(netmask);

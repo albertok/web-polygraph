@@ -10,6 +10,8 @@
 #include "xstd/h/sstream.h"
 #include "xstd/h/iomanip.h"
 #include "xstd/h/os_std.h"
+#include "xstd/h/sys/stat.h"
+#include "xstd/h/sys/types.h"
 
 #include "xstd/gadgets.h"
 #include "base/BStream.h"
@@ -210,8 +212,24 @@ int doAdd(const String &dbName, const Array<String*> &fnames) {
 	}
 
 	if (!fnames.empty()) {
-		for (int i = 0; i < fnames.count(); ++i)
-			Must(readCont(cdb, *fnames[i]));
+		for (int i = 0; i < fnames.count(); ++i) {
+			const String &fname = *fnames[i];
+#if HAVE_STAT
+			// check whether path is a regular file
+			struct stat fileStat;
+			if (stat(fname.cstr(), &fileStat)) {
+				cerr << ThePrgName << ": stat failed for '" <<
+					fname << "': " << Error::Last() << endl;
+				continue;
+			}
+			if (!S_ISREG(fileStat.st_mode)) {
+				cerr << ThePrgName << ": skipping '" << fname <<
+					"': not a regular file" << endl;
+				continue;
+			}
+#endif // HAVE_STAT
+			Must(readCont(cdb, fname));
+		}
 	} else {
 		Must(readCont(cdb, "-"));
 	}

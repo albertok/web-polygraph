@@ -1,0 +1,489 @@
+/* src/config.h.in.  Generated from configure.ac by autoheader.  */
+
+#ifndef POLYGRAPH__CONFIG_H
+#define POLYGRAPH__CONFIG_H
+
+
+/* here are some typedefs that configure script might be missing */
+#undef rlim_t
+
+/* Define if building universal (internal helper macro) */
+#undef AC_APPLE_UNIVERSAL_BUILD
+
+/* host type from configure */
+#define CONFIG_HOST_TYPE "-unknown-"
+
+/* negative or zero if we failed to detect it */
+#define DEFAULT_FD_SETSIZE -1
+
+/* htobe64 and be64toh */
+#undef HAVE_64BIT_BYTE_ORDER_CONVERSION
+
+/* altzone global is supported (Solaris only?) */
+#undef HAVE_ALTZONE
+
+/* Define to 1 if you have the <arpa/inet.h> header file. */
+#undef HAVE_ARPA_INET_H
+
+/* Define to 1 if krb5.h is broken for C++. */
+#undef HAVE_BROKEN_KRB5_H
+
+/* Define to 1 if ldns/ldns.h needs extern "C" wrapppers. */
+#undef HAVE_BROKEN_LDNS_H
+
+/* Define to 1 if you have the `ceilf' function. */
+#undef HAVE_CEILF
+
+/* Define to 1 if C ldns/ldns.h uses a "class" keyword */
+#undef HAVE_CLASS_IN_LDNS
+
+/* Define to 1 if you have the `closesocket' function. */
+#undef HAVE_CLOSESOCKET
+
+/* Support setting CPU affinity for workers */
+#undef HAVE_CPU_AFFINITY
+
+/* Define to 1 if you have the <dirent.h> header file. */
+#undef HAVE_DIRENT_H
+
+/* Define to 1 if you have the <dlfcn.h> header file. */
+#undef HAVE_DLFCN_H
+
+/* Define if you have the dlopen/sum/error/close. */
+#undef HAVE_DLOPEN
+
+/* Define to 1 if the system has the type `dn_pipe'. */
+#undef HAVE_DN_PIPE
+
+/* Define to 1 if you have the <endian.h> header file. */
+#undef HAVE_ENDIAN_H
+
+/* Define to 1 if you have the `epoll_create' function. */
+#undef HAVE_EPOLL_CREATE
+
+/* must explicitly declare timezone global as extern */
+#undef HAVE_EXTERN_TIMEZONE
+
+/* Define to 1 if you have the <fcntl.h> header file. */
+#undef HAVE_FCNTL_H
+
+/* Define to 1 if you have the `fork' function. */
+#undef HAVE_FORK
+
+/* Define to 1 if you have the `getifaddrs' function. */
+#undef HAVE_GETIFADDRS
+
+/* Define to 1 if you have the `GetLastError' function. */
+#undef HAVE_GETLASTERROR
+
+/* Define to 1 if you have the `getpagesize' function. */
+#undef HAVE_GETPAGESIZE
+
+/* Define to 1 if you have the `getrlimit' function. */
+#undef HAVE_GETRLIMIT
+
+/* Define to 1 if you have the `getrusage' function. */
+#undef HAVE_GETRUSAGE
+
+/* Define to 1 if you have the `gettimeofday' function. */
+#undef HAVE_GETTIMEOFDAY
+
+/* Define to 1 if you have the <gssapi/gssapi.h> header file. */
+#undef HAVE_GSSAPI_GSSAPI_H
+
+/* Define to 1 if you have the <gssapi.h> header file. */
+#undef HAVE_GSSAPI_H
+
+/* Define to 1 if you have the <ifaddrs.h> header file. */
+#undef HAVE_IFADDRS_H
+
+/* Define to 1 if you have the `inet_lnaof' function. */
+#undef HAVE_INET_LNAOF
+
+/* Define to 1 if you have the `inet_makeaddr' function. */
+#undef HAVE_INET_MAKEADDR
+
+/* Define to 1 if you have the `inet_netof' function. */
+#undef HAVE_INET_NETOF
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#undef HAVE_INTTYPES_H
+
+/* Define to 1 if you have the `ioctl' function. */
+#undef HAVE_IOCTL
+
+/* Define to 1 if you have the `ioctlsocket' function. */
+#undef HAVE_IOCTLSOCKET
+
+/* Define to 1 if you have the <iomanip> header file. */
+#undef HAVE_IOMANIP
+
+/* Define to 1 if you have the <iomanip.h> header file. */
+#undef HAVE_IOMANIP_H
+
+/* Define to 1 if you have the <iosfwd> header file. */
+#undef HAVE_IOSFWD
+
+/* Define to 1 if you have the <iosfwd.h> header file. */
+#undef HAVE_IOSFWD_H
+
+/* Define to 1 if you have the <iostream> header file. */
+#undef HAVE_IOSTREAM
+
+/* Define to 1 if you have the <iostream.h> header file. */
+#undef HAVE_IOSTREAM_H
+
+/* Define to 1 if you have the <krb5.h> header file. */
+#undef HAVE_KRB5_H
+
+/* Define to 1 if the system has the type `krb5_init_creds_context'. */
+#undef HAVE_KRB5_INIT_CREDS_CONTEXT
+
+/* Define to 1 if the system has the type `krb5_tkt_creds_context'. */
+#undef HAVE_KRB5_TKT_CREDS_CONTEXT
+
+/* Define to 1 if you have the `crypto' library (-lcrypto). */
+#undef HAVE_LIBCRYPTO
+
+/* Define to 1 if you have the `m' library (-lm). */
+#undef HAVE_LIBM
+
+/* Define if you have the ncurses library (-lncurses). */
+#undef HAVE_LIBNCURSES
+
+/* Define to 1 if you have the `socket' library (-lsocket). */
+#undef HAVE_LIBSOCKET
+
+/* Define to 1 if you have the `ssl' library (-lssl). */
+#undef HAVE_LIBSSL
+
+/* Define to 1 if you have `z' library (-lz) */
+#undef HAVE_LIBZ
+
+/* Define to 1 if you have the <math.h> header file. */
+#undef HAVE_MATH_H
+
+/* Define to 1 if you have the <memory.h> header file. */
+#undef HAVE_MEMORY_H
+
+/* Define to 1 if you have the <ncurses.h> header file. */
+#undef HAVE_NCURSES_H
+
+/* Define to 1 if you have the <netdb.h> header file. */
+#undef HAVE_NETDB_H
+
+/* Define to 1 if you have the <netinet/in.h> header file. */
+#undef HAVE_NETINET_IN_H
+
+/* Define to 1 if you have the <netinet/in_var.h> header file. */
+#undef HAVE_NETINET_IN_VAR_H
+
+/* Define to 1 if you have the <netinet/ip_dummynet.h> header file. */
+#undef HAVE_NETINET_IP_DUMMYNET_H
+
+/* Define to 1 if you have the <netinet/ip_fw.h> header file. */
+#undef HAVE_NETINET_IP_FW_H
+
+/* Define to 1 if you have the <netinet/tcp.h> header file. */
+#undef HAVE_NETINET_TCP_H
+
+/* Define to 1 if you have the <net/if.h> header file. */
+#undef HAVE_NET_IF_H
+
+/* Define to 1 if you have the <net/if_var.h> header file. */
+#undef HAVE_NET_IF_VAR_H
+
+/* Define to 1 if you have the <openssl/err.h> header file. */
+#undef HAVE_OPENSSL_ERR_H
+
+/* Define to 1 if you have the <openssl/rand.h> header file. */
+#undef HAVE_OPENSSL_RAND_H
+
+/* Define to 1 if you have the <openssl/ssl.h> header file. */
+#undef HAVE_OPENSSL_SSL_H
+
+/* Define to 1 if you have the `pclose' function. */
+#undef HAVE_PCLOSE
+
+/* Define to 1 if you have the `poll' function. */
+#undef HAVE_POLL
+
+/* Define to 1 if you have the `popen' function. */
+#undef HAVE_POPEN
+
+/* Define to 1 if you have the <process.h> header file. */
+#undef HAVE_PROCESS_H
+
+/* Define to 1 if you have the `RAND_egd' function. */
+#undef HAVE_RAND_EGD
+
+/* Define to 1 if you have the `RAND_screen' function. */
+#undef HAVE_RAND_SCREEN
+
+/* Define to 1 if you have the `RAND_status' function. */
+#undef HAVE_RAND_STATUS
+
+/* Define to 1 if you have the <regex.h> header file. */
+#undef HAVE_REGEX_H
+
+/* Define to 1 if you have the `rint' function. */
+#undef HAVE_RINT
+
+/* sockaddr structure has sa_len member */
+#undef HAVE_SA_LEN
+
+/* Define to 1 if you have the `sched_getaffinity' function. */
+#undef HAVE_SCHED_GETAFFINITY
+
+/* Define to 1 if you have the <sched.h> header file. */
+#undef HAVE_SCHED_H
+
+/* Define to 1 if you have the `sched_setaffinity' function. */
+#undef HAVE_SCHED_SETAFFINITY
+
+/* Define to 1 if you have the `SetLastError' function. */
+#undef HAVE_SETLASTERROR
+
+/* have set_new_handler or std::set_new_handler */
+#undef HAVE_SET_NEW_HANDLER
+
+/* Define to 1 if you have the `signal' function. */
+#undef HAVE_SIGNAL
+
+/* Define to 1 if you have the <signal.h> header file. */
+#undef HAVE_SIGNAL_H
+
+/* Define to 1 if you have the `sleep' function. */
+#undef HAVE_SLEEP
+
+/* Define to 1 if you have the <sstream> header file. */
+#undef HAVE_SSTREAM
+
+/* Define to 1 if you have the `stat' function. */
+#undef HAVE_STAT
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#undef HAVE_STDINT_H
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#undef HAVE_STDLIB_H
+
+/* Define to 1 if you have the `strcasecmp' function. */
+#undef HAVE_STRCASECMP
+
+/* Define to 1 if you have the `stricmp' function. */
+#undef HAVE_STRICMP
+
+/* Define to 1 if you have the <strings.h> header file. */
+#undef HAVE_STRINGS_H
+
+/* Define to 1 if you have the <string.h> header file. */
+#undef HAVE_STRING_H
+
+/* Define to 1 if you have the `strncasecmp' function. */
+#undef HAVE_STRNCASECMP
+
+/* Define to 1 if you have the `strnicmp' function. */
+#undef HAVE_STRNICMP
+
+/* Define to 1 if you have the <strstream> header file. */
+#undef HAVE_STRSTREAM
+
+/* Define to 1 if you have the <strstream.h> header file. */
+#undef HAVE_STRSTREAM_H
+
+/* Define to 1 if you have the <strstrea.h> header file. */
+#undef HAVE_STRSTREA_H
+
+/* Define to 1 if you have the <sys/endian.h> header file. */
+#undef HAVE_SYS_ENDIAN_H
+
+/* Define to 1 if you have the <sys/ioctl.h> header file. */
+#undef HAVE_SYS_IOCTL_H
+
+/* Define to 1 if you have the <sys/param.h> header file. */
+#undef HAVE_SYS_PARAM_H
+
+/* Define to 1 if you have the <sys/resource.h> header file. */
+#undef HAVE_SYS_RESOURCE_H
+
+/* Define to 1 if you have the <sys/select.h> header file. */
+#undef HAVE_SYS_SELECT_H
+
+/* Define to 1 if you have the <sys/socket.h> header file. */
+#undef HAVE_SYS_SOCKET_H
+
+/* Define to 1 if you have the <sys/sockio.h> header file. */
+#undef HAVE_SYS_SOCKIO_H
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#undef HAVE_SYS_STAT_H
+
+/* Define to 1 if you have the <sys/sysinfo.h> header file. */
+#undef HAVE_SYS_SYSINFO_H
+
+/* Define to 1 if you have the <sys/time.h> header file. */
+#undef HAVE_SYS_TIME_H
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#undef HAVE_SYS_TYPES_H
+
+/* Define to 1 if you have the `timegm' function. */
+#undef HAVE_TIMEGM
+
+/* how time zone global variable looks like (timezone, _timezone, etc.) */
+#undef HAVE_TIMEZONE
+
+/* Define to 1 if you have the <time.h> header file. */
+#undef HAVE_TIME_H
+
+/* tm structure has tm_gmtoff member */
+#undef HAVE_TM_GMTOFF
+
+/* */
+#undef HAVE_TYPE_IFALIASREQ
+
+/* */
+#undef HAVE_TYPE_IFREQ
+
+/* */
+#undef HAVE_TYPE_IN6_ALIASREQ
+
+/* */
+#undef HAVE_TYPE_IN6_IFREQ
+
+/* */
+#undef HAVE_TYPE_IOS_BASE_FMTFLAGS
+
+/* */
+#undef HAVE_TYPE_IOS_FMTFLAGS
+
+/* */
+#undef HAVE_TYPE_RLIM_T
+
+/* */
+#undef HAVE_TYPE_RUSAGE
+
+/* Some systems use socklen_t typedef for some socket operations. Socklen_t
+   may conflict with "int" that is also used. */
+#undef HAVE_TYPE_SOCKLEN_T
+
+/* */
+#undef HAVE_TYPE_STREAMPOS
+
+/* */
+#undef HAVE_TYPE_TIMEVAL
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#undef HAVE_UNISTD_H
+
+/* Define to 1 if you have the `unlink' function. */
+#undef HAVE_UNLINK
+
+/* Define to 1 if you have the <winbase.h> header file. */
+#undef HAVE_WINBASE_H
+
+/* Define to 1 if you have the <winsock2.h> header file. */
+#undef HAVE_WINSOCK2_H
+
+/* Define to 1 if you have the `WSACleanup' function. */
+#undef HAVE_WSACLEANUP
+
+/* Define to 1 if you have the `WSAIoctl' function. */
+#undef HAVE_WSAIOCTL
+
+/* Define to 1 if you have the `WSAStartup' function. */
+#undef HAVE_WSASTARTUP
+
+/* Define to 1 if you have the `_ftime' function. */
+#undef HAVE__FTIME
+
+/* Define to 1 if you have the `_pclose' function. */
+#undef HAVE__PCLOSE
+
+/* Define to 1 if you have the `_popen' function. */
+#undef HAVE__POPEN
+
+/* Define if Kerberos support is enabled. */
+#undef KERBEROS_ENABLED
+
+/* Define if libldns support is enabled. */
+#undef LDNS_ENABLED
+
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#undef LT_OBJDIR
+
+/* Mac OS X 10.6 (at least) defines NCURSES_OPAQUE to 1 by default. Some
+   structs we use (e.g. WINDOW) are defined only if NCURSES_OPAQUE is 0. */
+#undef NCURSES_OPAQUE
+
+/* Define if OpenSSL support is enabled */
+#undef OPENSSL_ENABLED
+
+/* Name of package */
+#undef PACKAGE
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the home page for this package. */
+#undef PACKAGE_URL
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* negative or zero if no probing has been done or probing failed */
+#define PROBED_MAXFD -1
+
+/* sighandler prototype (e.g. "void SignalHandler(...)" on IRIX */
+#undef SIGNAL_HANDLER_TYPE
+
+/* The size of `char', as computed by sizeof. */
+#undef SIZEOF_CHAR
+
+/* The size of `int', as computed by sizeof. */
+#undef SIZEOF_INT
+
+/* The size of `long', as computed by sizeof. */
+#undef SIZEOF_LONG
+
+/* The size of `short', as computed by sizeof. */
+#undef SIZEOF_SHORT
+
+/* The size of `void*', as computed by sizeof. */
+#undef SIZEOF_VOIDP
+
+/* Define to 1 if you have the ANSI C header files. */
+#undef STDC_HEADERS
+
+/* Defined if supported DummyNet version was found */
+#undef USE_DUMMYNET
+
+/* Version number of package */
+#undef VERSION
+
+/* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+#  undef WORDS_BIGENDIAN
+# endif
+#endif
+
+#include "post-config.h"
+
+#endif /* POLYGRAPH__CONFIG_H */

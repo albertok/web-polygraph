@@ -26,7 +26,6 @@ class CompOpts: public OptGrp {
 		DblOpt theDelta;
 		StrArrOpt thePhases;
 		StrOpt theCompDir;
-		StrOpt theTmpDir;
 		Array<String*> theReports;
 };
 

@@ -21,9 +21,6 @@ class Formatter {
 		virtual void openTableAnonym() = 0; // borderless, anonymous
 		virtual void closeTable() = 0;
 
-		virtual void openTableHeader(const String &id, const String &title) = 0;
-		virtual void closeTableHeader() = 0;
-
 		virtual void openTableRecord() = 0;
 		virtual void closeTableRecord() = 0;
 
@@ -50,9 +47,6 @@ class WebPageFormatter: public Formatter {
 		virtual void openTable(const String &id, const String &title);
 		virtual void openTableAnonym(); // borderless, anonymous
 		virtual void closeTable();
-
-		virtual void openTableHeader(const String &id, const String &title);
-		virtual void closeTableHeader();
 
 		virtual void openTableRecord();
 		virtual void closeTableRecord();

@@ -12,7 +12,6 @@
 #include "xstd/Socket.h"
 #include "runtime/AddrMap.h"
 #include "runtime/HostMap.h"
-#include "runtime/PubWorld.h"
 #include "runtime/ErrorMgr.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/LogComment.h"

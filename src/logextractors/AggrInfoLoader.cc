@@ -37,7 +37,7 @@ bool AggrInfoLoader::load(ILog &il, const LogEntryPx &px) {
 	switch (px.theTag) {
 		case lgContTypeKinds: {
 			// should be called only once per log
-			ContTypeStat::Load(il);
+			ContType::Load(il);
 			break;
 		}
 		/*case lgCltState: {

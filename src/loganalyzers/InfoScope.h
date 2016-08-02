@@ -21,6 +21,7 @@ class InfoScope {
 		~InfoScope();
 
 		void name(const String &aName);
+		void rename(const String &aName);
 
 		operator void*() const;
 
@@ -44,6 +45,8 @@ class InfoScope {
 
 		bool operator ==(const InfoScope &s) const;
 		InfoScope &operator =(const InfoScope &s);
+
+		String reason; // why this scope is the way it is
 
 	protected:
 		void reset();

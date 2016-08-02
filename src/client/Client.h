@@ -25,10 +25,26 @@ class DnsMgr;
 class IcpClient;
 class IcpCltXact;
 class ObjId;
-class PortMgr;
 class PrivCache;
 class RobotSym;
 class SessionMgr;
+class HttpPrinter;
+namespace Kerberos { class Mgr; };
+
+// robot message count totals, either lifetime or for a busy period
+class MessageCounts {
+	public:
+		MessageCounts(): requests(0), responses(0), authed(0) {}
+
+		void clear() { requests = responses = authed = 0; }
+		ostream &print(ostream &os) const;
+
+		uint64_t requests; // request headers formatted to be sent
+		uint64_t responses; // final response headers received
+		uint64_t authed; // authenticated transactions XXX
+};
+extern bool operator ==(const MessageCounts &m1, const MessageCounts &m2); 
+inline bool operator !=(const MessageCounts &m1, const MessageCounts &m2) { return !(m1 == m2); }
 
 class Client: public Agent, public AlarmUser, public BcastRcver {
 	public:
@@ -62,7 +78,11 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 		void noteEmbedded(CltXact *x, const ObjId &embedOid);
 		void noteRedirect(CltXact *x, const ObjId &destOid);
 		void noteAddrLookup(const NetAddr &addr, CltXact *x);
+		void noteGssContext(CltXact &x, const bool success);
 		void noteXactDone(CltXact *x);
+		void noteRequestSent() { ++thePeriodMessages.requests; ++theLifetimeMessages.requests; }
+		void noteResponseReceived() { ++thePeriodMessages.responses; ++theLifetimeMessages.responses; }
+		void noteAuthed() { ++thePeriodMessages.authed; ++theLifetimeMessages.authed; }
 
 		void selectTarget(ObjId &oid); // embedded objs and redirects need it
 		void selectScheme(ObjId &oid);
@@ -70,6 +90,8 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 		const String &credentials() const { return theCredentials; }
 		bool usesPassiveFtp() const { return usePassiveFtp; }
 		PrivCache *privCache() { return thePrivCache; }
+		const MessageCounts &periodMessages() const { return thePeriodMessages; }
+		const MessageCounts &lifetimeMessages() const { return theLifetimeMessages; }
 
 		ContentCfg *selectReqContent(const ObjId &oid, ObjId &reqOid);
 
@@ -83,8 +105,10 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 
 		virtual void describe(ostream &os) const;
 
-		HttpAuthScheme proxyAuthScheme(const ObjId &oid) const;
+		// warning: a cc xaction may change result in another xaction lifetime
+		HttpAuthScheme proxyAuthSchemeNow(const ObjId &oid) const;
 		HttpAuthScheme originAuthScheme(const ObjId &oid) const;
+
 		bool credentialsFor(ObjId &, UserCred &) const;
 		bool credentialsFor(const Connection &, UserCred &) const;
 		void noteProxyAuthReq(CltXact *, HttpAuthScheme);
@@ -97,20 +121,29 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 		HttpCookies *cookies(const ObjId &) const;
 		void absorbCookies(const ObjId &, HttpCookies *&);
 		const CltCfg &behavior(const ObjId &oid, const CltBehaviorCfg::Predicate predicate) const;
-		RangeCfg::RangesInfo makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const;
+		RangeCfg::RangesInfo makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const;
 
 		PortMgr *portMgr();
+		bool usingKerberos() const { return theKerberosMgr; }
 
 		CltXact *dequeSuspXact(CltXact *x = 0);
 
+		void noteKerberosFailure();
+
 	protected:
-		PortMgr *cfgPortMgr();
+		// Counts events in a given category; for basic reporting needs
+		struct EventCounter {
+			explicit EventCounter(const char *cat): what(cat), count(0) {}
+			const char *what; // what happened
+			unsigned int count; // how many times it happened
+		};
 
 		bool shouldRetry(const CltXact *x) const;
 
 		bool tryLaunch();
 		bool tryLaunch(CltXact *x);
-		bool suspendXact(CltXact *x);
+		bool authAndLaunch(CltXact *x);
+		bool suspendXact(CltXact *x, EventCounter &stats);
 		void resumeXact();
 		virtual void loneXactFollowup();
 
@@ -132,8 +165,8 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 		virtual bool launchCanceled(CltXact *x) = 0; // with body
 		bool launchFailed(CltXact *x);
 
-		virtual void noteInfoEvent(BcastChannel *ch, InfoEvent ev);
 		virtual void noteLogEvent(BcastChannel *ch, OLog &log);
+		virtual void noteMsgStrEvent(BcastChannel *ch, const char *msg);
 
 		struct ReqId {
 			UniqId id;
@@ -142,6 +175,7 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 		void configureReqIds(Array<ReqId> &ids, const Array<ContentCfg*> &cfgs);
 
 		bool setNextHopAddr(CltXact *x) const;
+		void setNextHopIp(CltXact *x, const NetAddr &addr) const;
 
 		CltXact *getXact(const ObjId &oid);
 		void putXact(CltXact *x);
@@ -175,7 +209,6 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 
 	protected:
 		static CltSharedCfgs TheSharedCfgs;
-		static PtrArray<PortMgr*> ThePortMgrs;  // port managers for all aliases
 		static XactFarm<CltXact> *TheFtpXacts;
 		static XactFarm<CltXact> *TheHttpXacts;
 		static ObjFarm<IcpCltXact> TheIcpXacts;
@@ -187,11 +220,13 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 		CltCfg *theCfg;         // client configuration (maybe shared)
 		CltConnMgr *theConnMgr; // one for all servers
 		DnsMgr *theDnsMgr;      // DNS client, cache, etc.
+		Kerberos::Mgr *theKerberosMgr; // Kerberos authentication
 		SessionMgr *theSessionMgr; // manages busy/idle periods
 
 		NetAddr theSocksProxyAddr;
 		NetAddr theFtpProxyAddr;
 		NetAddr theHttpProxyAddr;
+		SslCtx *theProxySslCtx; // context for SSL-to-proxy connections
 
 		// XXX: group all per-session objects into one struct and reset
 		String theCredentials; // per-session username and password
@@ -199,6 +234,9 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 
 		int theCcXactLvl;      // outstanding concurrent xactions level
 		int theExtraLaunchLvl; // uncompensated out-of-order launches
+
+		MessageCounts theLifetimeMessages; // never reset
+		MessageCounts thePeriodMessages; // reset every time we become busy
 
 		unsigned theCookiesKeepLimit; // maximum number of cookies/server to keep
 
@@ -215,6 +253,7 @@ class Client: public Agent, public AlarmUser, public BcastRcver {
 		HttpAuthScheme theHttpProxyAuth; // if set, proxy needs our credentials
 
 		bool usePassiveFtp; // if set, uses passive FTP, active otherwise
+		bool isRunning; // between start() and stop()
 		bool isIdle;
 };
 

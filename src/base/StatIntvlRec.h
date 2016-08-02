@@ -6,10 +6,12 @@
 #ifndef POLYGRAPH__BASE_STATINTVLREC_H
 #define POLYGRAPH__BASE_STATINTVLREC_H
 
+#include "base/ContTypeStat.h"
 #include "base/LogObj.h"
 #include "base/AuthStat.h"
 #include "base/IcpStat.h"
 #include "base/ProtoIntvlStat.h"
+#include "base/CompoundXactStat.h"
 
 
 // holds basic statistics for a given interval
@@ -17,6 +19,7 @@ class StatIntvlRec: public LogObj {
 	public:
 		StatIntvlRec();
 
+		void updateProgress(const bool doIt);
 		void restart();
 
 		virtual OLog &store(OLog &log) const;
@@ -30,9 +33,9 @@ class StatIntvlRec: public LogObj {
 		AggrStat repTime() const; // hit + miss
 		AggrStat repSize() const; // hit + miss
 
-		int xactCnt() const { return theXactCnt + theXactErrCnt; }
+		Counter xactCnt() const;
 		BigSize totFillSize() const;
-		int totFillCount() const;
+		Counter totFillCount() const;
 		double errRatio() const;
 		double errPercent() const;
 		double recurrenceRatio() const;
@@ -60,6 +63,7 @@ class StatIntvlRec: public LogObj {
 		LevelStat theOpenLvl; // open connections
 		LevelStat theEstbLvl; // estanlished connections
 		LevelStat theIdleLvl; // idle connections
+		LevelStat theBaseLvl; // baseline transactions
 
 		AggrStat theConnLifeTm; // to get mean life time
 		AggrStat theConnUseCnt; // xactions per connection
@@ -80,23 +84,24 @@ class StatIntvlRec: public LogObj {
 		TmSzStat theHead;     // transactions using HEAD request method
 		TmSzStat thePost;     // transactions using POST
 		TmSzStat thePut;      // transactions using PUT
-		TmSzStat theConnect;  // transactions using CONNECT
 		TmSzStat theAbort;    // PGL-aborted transactions
 
 		TmSzStat thePage;     // page "download" time and cumulative size
 
 		TmSzStat theCustom;   // user-selected transactions
 
-		int theXactCnt;       // successful xactions 
-		int theXactErrCnt;    // xaction errors
-		int theXactRetrCnt;   // xaction retries
-		int theUniqUrlCnt;    // transactions with unique Request-URIs
+		Counter theXactCnt;     // successful xactions
+		Counter theXactErrCnt;  // xaction errors
+		Counter theXactRetrCnt; // xaction retries
+		Counter theUniqUrlCnt;  // transactions with unique Request-URIs
 
-		/* other protocols */
+		/* preliminary HTTP transactions and other protocols for i-lines */
 		IcpStat theIcpStat;      // Internet Cache Protocol
 		ProtoIntvlStat theSocksStat; // SOCKS
 		ProtoIntvlStat theSslStat; // Secure Sockets Layer
 		ProtoIntvlStat theFtpStat; // File Transfer Protocol
+		ProtoIntvlStat theConnectStat; // HTTP CONNECT
+		ProtoIntvlStat theAuthingStat; // authenticatIng transactions
 
 		AggrStat theContinueMsg; // 100 Continue messages
 
@@ -106,14 +111,17 @@ class StatIntvlRec: public LogObj {
 		TmSzStat theAuthNone; // response size/time for transactions with no auth
 		TmSzStat theTunneled; // response size/time for tunneled transactions
 
+		ContType::AggrStat theReqContType; // request per-content-type stats
+		ContType::AggrStat theRepContType; // reply per-content-type stats
+
+		CompoundXactStat theBaseline; // final, possibly compounded xactions
+
 		Time theDuration;     // actual intvl length, computed for us
 
 		// Will be non-static when we start reporting live stats.
 		// Will be custom class when we add more live stats.
 		static TmSzStat TheLiveReps; // live xactions reply time/size
 		static TmSzStat TheCustomLive; // user-selected live transactions
-
-		// warning: ltrace stores us in a Ring which uses memmove
 };
 
 struct EmbedStats {

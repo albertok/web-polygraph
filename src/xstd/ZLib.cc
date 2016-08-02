@@ -12,56 +12,64 @@
 // XXX: we should set the global error to an ZLIB error when an ZLIB call fails
 
 #ifdef HAVE_LIBZ
-	const bool Deflator::Supported = true;
+	const bool zlib::Supported = true;
 #else
-	const bool Deflator::Supported = false;
+	const bool zlib::Supported = false;
 #endif
 
-Deflator::Deflator(int level) {
-	init(level);
+/* Stream */
+
+void zlib::Stream::space(void *space, Size size) {
+#ifdef HAVE_LIBZ
+	next_out = reinterpret_cast<Bytef *>(space);
+	avail_out = size;
+#endif
 }
 
-Deflator::~Deflator() {
-	reset();
+void zlib::Stream::data(const void *data, Size size) {
+#ifdef HAVE_LIBZ
+	next_in = reinterpret_cast<Bytef *>(const_cast<void *>(data));
+	avail_in = size;
+#endif
 }
 
-void Deflator::init(int level) {
+void zlib::Stream::init() {
 #ifdef HAVE_LIBZ
 	doNeedMoreSpace = false;
 	zalloc = Z_NULL;
 	zfree = Z_NULL;
 	opaque = 0;
-	// the magic constants below are taken from zlib.h to force
-	// gzip header and footer for the deflated stream
-	int res = deflateInit2(this, level, Z_DEFLATED, 15 + 16, 8,
-		Z_DEFAULT_STRATEGY);
-	theState = Should(res == Z_OK) ? stInit : stError;
+	theState = stInit;
 #else
 	theState = stError;
 #endif
 }
 
-void Deflator::reset() {
+bool zlib::Stream::needMoreSpace() const {
 #ifdef HAVE_LIBZ
-	 deflateEnd(this);
+	return theState < stDone && doNeedMoreSpace;
+#else
+	return false;
 #endif
 }
 
-void Deflator::space(void *space, Size size) {
+bool zlib::Stream::needMoreData() const {
 #ifdef HAVE_LIBZ
-	next_out = (Bytef*)space;
-	avail_out = size;
+	return avail_in <= 0 && theState < stDone;
+#else
+	return false;
 #endif
 }
 
-void Deflator::data(const void *data, Size size) {
+const char *zlib::Stream::error() const {
 #ifdef HAVE_LIBZ
-	next_in = (Bytef*)data;
-	avail_in = size;
+	return msg;
+#else
+	return "support for zlib is disabled at configuration time";
 #endif
 }
 
-bool Deflator::deflate(Size &usedSpace, Size &usedData, bool finish) {
+bool zlib::Stream::perform(Size &usedSpace, Size &usedData, const ZFlush flush) {
 #ifdef HAVE_LIBZ
 	Should(avail_out > 0);
 	if (!Should(theState == stInit))
@@ -72,8 +80,9 @@ bool Deflator::deflate(Size &usedSpace, Size &usedData, bool finish) {
 	//const Bytef *saved_next_out = next_out;
 	const uInt saved_avail_out = avail_out;
 
-	const int res = ::deflate(this, finish ? Z_FINISH : Z_NO_FLUSH);
-	doNeedMoreSpace = (finish && res == Z_OK) || (res == Z_BUF_ERROR);
+	const int res = run(flush);
+	doNeedMoreSpace = (flush == zFinish && res == Z_OK) ||
+		(res == Z_BUF_ERROR);
 
 	if (res == Z_STREAM_END)
 		theState = stDone;
@@ -86,33 +95,70 @@ bool Deflator::deflate(Size &usedSpace, Size &usedData, bool finish) {
 
 	if (res == Z_BUF_ERROR)
 		return true; // no progress was possible, but may be not an error
+#endif
 
 	return false;
+}
+
+
+/* Deflator */
+
+int zlib::Deflator::bound(const int sourceLen) {
+#ifdef HAVE_LIBZ
+	return deflateBound(this, sourceLen);
 #else
-	return false;
+	return 0;
 #endif
 }
 
-bool Deflator::needMoreSpace() const {
+void zlib::Deflator::init(const int level) {
+	Stream::init();
 #ifdef HAVE_LIBZ
-	return theState < stDone && doNeedMoreSpace;
-#else
-	return false;
+	const int res = deflateInit2(this, level, Z_DEFLATED, TheWindowBits,
+		TheMemLevel, Z_DEFAULT_STRATEGY);
+	if (!Should(res == Z_OK))
+		theState = stError;
 #endif
 }
 
-bool Deflator::needMoreData() const {
+void zlib::Deflator::reset() {
 #ifdef HAVE_LIBZ
-	return avail_in <= 0 && theState < stDone;
-#else
-	return false;
+	deflateEnd(this);
 #endif
 }
 
-const char *Deflator::error() const {
+int zlib::Deflator::run(ZFlush flush) {
 #ifdef HAVE_LIBZ
-    return msg;
+	return ::deflate(this, flush);
 #else
-	return "support for zlib is disabled at configuration time";
+	Must(false);
+	return 0;
+#endif
+}
+
+
+/* Inflator */
+
+void zlib::Inflator::init() {
+	Stream::init();
+#ifdef HAVE_LIBZ
+	const int res = inflateInit2(this, TheWindowBits);
+	if (!Should(res == Z_OK))
+		theState = stError;
+#endif
+}
+
+void zlib::Inflator::reset() {
+#ifdef HAVE_LIBZ
+	inflateEnd(this);
+#endif
+}
+
+int zlib::Inflator::run(ZFlush flush) {
+#ifdef HAVE_LIBZ
+	return ::inflate(this, flush);
+#else
+	Must(false);
+	return 0;
 #endif
 }

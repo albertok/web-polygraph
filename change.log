@@ -1,3 +1,697 @@
+version 4.9.0
+2014/10/22
+
+	- Support SSL-to-proxy: Robots connecting to HTTP forward proxies
+	  using SSL.
+
+	  To configure the new feature, the robot must mention an address of a
+	  use()d PGL Proxy object. The PGL Proxy object must have an ssl_wraps
+	  field configured. This tells the robot that the forward proxy is
+	  accepting SSL connections.
+
+	  When a Robot needs to connect to an SSL origin server while using
+	  SSL-to-proxy, the combination results in two independent "nested"
+	  SSL layers: One from the robot to the proxy and one from the robot
+	  to the origin server. The robot sends an HTTP CONNECT request
+	  (encrypted and, hence, invisible to a 3rd-party observer!) inside
+	  the outer SSL layer to the proxy.
+
+	- Support requesting and/or serving on-disk files. Configured via PGL
+	  Content.document_root, similar to an Apache httpd document_root.
+	  Polygraph preloads all regular files from Content.document_root into
+	  RAM, scanning document_root sub-directories recursively. Empty files
+	  and files exceeding 2GB in size are currently not supported. When
+	  configured, Polygraph responds to a request with URI path FOO using
+	  the content preloaded from the document_root/FOO file on disk.
+
+	- Quit ASAP after reaching a negative phase goal instead of waiting
+	  for server virtual "cold" phase to become idle and time out.
+
+	- Exclude the time spent waiting for the first transaction from the
+	  first phase by adding a virtual "wait" phase before the scheduled
+	  real phases.
+
+	  The wait phase ends when the first transaction begins and should get
+	  no transaction or connection measurements. Wait phase stats are not
+	  logged because there should not be any, and because logging them
+	  would add noise to test reports.
+
+	- Added PGL Agent::http_headers field to specify custom HTTP headers.
+	  PGL constants that look like 'name: value' are now parsed as PGL
+	  MimeHeader objects:
+
+	        MimeHeader B = 'B: valueB';
+	        MimeHeader C = 'C: valueC';
+	        MyRobot.http_headers = [ 'A: valueA', [B, C]: 30% ];
+
+	  Agent::http_headers is a new kind of PGL "selector" that, for every
+	  selection, goes through all the listed custom headers and selects
+	  each header with the specified probability. In the above example,
+	  Polygraph will emit requests with headers A, B, and C in 30% of all
+	  agent-generated messages while putting just the header A in the
+	  remaining 70% of all messages. Note that header A is always added,
+	  while headers B and C are either added _together_ (30% of cases) or
+	  not added at all.
+
+	  If a PGL-configured header clashes with a Polygraph-generated header
+	  (or with another PGL-configured header), then the first added header
+	  wins, and Polygraph logs a warning. PGL-configured headers are added
+	  first so they should always win against the Polygraph-generated
+	  headers such as Date, Host, Accept, and Connection. However, this
+	  feature was not really designed for overwriting Polygraph-generated
+	  headers but for adding new/different ones.
+
+	- Start SMP workers, one per local Bench host, if Bench.*_side.hosts
+	  are used. To create N SMP workers on host a.b.c.d, use N a.b.c.d
+	  hosts (the PGL clone operator ** is handy for that).
+
+	  If the Bench hosts array contains a single local host, no worker
+	  processes are started (i.e., the master process becomes the worker
+	  process). This allows Polygraph to run in "legacy" non-SMP mode in
+	  simple Bench configurations.
+
+	  Changed --worker ID default to zero. The zero value is used for the
+	  Master process because it may create its own logs that should not
+	  overwrite worker logs.
+
+	- Support running each SMP worker on a configurable set of CPU cores.
+	  Also usable in a degenerative case of a single worker (no SMP). Not
+	  supported on systems w/o sched_setaffinity() API, such as FreeBSD.
+
+	  The feature is configurable via the new PGL BenchSide::cpu_cores
+	  field.  Each integer array nested inside cpu_cores represents a list
+	  of CPU cores (i.e., a CPU affinity mask) for a single worker. If a
+	  cpu_cores field is defined, the number of its masks must be either
+	  zero or equal to the number of BenchSide's hosts array elements; any
+	  other number is a fatal configuration error. Empty array is treated
+	  as if no cpu_cores array was configured/defined. We may change this
+	  [rather low-level] configuration approach based on user feedback.
+
+	  Without cpu_cores configured, Polygraph does not try to restrict
+	  workers CPU affinity.
+
+	- When generating random content, support optional "data" or "binary"
+	  format when the new Content.generator field is set to "random_data".
+
+	  This is handy when the DUT treats the default mostly-ASCII content
+	  specially, but the tester does not want to use cdbs to generate
+	  something other than ASCII content.
+
+	  Note that new "random_data" format is virtually uncompressible,
+	  unlike ASCII that carries more than 25% "fat". Workloads using SSL
+	  compression or other compression mechanisms may see a substantial
+	  different in performance, even without a DUT.
+
+	  The default behavior is still to use a subset of printable ASCII
+	  characters.  That algorithm can now be explicitly configured by
+	  setting Content.generator to "random_text".
+
+	- Re-fetch Kerberos TGT ticket if it is needed, but we failed to fetch
+	  it before. The code already dealt with expired and unusable TGT
+	  cases by re-fetching, but a missing TGT led to a persistent stream
+	  of "(c157) missing Kerberos TGT" errors.
+
+	- Better reporting of authentication errors: Report such details as
+	  KDC server address, robot identity, and connection information.
+
+	- Better reporting of SSL errors: Minimize the number of logged
+	  Comments when detailing a single error.
+
+	- Simplified table(filename) PGL calls and command line options: Do
+	  not require explicit distribution type but get it from the loaded
+	  table instead. Old syntax with an explicit type is still supported.
+
+	- Fixed rep.rate evaluation in Phase scripts. Polygraph was returning
+	  request rate instead of the response rate. The two rates are usually
+	  similar, which may explain why the bug went unnoticed for years.
+	  Logged and console-reported stats were not affected.
+
+	- Fixed KDC error handling: Polygraph was not switching to the next
+	  configured KDC server on KDC connection failures.
+
+	  Also, final TGT ticket fetch failure (no retries left) now leads to
+	  the cancellation of all previously queued ticket transactions.
+	  Prior to this change, the queued ticket transaction waited forever
+	  if the TGT transactions kept failing.
+
+	- Count HTTP authentication errors once, not twice.
+
+	- Avoid segfaults when cleaning up Kerberos state, especially after
+	  many KDC timeouts.
+
+	- Prevent InAddress::sockAddr() assertions when deleting IPv6 aliases
+	  on FreeBSD.
+
+	- Avoid year-2038 overflows when running 32bit ltrace --objects time.
+
+	- Made modern autotools happier and bootstrap.sh safer.
+
+
+version 4.8.0
+2014/05/20
+
+	- Tie Robot.req_rate to "baseline" transactions and report just the
+	  baseline transactions on console i-lines, avoiding user surprises
+	  when, for example, enabling authentication doubled perceived request
+	  rate. A baseline transaction delivers the intended resource to the
+	  client and may include individual HTTP CONNECT or authentication
+	  transactions as intermediate steps of a single compound transaction.
+
+	  This is a significant change, affecting offered load in
+	  workloads using HTTP CONNECT requests and/or HTTP authentication.
+
+	  Collect and report interval stats for HTTP CONNECT and
+	  "authenticating" transactions.  Exclude HTTP CONNECT requests from
+	  "ssl" interval stats so that only transactions actually using SSL
+	  are recorded there. Report an active i-proto line, even if all its
+	  transactions have failed.
+
+	  Binary log version, some lx object names, and HTML report blobs have
+	  changed to reflect the new statistics collection approach. More
+	  related cleanup work is probably needed.
+
+	- Negotiate/Kerberos proxy authentication support, configurable via
+	  PGL KerberosWrap. Both UDP and TCP transports are supported for
+	  communication with KDC. MIT Kerberos v1.9 or newer is required. No
+	  Heimdal support.
+
+	- Support a configurable cache for successful DNS lookups via the new
+	  PGL DnsCache type and DnsResolver::cache field. No DNS caching by
+	  default.
+
+	- Added PGL zoneDomains(file_name, ip_addresses) function to load
+	  domain names from DNS zone files. Only domains that match given IP
+	  addresses are loaded.  Wildcard domains are ignored.
+
+	  DNS zone file interpretation is implemented using libldns. Libldns
+	  does not allow any leading whitespace in zone files, even on
+	  otherwise empty lines.  The library supports $ORIGIN directive.
+	  Tested with libldns v1.6.16.  Polygraph tries [too] hard to fix
+	  known ldns.h interface bugs. If libldns is not available, cannot be
+	  fixed, or is not compatible with Polygraph expectations, a
+	  ./configure warning is printed and any test calling PGL
+	  zoneDomains() will fail at call time.
+
+	- Control SSL compression via the new PGL SslWrap::compression field
+	  which specifies the probability that the agent using the SslWrap
+	  configuration will try to use SSL compression. The agent decision is
+	  sticky. Disabling compressions appears to be required to enable SSL
+	  (AES-NI) hardware acceleration support, at least in some
+	  environments. Note: SSL compression is a messy feature in general,
+	  and Polygraph specifically does not have full control over SSL
+	  compression.
+
+	- Better SMP support (more SMP automation work is still needed):
+	    * Added --worker command line option to specify SMP worker ID.
+	    * Support %worker macro in command line option values.
+	    * The local r.n.g. seed value now defaults to worker ID. This
+	      change does not affect old test scripts running new Polygraph
+	      versions because the default worker ID is one, same as the old
+	      local r.n.g. default.
+	    * Added worker() PGL function to return the current worker ID.
+	    * "${worker}" macro support in ips2names, credentials, URL traces.
+	    * pgl2ldif --worker ID command line option.
+
+	- Revised detection of important differences reported by cmp-lx.pl
+	  based on real-world regression tests to minimize noise. For example,
+	  very rare (less than 0.1%) errors are no longer considered important
+	  and absolute differences below 1 millisecond are no longer reported
+	  for time measurements done with millisecond precision.
+
+	- Infect content by appending Request URI information to the response
+	  body if the newly added PGL Content::inject_object is set to a
+	  "request_uri" string. This helps caches that do not store multiple
+	  copies of identical response bodies, especially in tests using cdbs
+	  with a small number of verbatim entries.
+
+	- Accept "A" values for DnsResolver::query_type. They are still the
+	  default.
+
+	- Report an active i-proto line, even if all its transactions have
+	  failed.
+
+	- Revamped Reporter's baseline (a.k.a. executive stats) scope
+	  formation and use, to better handle cases where client- and
+	  server-side phases differ.
+
+	- Support patches that "register" themselves with Polygraph so that
+	  Polygraph binaries can report which patches have been applied.
+
+	- Do not enable SSL support if libssl is missing or has no
+	  SSL_connect(), even if OpenSSL headers are present.
+
+	- Remove old IPv6 addresses when creating new aliases. Fixed(?)
+	  primary interface address detection on Linux. We currently define
+	  "primary" as the address added to the interface first. Also fixed
+	  IPv6 aliases deletion.
+
+	- Fixed handling of concurrent HTTP Negotiate transactions when one
+	  transaction changes the proxy need for authentication after the
+	  other transaction has already started with a different assumption.
+
+	- Fixed collection of transaction queue time statistics.
+
+	- Fixed default libz (compression support) detection for systems with
+	  AX_CHECK_ZLIB serial 8 macro.
+
+	- Fixed StatCycle.cc:82 "0 < cat < count" assertion.
+
+	- Avoid division by zero "floating exception" when producing
+	  dynamize()d domains for empty worlds. If we need to produce a new
+	  URL but cannot (due to an empty local world), then repeat from a
+	  non-empty remote world (if possible).
+
+	- Fixed dumping of cdbs with "binary" entries. They used to be
+	  truncated.
+
+	- Prevent cdbEntries.cc 'e.model' assertion by rejecting misconfigured
+	  Content that has content_db containing "markup" objects but lacks a
+	  may_contain field necessary to generate/pour those objects.
+
+	- Fixed computation of histogram percentiles by cml-lx.pl tool.
+
+	- Fix segfault in PGL parser on some invalid workloads.
+
+	- Install the documentation files during "make install".
+
+	- Remove AX_* macros from cfgaux/, use system versions instead.
+	  Autoconf-archive package is now required for bootstrapping.
+
+
+version 4.7.0
+2013/04/19
+
+	- Configurable SSL certificates.
+
+	  A new PGL SslWrap::certificates field allows to configure existing
+	  certificates for Polygraph client and server use.  Each certificate
+	  file should contain an unencrypted certificate and a private key in
+	  PEM format.  The key may be followed by intermediate certificates to
+	  form a chain (see SSL_CTX_use_certificate_chain_file(3)).
+	  Certificates are assigned to Agents in a round-robin fashion and the
+	  assignment is sticky.
+
+	  This feature is supported on both client and server sides.  If the
+	  same SslWrap object with certificates is used for both Robots and
+	  Servers, they would end up using the same certificates.
+
+	- Generated client-side SSL certificates.
+
+	  Polygraph used to generate server certificates only.  A new PGL
+	  SslWrap::generate_certificates boolean field now explicitly controls
+	  whether Polygraph should generate SSL certificates.  The field is
+	  honored on both client and server sides.  The default behavior has
+	  not changed: certificates are not generated on the client side and
+	  are generated on the server side.
+
+	  Setting SslWrap::generate_certificates to false allows running
+	  server without any certificates.  This is a weird but valid
+	  configuration.
+
+	- Collect and report SSL session resumption phase statistics.
+
+	  "Count" and "rate" phase stats are available for new and resumed SSL
+	  sessions.  On client side, both offered (i.e. resumption attempts)
+	  and measured stats are collected.  On server side, only measured
+	  stats are collected.  In addition to count and rate stats, SSL
+	  session resumption probability is reported.
+
+	  In the future, we may add offered SSL session stats on the server
+	  side and collect interval stats.
+
+	- Content-driven popularity model support.
+
+	  A new ClientBehavior.pop_model PGL field added.  Similar to other
+	  ClientBehavior properties, it allows setting Robot popularity model
+	  when requesting a particular Content type.
+
+	- Binary log compression.
+
+	  Compression is enabled at build time if and only if zlib library is
+	  available.  All Polygraph tools support reading both compressed and
+	  uncompressed logs.  A compressed log size for a simple workload is
+	  less than 20% of the uncompressed log.
+
+	  Other than smaller log sizes, no user-visible changes are expected.
+	  In particular, we do not expect log compression to slow Polygraph
+	  down, but more experience is needed to confirm that.
+
+	- Inherit previous phase factors at runtime (by default).
+
+	  If the next phase "begin" factor is not explicitly configured, it is
+	  inherited from the corresponding "end" factor of the previous phase.
+	  Before the change, this inheritance was implemented at test start
+	  time so when a phase would end [by its script] prematurely, the
+	  factor would jump from the last value in the previous phase to the
+	  implicitly set "begin" value in the next phase.  Now, the "begin"
+	  value is computed only when the next phase starts, avoiding the
+	  jump.
+
+	- Polymorphic min() and max() PGL functions.
+
+	  Before the change, PGL min() and max() functions converted their
+	  arguments to float for comparison.  Hence, the functions failed for
+	  argument types which cannot be converted to float, such as time.
+	  Now, arguments are compared using PGL '<' and '>' operators,
+	  allowing min() and max() functions to be applied to such types as
+	  time and rate.
+
+	- More flexible PGL string to int and float conversion.
+
+	  Before the change, PGL string to int and float conversion functions
+	  did not allow any spaces after the number, which resulted in obscure
+	  errors and inconveniences, especially when dealing with numbers loaded
+	  using PGL system() calls.  Now any trailing spaces are ignored.
+	  Note that leading spaces were already ignored before the change.
+
+	- Allow unit scales and boolean constants as PGL function and
+	  object names.
+
+	  Before the change, time and size scales and boolean constants were
+	  not allowed to be PGL function or object names.  In particular, this
+	  resulted in parsing errors for workloads using min() PGL function or
+	  scripts using objects like sample.rptm.min.  Now PGL parser can
+	  distinguish bare constants from function calls and object names.
+
+	- Select Robot HTTP version on startup and report it.
+
+	  Before the change, Robot HTTP version was selected on session start.
+	  Hence, Robot HTTP version could be changed during a test with
+	  multiple sessions and it could not be reported on startup.  Since
+	  sessions are not meant to model different HTTP clients, such
+	  behavior is wrong.  Now HTTP version selection for Robots is sticky
+	  and performed early during startup, the same way it is done for
+	  Servers.  As a side-effect, Robot HTTP versions are now reported on
+	  startup.
+
+	- Stop Robots when all phases are complete.
+
+	  Polygraph client no longer starts new transactions after completing
+	  the phase schedule and right before exiting.  Such transactions could
+	  lead to annoying proxy and server errors.
+
+	- Support PGL print() call outside of Phase scripts to assist with
+	  debugging complex workloads and annotating console logs.  For now,
+	  output printed outside of scripts does not get to binary logs.
+
+	- Add printV() function for PGL scripts to print at a given verbosity
+	  level.  The first argument should be an integer specifying the
+	  desired verbosity level.  For example:
+
+	    printV(1, "An important message ", 123);
+
+	- Polish the error message when PGL type conversion fails.
+
+	- Polish client error message when a Robot fails to load the
+	  configured root certificate.
+
+	- Improve large table distribution (e.g. array selectors) support.
+	  Table distributions with up to 10240 entries should be supported
+	  now.  Larger distributions may still result in failures.
+
+	- Refuse to add directories to cdb.
+
+	  Before the change, the cdb tool did not check if input file is
+	  really a file.  It would try to open and process a directory as if
+	  it was a file, which may succeed on some systems and result in
+	  unexpected DB content.  Now cdb checks whether input file is a
+	  regular file and skips it if it is not.  If stat(2) is not
+	  available, the check is not enabled and cdb behaves as before.
+
+	- Fix handling of CONNECT tunnels requiring multiple CONNECT
+	  transactions.  Do not switch to SSL until CONNECT tunnel is fully
+	  established.  In particular, this fixes workloads using both HTTPS
+	  (SSL) and proxy NTLM authentication.
+
+	- Fix NTLM authentication statistics for compound transactions.
+
+	  During the first authentication Robots cache the authentication
+	  scheme.  In subsequent requests, Robots send appropriate
+	  authentication headers right away in the first request.  Before the
+	  change, a compound transaction was created only during the first
+	  authentication resulting in missing compound stats for subsequent
+	  NTLM authentications.
+
+	- Fix HTML report generation if a phase name contains spaces.
+
+	- Fix segfault for workloads using foreign trace without any Content
+	  objects (an uncommon but valid configuration).
+
+	- Fix segfault on test shutdown before warmup stage is complete.
+
+	- Fix potential reporter segfault on some truncated logs.
+
+	- Fix errors and warnings when building with GCC v4.7.
+
+	- Code cleanup and minor changes.
+
+
+version 4.6.0
+2012/05/07
+
+	- Add reachedPositiveGoal() PGL script call, propagate positive
+	  goals to servers.
+
+	  A new reachedPositiveGoal() call allows to stop phases from
+	  runtime watchdog scripts.  The effects of the call are the same as
+	  reaching any other positive goal (e.g. Phase duration or
+	  transaction count).  If multiple client processes are in use,
+	  calling reachedPositiveGoal() in one client process is not
+	  sufficient - the synchronized phase will not really stop until all
+	  clients are done with it.
+
+	  Positive goals are now propagated from clients to servers.  This
+	  means that when all clients reach positive goals, servers would
+	  also reach a "propagated" positive goal.  This was implemented to
+	  propagate reachedPositiveGoal() calls from clients to servers in
+	  the first place (servers do not run watchdog scripts) but it works
+	  for any positive goal.  Currently, there is no way to disable this
+	  behavior.  In the future, if we find out that there are cases
+	  where servers should resist phase changing on client-side positive
+	  goals, we can probably add a phase.goal.mandatory or similar flag
+	  to give users more control.
+
+	- Per-IP explicit port manager (--ports option) for client and
+	  server.  Before the change, explicit port manager had a single
+	  port history for all IP addresses.  This makes explicit port
+	  manager a poor performer when we use 1000 robots with 1000
+	  different IP addresses.  Now it does proper per-IP port tracking.
+
+	  This change increases Polygraph memory usage for clients and
+	  servers using explicit port managers.  Each explicit port manager
+	  for 1024:65535 range uses ~250KB of memory.  A workload with 1000
+	  IP addresses would require additional ~250MB of RAM.
+
+	- Make retried transactions obey request inter-arrival
+	  distribution and, hence, Robot::req_rate setting.
+
+	  Transactions may be retried due to several reasons like aborts,
+	  pipeline races, authentication.  Before the change, retried
+	  transactions did not obey request inter-arrival distribution.
+	  This resulted in "extra" traffic and higher request rate which
+	  feels wrong and is confusing.  Retries are now handled in the same
+	  way as embedded objects: retried transactions are started
+	  immediately but further requests are delayed to obey configured
+	  request rate.
+
+	- Interactive figures in HTML reports using jqPlot.
+
+	  There are two kind of figures now: static and interactive.
+	  Static figures use regular images as before, while newly added
+	  interactive figures offer advanced features:
+
+	    * resizing
+	    * zooming
+	    * line toggling
+
+	  By default, all figures are shown in static mode.  One can
+	  switch between static and interactive figures using the links in
+	  the top right corner.
+
+	  A modern browser is required for interactive figures.
+
+	  Interactive figures are implemented using jQuery, jQuery UI, and
+	  jqPlot Javascript libraries.  The libraries are included in Web
+	  Polygraph distribution and are installed into the data directory
+	  (/usr/local/share/polygraph by default).  Web Polygraph must be
+	  installed (make install) for reporter to work.
+
+	- Other fixes and improvements for figures in HTML report.  In
+	  particular, empty ranges warnings from gnuplot are fixed which
+	  makes reporter output much less verbose and more readable in some
+	  cases.
+
+	- Enable SSL certificate extensions when making certificates using
+	  OpenSSL x509.  According to x509(1ssl) manual page, without the
+	  -extfile option, OpenSSL x509 command will not add extensions to
+	  the certificate.
+
+	- Remove OpenSSL x509 -extensions option as not needed.  The
+	  section with certificate extensions can be specified in the
+	  OpenSSL configuration file instead.
+
+	- Fix client segfault on shutdown before warmup is complete.
+
+	- Fix client and server segfault when PGL string array is use()d.
+
+	- Fix reporter segfault on some truncated logs, print warning when
+	  log is truncated.
+
+	- Fix segfault and assert in ltrace introduced by detailed
+	  content-type stats changes in v4.5.0.
+
+	- Fix pgl2ips segfault when there are many hosts or agent types
+	  configured.
+
+	- Fix several segfaults and bugs in polymon tool.
+
+	- Add help screen for polymon (press 'h' or 'H' key).
+
+	- Fix undefined blob reference errors in reporter for one-sided phases.
+
+	- Fix build on FreeBSD 7.2.
+
+	- Remove unused --tmp_dir option for reporter and comparator.
+
+	- Code cleanup and minor changes.
+
+
+version 4.5.0
+2011/11/01
+
+	- Add detailed content-type stats.  Before the change, only
+	  aggregated size stats were collected for individual content
+	  types.  Now, Polygraph collects and reports aggregated stats,
+	  histograms, and traces for content types, including both size
+	  and response time stats.
+
+	- Support longer tests.  Before the change, Polygraph used 32bit
+	  integers for stats, OIDs, and related code.  When running very
+	  long and/or very high-load tests (e.g., a few days at 10Gbps
+	  speeds), 32bit counters could overflow resulting in weird
+	  errors and assertions.  Now Polygraph uses 64bit integers for
+	  all counters, OIDs, and related code, avoiding overflows.
+
+	  Note: Since Polygraphs prefers to keep URL lengths constant,
+	  the length of Polygraph URLs and dynamic domain names have
+	  increased.  Polygraph URL path length changed from 42 (e.g.,
+	  /w184f4bb3.78a56c48:00000008/t03/_00000001) to 50 (e.g.,
+	  /w184f4bb3.78a56c48:00000008/t03/_0000000000000001).  Dynamic
+	  domain name prefix length changed from 7 (wNNNNNN) to 17
+	  (wNNNNNNNNNNNNNNNN).
+
+	- The above changes may result in significant binary log size
+	  increase for some workloads.
+
+	- Increase minimum supported log version due to the above
+	  changes.
+
+	- Replace MINSTD (described in "Random Number Generators: Good
+	  Ones Are Hard To Find" by Stephen K. Park and Keith W. Miller)
+	  rng with the Unix rand48().  The rand48() rng allows us to
+	  generate 32 random bits as opposed to 31 bit from MINSTD.  This
+	  lets us implement 64bit rng by generating two random 32bit
+	  numbers.  Besides the rand48() rng demonstrates better results
+	  in dieharder tests.
+
+	  This change affects random variables generated by Polygraph,
+	  hopefully for the better. For example, we observed more precise
+	  distribution of protocol choices during a regression test using
+	  HTTP and FTP transactions.
+
+	- Send Host header in HTTP CONNECT requests.  Per RFC 2616, a
+	  client MUST include a Host header field in all HTTP/1.1
+	  request messages.  Before the change, Polygraph did not send
+	  Host header in CONNECT requests.
+
+	- Fix multiple bugs related to IPv6 alias creation on Linux (at
+	  least).  The bugs led to Polygraph assertions and corrupted
+	  IPv6 addresses being created.  Now, Polygraph can successfully
+	  create IPv6 aliases on Linux (at least).  Currently, in
+	  contrast with IPv4, Polygraph does not delete old IPv6 aliases
+	  before creating new ones.
+
+	- Fix IPv6 alias support in the polygraph-aka tool.  Now it can
+	  successfully create IPv6 aliases (at least on Linux), e.g.:
+	  polygraph-aka lo '[::3]'.
+
+	- Work around a bug on FreeBSD when many IPv6 aliases are
+	  created on a real network interface.  Polygraph tried to use
+	  the aliases immediately after creating them and apparently
+	  before they were fully configured.  The problem affects at
+	  least FreeBSD 7.2.
+
+	- Fix build with OpenSSL libraries with disabled SSLv2 protocol.
+	  In particular, this fixes build on Debian Weezy.  Workloads
+	  using SSLv2 will be rejected if Polygraph was built without
+	  SSLv2 support.
+
+	- Fix persistent working set ID reporting when loading the
+	  stored set.  Before the change, a new ID was generated each
+	  time the set was loaded.
+
+	- Cleanup copyright preamble to make Debian folks happier: add
+	  copyright statements where missing, remove copyright from
+	  generated config.h file, update copyright years, replace "(C)"
+	  with "Copyright".
+
+	- Remove files specific to the Windows build which has not been
+	  supported for a while.
+
+	- Code cleanup and minor changes.
+
+
+version 4.4.0
+2011/03/28
+
+	- Content-driven recurrence support: ClientBehavior.recurrence
+	  PGL field added. Similar to other ClientBehavior properties,
+	  it allows setting Robot recurrence for a particular Content
+	  type.  For example, a Robot can now be configured to revisit
+	  images more often than movies. The feature is documented at
+	  http://www.web-polygraph.org/docs/userman/content-driven-robots.html.
+
+	  The object ID (oid) generation and management algorithms have
+	  been changed to support content-driven robot recurrence.
+	  Polygraph clients now have to synchronize a larger number of
+	  smaller distributed oid sets (a.k.a. "worlds"), especially for
+	  workloads with a large number of distinct content types.
+
+	  As a result of these changes, BHR discrimination has fewer
+	  side-effects now. Before these changes, the BHR discrimination
+	  algorithm affected content type selection. This could make
+	  actual content type distribution and recurrence ratio
+	  different from the configured ones, especially for workloads
+	  with embedded objects.  After these changes, the traffic
+	  should better match the PGL configuration.
+
+	  No significant changes in traffic patterns are expected for
+	  high-performance workloads not using BHR discrimination.
+
+	- Added PGL system() function. The function accepts a single PGL
+	  string as an argument, treats that argument as a shell
+	  command, executes the command, and returns the standard output
+	  of the command as a PGL string value.
+
+	  Outside Phase scripts, the system() function is equivalent to
+	  a back quoted `command` and is executed only once at startup.
+	  Inside Phase scripts, the system() function is executed every
+	  time the script is run, unlike back quotes which are executed
+	  only once at startup, even in a Phase script context
+
+	- Taught PGL int() and float() functions to convert PGL strings
+	  to integer and floating-point numbers. Implicit conversion
+	  from strings to numbers are still not allowed.
+
+	- Fixed assertion when a container PGL Content type uses an
+	  embedded PGL Content that was not configured yet.
+
+	- Fixed layout of tables printed on the console (e.g. "Server
+	  content distributions" and "Phases").
+
+	- Code cleanup.
+
+
 version 4.3.2
 2011/04/05
 

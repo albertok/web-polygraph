@@ -29,6 +29,8 @@ static String strHosts = "hosts";
 static String strMax_agent_load = "max_agent_load";
 static String strMax_host_load = "max_host_load";
 static String strAddresses = "addresses";
+static String strIntArr = "int[]";
+static String strCpuCores = "cpu_cores";
 
 
 BenchSideSym::BenchSideSym(): RecSym(TheType, new PglRec), theBench(0) {
@@ -38,6 +40,7 @@ BenchSideSym::BenchSideSym(): RecSym(TheType, new PglRec), theBench(0) {
 	theRec->bAdd(strAddrArr, strAddr_space, 0);
 	theRec->bAdd(NetAddrSym::TheType, strAddr_mask, 0);
 	theRec->bAdd(strAddrArr,  strAddresses, 0);
+	theRec->bAdd(strIntArr, strCpuCores, 0);
 }
 
 BenchSideSym::BenchSideSym(const String &aType, PglRec *aRec): RecSym(aType, aRec), theBench(0) {
@@ -56,6 +59,29 @@ SynSym *BenchSideSym::dupe(const String &type) const {
 
 bool BenchSideSym::hosts(Array<NetAddr*> &addrs) const {
 	return getNetAddrs(strHosts, addrs);
+}
+
+bool BenchSideSym::cpuCoresArray(Array< Array<int> > &cpuCores) const {
+	ArraySym *a = getArraySym(strCpuCores);
+	if (!a)
+		return false;
+
+	Array< Array<IntSym*> > syms;
+	if (!a->exportNestedArrays(syms)) {
+		cerr << loc() << "incorrect format " << strCpuCores << ": \"" <<
+			*a << "\"" << endl;
+		exit(1);
+	}
+
+	for (int i = 0; i < syms.count(); ++i) {
+		const int cnt = syms[i].count();
+		Array<int> arrInt(cnt);
+		for (int j = 0; j < cnt; ++j)
+			arrInt.append(syms[i][j]->val());
+		cpuCores.append(arrInt);
+	}
+
+	return true;
 }
 
 ArraySym *BenchSideSym::hostsSym() const {

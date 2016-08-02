@@ -5,14 +5,13 @@
 
 #include "base/polygraph.h"
 
-#include "xstd/Rnd.h"
 #include "runtime/XactAbortCoord.h"
 
 
 XactAbortCoord::XactAbortCoord(): theWhetherState(0), theWhereState(0) {
 }
 
-void XactAbortCoord::configure(int whether, int where) {
+void XactAbortCoord::configure(const RndGen::Seed whether, const RndGen::Seed where) {
 	theWhetherState = whether;
 	theWhereState = where;
 }

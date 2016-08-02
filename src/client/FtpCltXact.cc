@@ -78,8 +78,8 @@ void FtpCltXact::pipeline(PipelinedCxm *) {
     // FTP does not support pipelining so we will not change theMgr
 }
 
-HttpAuthScheme FtpCltXact::proxyAuth() const {
-	return theOid.authCred() ? authFtp : authNone;
+AuthPhaseStat::Scheme FtpCltXact::proxyStatAuth() const {
+	return theOid.authCred() ? AuthPhaseStat::sFtp : AuthPhaseStat::sNone;
 }
 
 void FtpCltXact::stopCtrlChannel(const Error &err) {
@@ -305,7 +305,7 @@ Error FtpCltXact::transition(FtpReq::Command from, FtpReq::Command to) {
 // do not call Client::originAuthScheme: assume FTP always requires authentication
 void FtpCltXact::makeUser(ostream &os) {
 	os << ftpReqUserPfx;
-    if (theOwner->credentialsFor(theOid, theCred)) { // TODO: call in start()
+	if (genCredentials()) { // TODO: call in start()
 		os << theCred.name();
 		Should(theOid.authCred()); // Client sets this
 	} else {

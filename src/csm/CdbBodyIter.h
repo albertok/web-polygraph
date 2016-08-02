@@ -26,7 +26,7 @@ class CdbBodyIter: public BodyIter {
 		void startPos(int aPos);
 
 	protected:
-		virtual bool pourBody();
+		virtual bool pourMiddle();
 		virtual void calcContentSize() const;
 
 	protected:

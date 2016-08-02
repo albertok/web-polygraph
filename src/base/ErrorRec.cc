@@ -47,7 +47,7 @@ bool ErrorRec::needReport() const {
 }
 
 void ErrorRec::noteReport(const Time &tout) {
-	theRepCount = Max(1, theCount) + theCount;
+	theRepCount = theCount > 0 ? 2 * theCount : 1;
 	theRepTime = TheClock + tout;
 }
 

@@ -16,7 +16,9 @@ class CltBehaviorCfg: public CltCfg {
 
 		void configure(const ClientBehaviorSym *const aCltBehaviorSym);
 
+		bool havePopModel() const { return thePopModel; }
 		bool haveRanges() const { return theRangeSel; }
+		bool haveRecurRatio() const { return theRecurRatio >= 0; }
 		bool haveReqMethods() const { return theReqMethodSel; }
 		bool haveReqTypes() const { return theReqTypeSel; }
 

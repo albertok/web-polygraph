@@ -12,7 +12,6 @@
 #include "pgl/PglCodeSym.h"
 #include "pgl/EveryCodeSym.h"
 #include "runtime/Goal.h"
-#include "runtime/DutState.h"
 #include "runtime/Script.h"
 #include "runtime/LogComment.h"
 #include "runtime/ErrorMgr.h"
@@ -128,7 +127,7 @@ Time DutWatchdog::duration() const {
 	return TheClock - theStart;
 }
 
-int DutWatchdog::xactCnt() const {
+Counter DutWatchdog::xactCnt() const {
 	return theStats->xactCnt();
 }
 
@@ -136,10 +135,10 @@ BigSize DutWatchdog::fillSz() const {
 	return theStats->totFillSize();
 }
 
-int DutWatchdog::fillCnt() const {
+Counter DutWatchdog::fillCnt() const {
 	return theStats->totFillCount();
 }
 
-int DutWatchdog::xactErrCnt() const {
+Counter DutWatchdog::xactErrCnt() const {
 	return theStats->theXactErrCnt;
 }

@@ -14,7 +14,7 @@ class GoalSubj;
 // run-time wrapper for GoalRec
 class Goal: public GoalRec {
 	public:
-		static int MinXactForRatios; // min #xacts for ratios to make sense
+		static Counter MinXactForRatios; // min #xacts for ratios to make sense
 
 	public:
 		Goal();
@@ -33,10 +33,10 @@ class GoalSubj {
 		virtual ~GoalSubj();
 
 		virtual Time duration() const = 0;
-		virtual int xactCnt() const = 0;
+		virtual Counter xactCnt() const = 0;
 		virtual BigSize fillSz() const = 0;
-		virtual int fillCnt() const = 0;
-		virtual int xactErrCnt() const = 0;
+		virtual Counter fillCnt() const = 0;
+		virtual Counter xactErrCnt() const = 0;
 
 		double xactErrRatio() const;
 };

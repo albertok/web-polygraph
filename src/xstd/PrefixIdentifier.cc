@@ -107,10 +107,8 @@ PrefixIdTable::PrefixIdTable(int aPos): theLookupPos(aPos) {
 
 void PrefixIdTable::add(String *str, int id) {
 	const int idx = lookupIdx(*str);
-	if (idx >= theNodes.capacity()) { // out of bounds
-		theNodes.stretch(idx+1);
-		theNodes.count(theNodes.capacity());
-	}
+	if (idx >= theNodes.capacity()) // out of bounds
+		theNodes.resize(idx + 1);
 	theNodes[idx].add(str, id, theLookupPos);
 }
 

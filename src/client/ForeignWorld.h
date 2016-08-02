@@ -25,6 +25,7 @@ class ForeignWorld: public ObjWorld {
 		void produce(ObjId &oid, RndGen &rng);
 
 	protected:
+		void setType(ObjId &oid) const;
 		void setUrl(ObjId &oid) const;
 
 		String theName;

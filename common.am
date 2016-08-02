@@ -1,10 +1,14 @@
 # settings common to all Makefile.ams
 
-# top_builddir/ is needed for generated config.h
-# top_builddir/src/ is needed for generated src/xstd/h/stdint.h
-# top_srcdir/ is needed for post-config.h
-# TODO: move post-config.h and generated config.h to src?
-AM_CPPFLAGS = -I$(top_builddir) -I$(top_builddir)/src -I$(top_srcdir) -I$(top_srcdir)/src
+javascriptsdir = $(pkgdatadir)/javascripts
+stylesheetsdir = $(pkgdatadir)/stylesheets
+stylesheets_imagesdir = $(pkgdatadir)/stylesheets/images
+
+# top_builddir/src/ is needed for generated src/config.h and src/xstd/h/stdint.h
+AM_CPPFLAGS = \
+	-DDATA_DIR=\"$(pkgdatadir)\" \
+	-I$(top_builddir)/src \
+	-I$(top_srcdir)/src
 
 #AM_LDFLAGS =
 #imported_libs =

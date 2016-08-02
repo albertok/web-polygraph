@@ -35,23 +35,20 @@ void ContainerBodyIter::start(WrBuf *aBuf) {
 	theEmbedDist = theContentSize / (theEmbedGoal+1);
 }
 
-bool ContainerBodyIter::pourBody() {
+bool ContainerBodyIter::pourMiddle() {
 	Assert(theContentSize.known()); // formulas below assume that for now
-	while (canPour()) {
+	Assert(theSuffixSize.known()); // formulas below assume that for now
+	while (canPour() && middleSizeLeft() > 0) {
 		// fill up to next embed tag
 		const Size nextSizeGoal = theEmbedCount < theEmbedGoal ?
 			Max(theBuiltSize, theEmbedDist*theEmbedCount + theEmbedDist) :
-			theContentSize;
-		if (const Size left = nextSizeGoal - theBuiltSize) {
-			theBuiltSize += theBuf->appendRndUpTo(
-				IOBuf::RandomOffset(offSeed(), theBuiltSize), left);
-		}
+			theContentSize - theSuffixSize;
+		if (const Size left = nextSizeGoal - theBuiltSize)
+			pourRandom(left);
 
 		// put the embed tag
 		if (theEmbedCount < theEmbedGoal) {
-			if (const int sz = embed())
-				theBuiltSize += sz;
-			else
+			if (!embed())
 				break; // not enough buf space to put the tag!
 		}
 	}
@@ -61,10 +58,10 @@ bool ContainerBodyIter::pourBody() {
 
 // writes embedded oid tag into the buffer if there is enough space
 // and we are not exceeding content length; return #bytes appended
-Size ContainerBodyIter::embed() {
+bool ContainerBodyIter::embed() {
 	// some stringstream cannot accept zero-sized buffers
 	if (!theBuf->spaceSize())
-		return 0;
+		return false;
 
 	const ObjId eid = theModel->embedRndOid(theOid, theEmbedCount, theRng);
 
@@ -77,20 +74,20 @@ Size ContainerBodyIter::embed() {
 
 	// give up if the tag does not fit into content-length left
 	// give up if the tag is bigger than the buffer
-	if (sizeLeft() < sz || (!fit && theBuf->empty())) {
-		return theBuf->appendRndUpTo(
-			IOBuf::RandomOffset(offSeed(), theBuiltSize), sizeLeft());
-	}
+	const Size todo = middleSizeLeft();
+	if (todo < sz || (!fit && theBuf->empty()))
+		return pourRandom(todo);
 
 	if (fit) {
 		theBuf->appended(sz);
 		Should(*(theBuf->space()-1) == '>'); // paranoid
+		theBuiltSize += sz;
 		theEmbedCount++;
-		return sz;
+		return true;
 	}
 
 	// the tag will probably fit, given more buffer space
-	return 0;
+	return false;
 }
 
 ContainerBodyIter *ContainerBodyIter::clone() const {

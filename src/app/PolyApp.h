@@ -6,6 +6,8 @@
 #ifndef POLYGRAPH__APP_POLYAPP_H
 #define POLYGRAPH__APP_POLYAPP_H
 
+#include <map>
+#include <set>
 #include "xstd/NetAddr.h"
 #include "xstd/String.h"
 #include "xstd/Array.h"
@@ -22,6 +24,7 @@ class SizeOpt;
 class NetAddrSym;
 class BeepDoorman;
 class RobotSym;
+class HostCfg;
 
 // common interface for polyclt and polysrv applications
 class PolyApp: public FileScanTicker, public BcastRcver {
@@ -40,6 +43,9 @@ class PolyApp: public FileScanTicker, public BcastRcver {
 
 		int run(int argc, char *argv[]);
 		void flushState();
+
+	protected:
+		typedef std::map<String, int> AliasIndexes; // map iface : next free alias index
 
 	protected:
 		bool handleCmdLine(int argc, char *argv[]);
@@ -72,15 +78,18 @@ class PolyApp: public FileScanTicker, public BcastRcver {
 		void getIfaces();
 		void getFakeIfaces();
 		void getHostAddrs(Array<NetAddr*> &hosts) const;
+		void getCpuCores(Array< Array<int> > &cpuCores) const;
 		void makeAddresses();
 		ostream &makeAddresses(Array<NetAddr*> &hosts, AddrSyms &agents, ostream &err);
-		int makeAddresses(int hidx, AddrSyms &agents, int agentsPerHost);
+		int makeAddresses(int hidx, AddrSyms &agents, int agentsPerHost, AliasIndexes& aliasIndexes);
 		void deleteAddresses(const String &ifname);
 		void addUniqueAddrs(AddrSyms *const addrs, const NetAddrSym &s, HostMap &seen, Array<NetAddr> &skipped, HostMap &skipped_map) const;
 
 		void getAgentAliasAddrs(AddrSyms &agents) const;
 		void addAgent(Agent *agent);
 		void describeLocals() const;
+		int runWorkers(int argc, char *argv[]);
+		HostCfg *addToHostMap(const NetAddr &host, int &idx);
 		
 		virtual void startServices();
 		virtual void startAgents();
@@ -109,6 +118,7 @@ class PolyApp: public FileScanTicker, public BcastRcver {
 
 		int theTickCount;  // see PolyApp::tick()
 		int theStateCount; // number of states [flushed]
+		int theWorkerCount; // number of child processes
 };
 
 #endif

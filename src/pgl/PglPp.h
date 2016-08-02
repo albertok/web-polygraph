@@ -36,7 +36,6 @@ class PglPp: public Lexer {
 		void system();
 
 		void open(const String &fname);
-		void popen(const String &cmd);
 		void open(istream &is, const String &fname);
 		void close();
 

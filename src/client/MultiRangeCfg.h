@@ -19,7 +19,7 @@ class MultiRangeCfg: public RangeCfg {
 		MultiRangeCfg();
 
 		void configure(const MultiRangeSym &aMultiRange);
-		virtual RangesInfo makeRangeSet(ostream &os, const ObjId &oid, ContentCfg &contentCfg) const;
+		virtual RangesInfo makeRangeSet(HttpPrinter &hp, const ObjId &oid, ContentCfg &contentCfg) const;
 
 	protected:
 		RndDistr *theGapLengthAbsolute;

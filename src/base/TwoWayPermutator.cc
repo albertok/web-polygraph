@@ -30,8 +30,7 @@ void TwoWayPermutator::configure(int mapSize, RndPermutator &rndPermutator, int 
 	}
 
 	// reverse
-	theReverseMap.stretch(mapSize);
-	theReverseMap.count(mapSize);
+	theReverseMap.resize(mapSize);
 	for (int i = 0; i < theDirectMap.count(); ++i)
 		theReverseMap[theDirectMap[i]] = i;
 }

@@ -151,10 +151,10 @@ bool HttpCookie::ParseParameter(const char *const buf, const char *const end, Ht
 
 /* HttpCookies */
 
-int HttpCookies::TheTotalCount(0);
-int HttpCookies::ThePurgedFreshCount(0);
-int HttpCookies::ThePurgedStaleCount(0);
-int HttpCookies::TheUpdatedCount(0);
+Counter HttpCookies::TheTotalCount(0);
+Counter HttpCookies::ThePurgedFreshCount(0);
+Counter HttpCookies::ThePurgedStaleCount(0);
+Counter HttpCookies::TheUpdatedCount(0);
 
 
 HttpCookies::HttpCookies(): theLimit(0) {

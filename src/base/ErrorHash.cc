@@ -13,9 +13,8 @@
 #include "base/ErrorHash.h"
 
 
-ErrorHash::ErrorHash(int aCapacity): theHash(aCapacity), theCount(0) {
-	theHash.count(theHash.capacity());
-	theHash.memset(0);
+ErrorHash::ErrorHash(int aCapacity): theCount(0) {
+	theHash.resize(aCapacity);
 }
 
 ErrorHash::~ErrorHash() {

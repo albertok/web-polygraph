@@ -90,7 +90,7 @@ const Error errPipelineAbort = Error::Add("aborting pipelined transaction due to
 const Error errReqDontFit = Error::Add("generated request headers too big for write buffer");
 const Error errCookiesDontFit = Error::Add("generated cookies too big for write buffer");
 const Error errNoAcceptableContentCoding = Error::Add("no content coding acceptable to requester is supported");
-const Error errMultipartBoundary = Error::Add("multipart with bad boundary");;
+const Error errMultipartBoundary = Error::Add("multipart with bad boundary");
 const Error errMultipartNextParser = Error::Add("internal error while parsing maltipart body content");
 const Error errMultipartSuffix = Error::Add("garbage between multipart body data and CRLF terminator");
 const Error errMultipartHugeToken = Error::Add("huge token in multipart message");
@@ -160,5 +160,27 @@ const Error errFtpBadPasv = Error::Add("bad FTP PASV reply");
 const Error errFtpBadPort = Error::Add("bad FTP PORT request");
 const Error errFtpNoDataXfer = Error::Add("FTP exchange terminated w/o data transfer");
 
+const Error errGssContextCreate = Error::Add("failed to create GSS context");
+
+const Error errKerberosAllSrvsFailed = Error::Add("all KDC servers failed");
+const Error errKerberosAuthFailed = Error::Add("Kerberos HTTP authentication failed");
+const Error errKerberosCredsWithMacros = Error::Add("cannot use credentials with macros for Kerberos; robot transactions that need Kerberos will fail");
+const Error errKerberosCredsInit = Error::Add("cannot initialize robot Kerberos credentials or ccache");
+const Error errKerberosKdcTimeout = Error::Add("timedout waiting for KDC response");
+const Error errKerberosPrincipal = Error::Add("invalid Kerberos principal");
+const Error errKerberosTicket = Error::Add("cannot acquire a Kerberos ticket");
+
+const Error errKerberosAsInit = Error::Add("cannot initiate a Kerberos AS request; robot transactions that need Kerberos will fail");
+const Error errKerberosTgt = Error::Add("cannot acquire Kerberos TGT");
+const Error errKerberosNoTgt = Error::Add("missing Kerberos TGT");
+const Error errKerberosTcpPfx = Error::Add("malformed TCP prefix in KDC reply");
+
+
 const Error errNegativePhase = Error::Add("too many errors");
+const Error errPglScript = Error::Add("PGL runtime script error");
 const Error errOther = Error::Add("unclassified error");
+
+const Error errKerberosCtxState = Error::Add("bad Kerberos context state");
+const Error errNegotiateOrigin = Error::Add("unsupported Negotiate authentication with an origin server");
+const Error errKerberosKdcEof = Error::Add("Unexpected KDC socket closure");
+const Error errAuthHeaderClash = Error::Add("generated authentication headers clash with user-configured headers");

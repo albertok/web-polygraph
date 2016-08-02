@@ -41,7 +41,6 @@ TblDistr::TblDistr(const String &aName):
 
 TblDistr::~TblDistr() {
 	while (theBins.count()) delete theBins.pop();
-	delete theExtras;
 }
 
 void TblDistr::rndGen(RndGen *aGen) {
@@ -53,7 +52,7 @@ void TblDistr::rndGen(RndGen *aGen) {
 double TblDistr::trial() {
 	Assert(theBinSelector.count()); // this must be compiled
 
-	const int selIdx = theGen->ltrial() % theBinSelector.count();
+	const int selIdx = theGen->trial32u() % theBinSelector.count();
 	const int binIdx = theBinSelector[selIdx];
 	Assert(binIdx < theBins.count());
 	TblDistrBin *bin = theBins[binIdx];
@@ -138,6 +137,7 @@ void TblDistr::preprocess() {
 		while (extras.count()) {
 			TblDistrBin *b = extras.pop();
 			abs_contrib += b->absContrib();
+			b->owner(0);
 			theExtras->addBin(b);
 		}
 		TblDistrExtras *ebin = new TblDistrExtras(this, theExtras);
@@ -259,8 +259,7 @@ TblDistrBin::~TblDistrBin() {
 }
 
 void TblDistrBin::owner(TblDistr *const anOwner) {
-	Assert(anOwner);
-	Assert(!theOwner);
+	Assert(!anOwner != !theOwner);
 	theOwner = anOwner;
 }
 

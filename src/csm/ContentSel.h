@@ -9,7 +9,6 @@
 #include "xstd/Array.h"
 #include "csm/ContentTypeIdx.h"
 
-class ObjId;
 class RndDistr;
 class ContentCfg;
 class ContentSym;
@@ -24,7 +23,7 @@ class ContentSel: public ContentTypeIdx {
 		void configure(const ServerSym *cfg);
 
 		const Array<ContentCfg*> &contents() { return theContents; }
-		ContentCfg *getDir(const ObjId &oid);
+		const ContentCfg &getDir();
 
 		void reportCfg(ostream &os) const;
 		

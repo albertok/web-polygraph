@@ -9,6 +9,7 @@
 #include "xstd/Array.h"
 #include "pgl/PglRecSym.h"
 
+class MimeHeaderSym;
 class ClientBehaviorSym;
 class MimeSym;
 class RndDistr;
@@ -38,13 +39,17 @@ class ContentSym: public RecSym {
 		RndDistr *embedCount() const;
 		bool choiceSpace(int &space) const;
 		ClientBehaviorSym *clientBehavior() const;
+		String generator() const;
 		String cdb() const;
 
+		String injectObject() const;
 		String injectDb() const;
 		bool infectProb(double &prob) const;
 		RndDistr *injectGap() const;
 
 		bool encodings(Array<String*> &codings) const;
+		const ArraySym *mimeHeaders() const;
+		String documentRoot() const;
 
 	protected:
 		virtual SynSym *dupe(const String &dType) const;

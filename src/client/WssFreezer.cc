@@ -6,8 +6,9 @@
 #include "base/polygraph.h"
 
 #include "runtime/LogComment.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
-#include "runtime/PubWorld.h"
+#include "runtime/ObjUniverse.h"
 #include "client/WssFreezer.h"
 
 int WssFreezer::TheStartCount = 0;
@@ -27,9 +28,9 @@ void WssFreezer::startFill() {
 	printGoal(Comment(5) << "fyi: working set size goal: ");
 	Comment << endc;
 
-	if (PubWorld::Frozen()) {
+	if (ObjUniverse::Frozen()) {
 		Comment(5) << "warning: working set is already frozen" << endc;
-		PubWorld::ReportWss(5);
+		ObjUniverse::ReportWss(5);
 	} else {
 		Broadcast(TheInfoChannel, BcastRcver::ieWssFill);
 	}
@@ -38,8 +39,8 @@ void WssFreezer::startFill() {
 void WssFreezer::startFreeze() {
 	stopListen();
 	Comment(5) << "fyi: started freezing working set size" << endc;
-	PubWorld::FreezeWss();
+	ObjUniverse::FreezeWss();
 	Broadcast(TheInfoChannel, BcastRcver::ieWssFreeze);
-	if (PubWorld::Frozen())
+	if (ObjUniverse::Frozen())
 		Comment(5) << "fyi: working set size is now frozen" << endc;
 }

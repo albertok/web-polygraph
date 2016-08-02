@@ -10,6 +10,7 @@
 #include "xstd/Socket.h"
 #include "xstd/Ssl.h"
 #include "base/RndPermut.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/Agent.h"
 #include "runtime/AgentCfg.h"
@@ -58,6 +59,8 @@ void Agent::configure(const AgentSym *cfg, const NetAddr &aHost) {
 	if (cfg->socket()->nagle(ng))
 		theSockOpt.nagle = ng ? 1 : -1;
 	cfg->socket()->lingerTout(theSockOpt.linger);
+
+	selectHttpVersion();
 }
 
 void Agent::cache(Cache *aCache) {
@@ -69,8 +72,8 @@ Time Agent::selectLifetime() const {
 	return theLifetimeDistr ? Time::Secd(theLifetimeDistr->trial()) : Time();
 }
 
-void Agent::selectHttpVersion(AgentCfg &cfg) {
-	switch (cfg.selectHttpVersion()) {
+void Agent::selectHttpVersion() {
+	switch (cfg()->selectHttpVersion()) {
 		case protoHttp1p0:
 			theHttpVersion = HttpVersion(1, 0);
 			return;

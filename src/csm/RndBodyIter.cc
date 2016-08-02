@@ -11,9 +11,8 @@
 
 #include "xstd/gadgets.h"
 
-bool RndBodyIter::pourBody() {
-	theBuiltSize += theBuf->appendRndUpTo(
-		IOBuf::RandomOffset(offSeed(), theBuiltSize), sizeLeft());
+bool RndBodyIter::pourMiddle() {
+	pourRandom(middleSizeLeft());
 	return true;
 }
 

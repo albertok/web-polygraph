@@ -48,6 +48,8 @@ void StatPhaseRec::compoundAll(CompoundXactStat &all) const {
 	all += theAuthBasic;
 	all += theAuthNtlm;
 	all += theAuthNegotiate;
+	all += theAuthKerberos;
+	all += theConnected;
 }
 
 OLog &StatPhaseRec::store(OLog &log) const {
@@ -55,7 +57,7 @@ OLog &StatPhaseRec::store(OLog &log) const {
 	return log 
 		<< theName 
 		<< theGoal
-		<< theRepContType
+		<< theRepContTypeHist
 		<< theConnClose
 		<< theSockRdSzH << theSockWrSzH
 		<< theBasicXacts << theRediredReqXacts << theRepToRedirXacts 
@@ -68,7 +70,7 @@ OLog &StatPhaseRec::store(OLog &log) const {
 		<< thePageHist
 		<< theRangeXacts
 		<< theRangeGen
-		<< theReqContType
+		<< theReqContTypeHist
 		<< theProxyValidationR
 		<< theLastReqByteWritten
 		<< theFirstRespByteRead
@@ -77,7 +79,9 @@ OLog &StatPhaseRec::store(OLog &log) const {
 		<< theAuthBasic
 		<< theAuthNtlm
 		<< theAuthNegotiate
-		<< theIsolated
+		<< theAuthKerberos
+		<< theConnected
+		<< theSingles
 		<< primary
 		<< theCookiesSent << theCookiesRecv
 		<< theCookiesPurgedFresh << theCookiesPurgedStale
@@ -85,6 +89,7 @@ OLog &StatPhaseRec::store(OLog &log) const {
 		<< theFtpXacts
 		<< theStatusCode
 		<< theCustomXacts
+		<< theSslSessions
 		;
 }
 
@@ -93,7 +98,7 @@ ILog &StatPhaseRec::load(ILog &log) {
 	return log
 		>> theName
 		>> theGoal
-		>> theRepContType
+		>> theRepContTypeHist
 		>> theConnClose
 		>> theSockRdSzH >> theSockWrSzH
 		>> theBasicXacts >> theRediredReqXacts >> theRepToRedirXacts 
@@ -106,7 +111,7 @@ ILog &StatPhaseRec::load(ILog &log) {
 		>> thePageHist
 		>> theRangeXacts
 		>> theRangeGen
-		>> theReqContType
+		>> theReqContTypeHist
 		>> theProxyValidationR
 		>> theLastReqByteWritten
 		>> theFirstRespByteRead
@@ -115,7 +120,9 @@ ILog &StatPhaseRec::load(ILog &log) {
 		>> theAuthBasic
 		>> theAuthNtlm
 		>> theAuthNegotiate
-		>> theIsolated
+		>> theAuthKerberos
+		>> theConnected
+		>> theSingles
 		>> primary
 		>> theCookiesSent >> theCookiesRecv
 		>> theCookiesPurgedFresh >> theCookiesPurgedStale
@@ -123,6 +130,7 @@ ILog &StatPhaseRec::load(ILog &log) {
 		>> theFtpXacts
 		>> theStatusCode
 		>> theCustomXacts
+		>> theSslSessions
 		;
 }
 
@@ -148,8 +156,8 @@ void StatPhaseRec::join(const StatPhaseRec &r) {
 	if (!primary)
 		primary = r.primary;
 
-	theRepContType.add(r.theRepContType);
-	theReqContType.add(r.theReqContType);
+	theRepContTypeHist.add(r.theRepContTypeHist);
+	theReqContTypeHist.add(r.theReqContTypeHist);
 	theConnClose.add(r.theConnClose);
 	theSockRdSzH.add(r.theSockRdSzH);
 	theSockWrSzH.add(r.theSockWrSzH);
@@ -177,7 +185,9 @@ void StatPhaseRec::join(const StatPhaseRec &r) {
 	theAuthBasic += r.theAuthBasic;
 	theAuthNtlm += r.theAuthNtlm;
 	theAuthNegotiate += r.theAuthNegotiate;
-	theIsolated += r.theIsolated;
+	theAuthKerberos += r.theAuthKerberos;
+	theConnected += r.theConnected;
+	theSingles += r.theSingles;
 	theCookiesSent += r.theCookiesSent;
 	theCookiesRecv += r.theCookiesRecv;
 	theCookiesPurgedFresh += r.theCookiesPurgedFresh;
@@ -186,6 +196,7 @@ void StatPhaseRec::join(const StatPhaseRec &r) {
 	theFtpXacts += r.theFtpXacts;
 	theStatusCode.add(r.theStatusCode);
 	theCustomXacts += r.theCustomXacts;
+	theSslSessions += r.theSslSessions;
 }
 
 ostream &StatPhaseRec::print(ostream &os, const String &pfx) const {
@@ -228,7 +239,9 @@ ostream &StatPhaseRec::print(ostream &os, const String &pfx) const {
 
 	theIcpXacts.print(os, "hit", "miss",  pfx + "icp.");
 
-	theRepContType.print(os, pfx + "cont_type.");
+	theRepContTypeHist.print(os, pfx + "cont_type.");
+	theReqContTypeHist.print(os, pfx + "req_cont_type.");
+
 	theConnClose.print(os, pfx + "conn_close.");
 	theSockRdSzH.print(os, pfx + "so_read.size.");
 	theSockWrSzH.print(os, pfx + "so_write.size.");
@@ -238,8 +251,6 @@ ostream &StatPhaseRec::print(ostream &os, const String &pfx) const {
 
 	theRangeXacts.print(os, pfx + "range.");
 	theRangeGen.print(os, pfx + "range_gen.");
-
-	theReqContType.print(os, pfx + "req_cont_type.");
 
 	TmSzHistStat proxyValidationAll;
 	proxyValidationAll += theProxyValidationR.hits();
@@ -255,7 +266,9 @@ ostream &StatPhaseRec::print(ostream &os, const String &pfx) const {
 	theAuthBasic.print(os, pfx + "compound.auth.basic.");
 	theAuthNtlm.print(os, pfx + "compound.auth.ntlm.");
 	theAuthNegotiate.print(os, pfx + "compound.auth.negotiate.");
-	theIsolated.print(os, pfx + "compound.auth.not.");
+	theAuthKerberos.print(os, pfx + "compound.auth.kerberos.");
+	theConnected.print(os, pfx + "compound.connect_plus_one.");
+	theSingles.print(os, pfx + "compound.not.");
 
 	theCookiesSent.print(os, pfx + "cookies.sent.");
 	theCookiesRecv.print(os, pfx + "cookies.recv.");
@@ -269,6 +282,8 @@ ostream &StatPhaseRec::print(ostream &os, const String &pfx) const {
 	theStatusCode.print(os, pfx + "rep_status_code.");
 
 	theCustomXacts.print(os, pfx + "custom.");
+
+	theSslSessions.print(os, pfx + "ssl.sessions.");
 
 	return os;
 }

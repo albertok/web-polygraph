@@ -15,15 +15,20 @@
 #include "client/CltXactMgr.h"
 #include "client/ParseBuffer.h"
 #include "csm/ContentMgr.h"
+#include "csm/oid2Url.h"
 #include "runtime/CompoundXactInfo.h"
 #include "runtime/HostMap.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/polyErrors.h"
 #include "runtime/ErrorMgr.h"
 #include "runtime/LogComment.h"
 #include "runtime/PageInfo.h"
 
-CltXact::CltXact(): theOwner(0), thePage(0), theAuthXact(0), theBodyParser(0),
+CltXact::CltXact(): theOwner(0),
+	thePage(0),
+	theCompound(0),
+	theBodyParser(0),
 	theMgr(0) {
 	CltXact::reset();
 }
@@ -35,8 +40,8 @@ void CltXact::reset() {
 	if (thePage)
 		PageInfo::Abandon(thePage);
 
-	if (theAuthXact)
-		CompoundXactInfo::Abandon(theAuthXact);
+	if (theCompound)
+		CompoundXactInfo::Abandon(theCompound);
 
 	if (theMgr) {
 		theMgr->release(this);
@@ -51,10 +56,13 @@ void CltXact::reset() {
 	theNextHighHop = theNextTcpHop = NetAddr();
 
 	theCred.reset();
+	theGssContext.free();
+	didGssContextAttempt = false;
 
 	theCause = 0;
 	theChildCount = 0;
 	doRetry = false;
+	createdCompound = false;
 
 	theLogCat = lgcCltSide;
 }
@@ -93,20 +101,6 @@ void CltXact::exec(Connection *const aConn) {
 	}
 }
 
-// if we finished CONNECTing, reset state and restart as a regular transaction
-void CltXact::restartAfterConnect() {
-	theConn->sslActivate();
-	theOid.connect(false);
-	const ObjId oid = theOid;
-	Client *const owner = theOwner;
-	Connection *const conn = theConn;
-	reset();
-	theOid = oid;
-	theOwner = owner;
-	lifeTimeLimit(owner->selectLifetime());
-	exec(conn);
-}
-
 void CltXact::finish(Error err) {
 	if (theOid.foreignUrl())
 		TheEmbedStats.foreignUrlReceived++;
@@ -122,18 +116,12 @@ void CltXact::finish(Error err) {
 
 	Xaction::finish(err);
 
-	if (theAuthXact && theAuthXact->final)
-		CompoundXactInfo::Abandon(theAuthXact);
-
 	if (theBodyParser) {
 		theBodyParser->farm().put(theBodyParser);
 		theBodyParser = 0;
 	}
 
-	if (!err && theOid.connect())
-		restartAfterConnect();
-	else
-		theOwner->noteXactDone(this);
+	theOwner->noteXactDone(this);
 }
 
 bool CltXact::controlledMasterRead() {
@@ -206,7 +194,14 @@ bool CltXact::controlledFill(bool &needMore) {
 
 		const char *bodyStart = buf.space();
 
-		makeReq(buf);
+		try {
+			makeReq(buf);
+		}
+		catch (const Error &err) {
+			finish(err);
+			return false;
+		}
+
 // XXX: remove temporary "here" comments
 //Comment << here << "filled buf: " << endc; printMsg(bodyStart, buf.space() - bodyStart);
 
@@ -304,10 +299,12 @@ void CltXact::logStats(OLog &ol) const {
 void CltXact::noteChildNew(CltXact *child) {
 	++theChildCount;
 
-	// authentication is continued by child transaction, pass stats info to child
-	if (theAuthXact && Should(!child->theAuthXact)) {
-		child->theAuthXact = theAuthXact;
-		theAuthXact = 0;
+	// If we have incomplete compound stats, then we are either
+	// CONNECTing or authenticatING. Our first child should update the stats.
+	// This assumes that we should not parse 407 body and follow its links.
+	if (theCompound && !theCompound->completed() && Should(!child->theCompound)) {
+		CompoundXactInfo::Share(theCompound);
+		child->theCompound = theCompound;
 	}
 }
 
@@ -317,6 +314,30 @@ void CltXact::noteChildGone(CltXact *) {
 
 void CltXact::noteAbort() {
 	newState(stDone);
+}
+
+bool CltXact::genCredentials() {
+	Must(theOwner);
+	Must(!theCred.image());
+	return theOwner->credentialsFor(theOid, theCred);
+}
+
+bool CltXact::needGssContext() const {
+	return false; // only HTTP transactions support GSS-based authentication
+}
+
+bool CltXact::initGssContext(const Kerberos::CCache &ccache, const String &target) {
+	const Gss::Error err = theGssContext.init(ccache, target);
+	if (err && ReportError(errGssContextCreate))
+		reportAuthError(aupAssumedProxy, "while obtaining Kerberos TGT", err);
+	return !err;
+}
+
+Gss::Context &CltXact::gssContext(Connection::NtlmAuth &ntlmState) {
+	if (theGssContext)
+		ntlmState.gssContext.moveFrom(theGssContext);
+
+	return ntlmState.gssContext;
 }
 
 bool CltXact::askedPeer() const {
@@ -332,16 +353,16 @@ void CltXact::usePeer(bool) {
 	Must(false);
 }
 
-void CltXact::noteContent(const ParseBuffer &content) {
+void CltXact::noteContent(const ParseBuffer &) {
 	Must(false);
 }
 
-Error CltXact::noteEmbedded(ReqHdr &hdr) {
+Error CltXact::noteEmbedded(ReqHdr &) {
 	Must(false);
 	return 0;
 }
 
-void CltXact::noteTrailerHeader(const ParseBuffer &hdr) {
+void CltXact::noteTrailerHeader(const ParseBuffer &) {
 	Must(false);
 }
 
@@ -349,7 +370,7 @@ void CltXact::noteEndOfTrailer() {
 	Must(false);
 }
 
-Error CltXact::noteReplyPart(const RepHdr &hdr) {
+Error CltXact::noteReplyPart(const RepHdr &) {
 	Must(false);
 	return 0;
 }
@@ -358,8 +379,15 @@ bool CltXact::writeFirst() const {
 	return true;
 }
 
+bool CltXact::startedXactSequence() const {
+	if (!theCompound)
+		return true; // a sequence of one (this) transaction
+
+	return createdCompound;
+}
+
 const CompoundXactInfo *CltXact::partOf() const {
-	return theAuthXact;
+	return theCompound;
 }
 
 void CltXact::wakeUp(const Alarm &a) {
@@ -368,4 +396,52 @@ void CltXact::wakeUp(const Alarm &a) {
 		theOwner->dequeSuspXact(this);
 	}
 	Xaction::wakeUp(a);
+}
+
+void CltXact::startReportingAuthError(const char *context, Gss::Error gssErr, const Connection::NtlmAuth *ntlmState) {
+	Comment << "authentication error details " << context << endl;
+
+	theOwner->describe(Comment << "\trobot: "); Comment << endl;
+
+	theOwner->lifetimeMessages().print(Comment << "\trobot transaction totals:   ") << endl;
+	if (theOwner->lifetimeMessages() != theOwner->periodMessages())
+		theOwner->periodMessages().print(Comment<<"\tincluding this busy period: ") << endl;
+
+	if (theConn)
+		theConn->print(Comment << "\tconnection: ") << endl;
+
+	Comment << "\torigin server: " << Oid2UrlHost(theOid) << endl;
+	if ((theConn && theConn->raddr() != Oid2UrlHost(theOid))
+		|| (!theConn && theOwner->proxy(theOid))) {
+		Comment << "\tproxy: " << theOwner->proxy(theOid) << endl;
+	}
+
+	if (ntlmState && ntlmState->gssContext)
+		Comment << "\tKDC used: " << ntlmState->gssContext.kdcAddr() << endl;
+	else if (theGssContext.kdcAddr())
+		Comment << "\tKDC: " << theGssContext.kdcAddr() << endl;
+
+	if (ntlmState && ntlmState->state != ntlmNone) {
+		static std::map<NtlmAuthState, String> stateStage;
+		if (stateStage.empty()) {
+			stateStage[ntlmSentT1] = "NTLM sent T1";
+			stateStage[ntlmSentT3] = "NTLM sent T3";
+			stateStage[ntlmDone] = "NTLM done";
+			stateStage[ntlmError] = "NTLM error";
+		}
+		Comment << "\tauthentication stage: " << stateStage[ntlmState->state] << endl;
+	}
+
+	if (theCred.image())
+		Comment << "\tcredentials used: " << theCred.image() << endl;
+	else if(theOwner->credentials())
+		Comment << "\tcredentials: " << theOwner->credentials() << endl;
+
+	if (gssErr)
+		Comment << gssErr; // prints its own prefix and new lines
+}
+
+void CltXact::reportAuthError(AuthPeer, const char *context, Gss::Error gssErr, const Connection::NtlmAuth *ntlmState) {
+	startReportingAuthError(context, gssErr, ntlmState);
+	Comment << endc;
 }

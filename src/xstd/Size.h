@@ -12,6 +12,10 @@
 // note: use BigSize for values of 2GB and larger
 class Size {
 	public:
+		// XXX: Too small for many purposes.
+		// XXX: Too unstable for binary logging purposes.
+		typedef int size_type;
+
 		static Size KB(int n) { return Size(n * 1024); }
 		static Size MB(int n) { return Size::KB(n * 1024); }
 		static Size Byte(int n) { return Size(n); }
@@ -32,14 +36,14 @@ class Size {
 		Size operator %= (Size sz) { return theSize %= sz; }
 
 		int byte() const { return theSize; }
-		operator int() const { return theSize; }
+		operator int() const { return byte(); }
 
 		Size &operator =(int bytes) { theSize = bytes; return *this; }
 
 		ostream &print(ostream &os) const;
 
 	public: /* for logging only */
-		int theSize;
+		size_type theSize;
 };
 
 

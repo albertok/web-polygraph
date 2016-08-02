@@ -12,6 +12,7 @@
 
 class NetAddrSym;
 class ArraySym;
+class SslWrapSym;
 
 // base class for robot and server symbols
 class HostsBasedSym: public RecSym {
@@ -29,6 +30,7 @@ class HostsBasedSym: public RecSym {
 
 		const ArraySym *addresses() const; // may return null
 		bool addresses(ArraySym &addrs) const;
+		bool sslWraps(Array<SslWrapSym*> &syms, RndDistr *&sel) const;
 
 	protected:
 		virtual SynSym *dupe(const String &dType) const;

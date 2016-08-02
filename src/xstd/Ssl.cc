@@ -53,20 +53,11 @@ SslCtx::SslCtx(SslProtocol protocol, const String &cipher): theCtx(0) {
 #endif
 }
 
-SslCtx::SslCtx(const SslCtx &anSslCtx) {
-	Assert(false);
-}
-
 SslCtx::~SslCtx() {
 #if OPENSSL_ENABLED
 	if (theCtx)
 		::SSL_CTX_free(theCtx);
 #endif
-}
-
-SslCtx &SslCtx::operator =(const SslCtx &anSslCtx) {
-	Assert(false);
-	return *this;
 }
 
 bool SslCtx::IsProtocolSupported(const int protocol) {
@@ -84,6 +75,15 @@ bool SslCtx::IsProtocolSupported(const int protocol) {
 			return false;
 	}
 	return true;
+#endif
+	return false;
+}
+
+bool SslCtx::IsCompressionConfigurable() {
+#if OPENSSL_ENABLED
+#	ifdef SSL_OP_NO_COMPRESSION
+		return true;
+#	endif
 #endif
 	return false;
 }
@@ -158,6 +158,15 @@ void SslCtx::setVerify(int mode) const {
 #endif
 }
 
+bool SslCtx::disableCompression() {
+#if OPENSSL_ENABLED
+#	ifdef SSL_OP_NO_COMPRESSION
+		return ::SSL_CTX_set_options(theCtx, SSL_OP_NO_COMPRESSION) & SSL_OP_NO_COMPRESSION;
+#	endif
+#endif
+	return false;
+}
+
 
 /* Ssl Class */
 
@@ -176,10 +185,6 @@ Ssl::Ssl(const SSL_CTX *ctx): theConn(0) {
 #endif
 }
 
-Ssl::Ssl(const Ssl &anSsl) {
-	Assert(false);
-}
-
 Ssl::~Ssl() {
 #if OPENSSL_ENABLED
 	if (Should(theConn)) {
@@ -187,11 +192,6 @@ Ssl::~Ssl() {
 		TheLevel--;
 	}
 #endif
-}
-
-Ssl &Ssl::operator =(const Ssl &anSsl) {
-	Assert(false);
-	return *this;
 }
 
 bool Ssl::shutdown(int &res) {
@@ -208,6 +208,18 @@ bool Ssl::setFd(int fd) {
 	return ::SSL_set_fd(theConn, fd) > 0;
 #endif
 	return false && !sizeof(fd);
+}
+
+bool Ssl::setBIO(Ssl *ssl) {
+#if OPENSSL_ENABLED
+	BIO *const bio = BIO_new(BIO_f_ssl());
+	if (!bio)
+		return false;
+	BIO_set_ssl(bio, ssl->theConn, false);
+	SSL_set_bio(theConn, bio, bio);
+	return true;
+#endif
+	return false && !sizeof(ssl);
 }
 
 void Ssl::playRole(int role) {

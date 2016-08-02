@@ -57,12 +57,12 @@ bool MembershipMap::match(RegEx *regex, const char *userName, int flags, int *er
 		return false;
 
 	if (regex->exactMatching() && !regex->ignoringCase())
-		return exactGroupMatch(regex->pattern(), userName, memberIdx);
+		return exactGroupMatch(regex->pattern(), memberIdx);
 	else
 		return regexGroupMatch(regex, userName, memberIdx, flags, errNo);
 }
 
-bool MembershipMap::exactGroupMatch(const String &groupName, const char *userName, int memberIdx) const {
+bool MembershipMap::exactGroupMatch(const String &groupName, const int memberIdx) const {
 	int groupIdx = -1;
 	if (!theGroupSpace.find(groupName.area(0), groupIdx))
 		return false;

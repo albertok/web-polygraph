@@ -7,6 +7,30 @@
 
 #include "runtime/httpText.h"
 
+#include <list>
+
+
+typedef std::list<String> Headers;
+static Headers TheHeaders;
+
+static
+const String LearnHeader(const String &s) {
+	Assert(s.str(": "));
+	TheHeaders.push_back(s);
+	return s;
+}
+
+bool KnownHeader(const String &header) {
+	bool exists = false;
+	typedef Headers::const_iterator HCI;
+	for (HCI i = TheHeaders.begin(); !exists && i != TheHeaders.end(); ++i) {
+		if (i->startsWith(header + ':'))
+			exists = true;
+	}
+	return exists;
+}
+
+
 // protocol strings
 const String protoHttp1p0 = "HTTP/1.0";
 const String protoHttp1p1 = "HTTP/1.1";
@@ -33,52 +57,52 @@ const String rls416RequestedRangeNotSatisfiable = " 416 Requested Range Not Sati
 const String rls417ExpectationFailed = " 417 Expectation Failed\r\n";
 
 // full header fields
-const String hfAccept       = "Accept: */*\r\n";
-const String hfConnAliveOrg = "Connection: keep-alive\r\n";
-const String hfConnCloseOrg = "Connection: close\r\n";
-const String hfConnAlivePxy = "Proxy-Connection: keep-alive\r\n";
-const String hfConnClosePxy = "Proxy-Connection: close\r\n";
-const String hfReload       = "Pragma: no-cache\r\n"
-                                     "Cache-Control: no-cache\r\n";
-const String hfCcCachable   = "Cache-Control: public\r\n";
-const String hfCcUncachable = "Cache-Control: private,no-cache\r\n"
-                                     "Pragma: no-cache\r\n";
-const String hfExpect100Continue = "Expect: 100-continue\r\n";
+const String hfAccept       = LearnHeader("Accept: */*\r\n");
+const String hfConnAliveOrg = LearnHeader("Connection: keep-alive\r\n");
+const String hfConnCloseOrg = LearnHeader("Connection: close\r\n");
+const String hfConnAlivePxy = LearnHeader("Proxy-Connection: keep-alive\r\n");
+const String hfConnClosePxy = LearnHeader("Proxy-Connection: close\r\n");
+const String hfCcReload     = LearnHeader("Cache-Control: no-cache\r\n");
+const String hfPragmaReload = LearnHeader("Pragma: no-cache\r\n");
+const String hfCcCachable   = LearnHeader("Cache-Control: public\r\n");
+const String hfCcUncachable = LearnHeader("Cache-Control: private,no-cache\r\n");
+const String hfPragmaUncachable = LearnHeader("Pragma: no-cache\r\n");
+const String hfExpect100Continue = LearnHeader("Expect: 100-continue\r\n");
 
 // header field prefixes
-const String hfpAcceptEncoding = "Accept-Encoding: ";
-const String hfpCacheControl = "Cache-Control: ";
-const String hfpConnection   = "Connection: ";
-const String hfpCookie       = "Cookie: ";
-const String hfpPragma       = "Pragma: ";
-const String hfpProxyConnection = "Proxy-Connection: ";
-const String hfpProxyAuthenticate = "Proxy-Authenticate: ";
-const String hfpWwwAuthenticate = "WWW-Authenticate: ";
-const String hfpTransferEncoding = "Transfer-Encoding: ";
-const String hfpSetCookie    = "Set-Cookie: ";
-const String hfpHost         = "Host: ";
-const String hfpIMS          = "If-Modified-Since: ";
-const String hfpContentEncoding   = "Content-Encoding: ";
-const String hfpContLength   = "Content-Length: ";
-const String hfpContType     = "Content-Type: ";
-const String hfpContMd5      = "Content-MD5: ";
-const String hfpDate         = "Date: ";
-const String hfpExpires      = "Expires: ";
-const String hfpLmt          = "Last-Modified: ";
-const String hfpServer       = "Server: ";
-const String hfpLocation     = "Location: ";
-const String hfpProxyAuthorization = "Proxy-Authorization: ";
-const String hfpAuthorization = "Authorization: ";
-const String hfpXLocWorld    = "X-Loc-World: ";
-const String hfpXRemWorld    = "X-Rem-World: ";
-const String hfpXXact        = "X-Xact: ";
-const String hfpXTarget      = "X-Target: ";
-const String hfpXAbort       = "X-Abort: ";
-const String hfpXPhaseSyncPos= "X-Phase-Sync-Pos: ";
-const String hfpContRange    = "Content-Range: bytes ";
-const String hfpRange        = "Range: bytes=";
-const String hfpExpect       = "Expect: ";
-const String hfpContDisposition = "Content-Disposition: attachment; filename=";
+const String hfpAcceptEncoding = LearnHeader("Accept-Encoding: ");
+const String hfpCacheControl = LearnHeader("Cache-Control: ");
+const String hfpConnection   = LearnHeader("Connection: ");
+const String hfpCookie       = LearnHeader("Cookie: ");
+const String hfpPragma       = LearnHeader("Pragma: ");
+const String hfpProxyConnection = LearnHeader("Proxy-Connection: ");
+const String hfpProxyAuthenticate = LearnHeader("Proxy-Authenticate: ");
+const String hfpWwwAuthenticate = LearnHeader("WWW-Authenticate: ");
+const String hfpTransferEncoding = LearnHeader("Transfer-Encoding: ");
+const String hfpSetCookie    = LearnHeader("Set-Cookie: ");
+const String hfpHost         = LearnHeader("Host: ");
+const String hfpIMS          = LearnHeader("If-Modified-Since: ");
+const String hfpContentEncoding   = LearnHeader("Content-Encoding: ");
+const String hfpContLength   = LearnHeader("Content-Length: ");
+const String hfpContType     = LearnHeader("Content-Type: ");
+const String hfpContMd5      = LearnHeader("Content-MD5: ");
+const String hfpDate         = LearnHeader("Date: ");
+const String hfpExpires      = LearnHeader("Expires: ");
+const String hfpLmt          = LearnHeader("Last-Modified: ");
+const String hfpServer       = LearnHeader("Server: ");
+const String hfpLocation     = LearnHeader("Location: ");
+const String hfpProxyAuthorization = LearnHeader("Proxy-Authorization: ");
+const String hfpAuthorization = LearnHeader("Authorization: ");
+const String hfpXLocWorld    = LearnHeader("X-Loc-World: ");
+const String hfpXRemWorld    = LearnHeader("X-Rem-World: ");
+const String hfpXXact        = LearnHeader("X-Xact: ");
+const String hfpXTarget      = LearnHeader("X-Target: ");
+const String hfpXAbort       = LearnHeader("X-Abort: ");
+const String hfpXPhaseSyncPos= LearnHeader("X-Phase-Sync-Pos: ");
+const String hfpContRange    = LearnHeader("Content-Range: bytes ");
+const String hfpRange        = LearnHeader("Range: bytes=");
+const String hfpExpect       = LearnHeader("Expect: ");
+const String hfpContDisposition = LearnHeader("Content-Disposition: attachment; filename=");
 
 // free text
 const String text302Found  = "please go to ";
@@ -92,6 +116,6 @@ const String textMultipartBoundary = "THIS_STRING_SEPARATES";
 const String textMultipartSep = "--";
 
 // combos
-const String hfGzipContentEncoding = hfpContentEncoding + "gzip\r\n";
-const String hfVaryAcceptEncoding = "Vary: Accept-Encoding\r\n";
-const String hfMultiRangeContType = hfpContType + "multipart/byteranges; boundary=" + textMultipartBoundary + "\r\n";
+const String hfGzipContentEncoding = LearnHeader(hfpContentEncoding + "gzip\r\n");
+const String hfVaryAcceptEncoding = LearnHeader("Vary: Accept-Encoding\r\n");
+const String hfMultiRangeContType = LearnHeader(hfpContType + "multipart/byteranges; boundary=" + textMultipartBoundary + "\r\n");

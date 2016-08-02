@@ -9,13 +9,9 @@
 #include "runtime/ConnIdx.h"
 
 
-ConnIdx::ConnIdx(int aCapacity): Array<Connection*>(aCapacity) {
-}
-
 void ConnIdx::fdLimit(int limit) {
 	Assert(count() <= limit);
-	stretch(limit);
-	count(limit);
+	resize(limit);
 }
 
 void ConnIdx::add(Connection *conn) {
@@ -33,7 +29,7 @@ void ConnIdx::check(const Connection *conn) {
 Connection *&ConnIdx::safeItem(const Connection *conn, const Connection *val) {
 	Assert(conn);
 	const int fd = conn->fd();
-	Assert(fd >= 0 && fd < theCount);
+	Assert(fd >= 0 && fd < count());
 	Connection *&res = item(fd);
 	Assert(res == val);
 	return res;

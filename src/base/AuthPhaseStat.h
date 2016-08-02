@@ -19,6 +19,7 @@ class AuthPhaseStat: public LogObj {
 			sNegotiate,
 			sFtp,
 			sSocksUserPass,
+			sKerberos,
 			sLast
 		};
 

@@ -17,7 +17,6 @@ class CltOpts: public OptGrp {
 
 	public:
 		NetAddrOpt theProxyAddr;
-		TwoIntOpt thePorts;
 		StrArrOpt theLoadableModules;
 
 		TimeOpt theIcpTout;

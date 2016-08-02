@@ -127,6 +127,7 @@ client_LDADD = \
 	../icp/libicp.a \
 	../beep/libbeep.a \
 	../cache/libcache.a \
+	../kerberos/libkerberos.a \
 	../runtime/libagent.a \
 	../runtime/libruntime.a \
 	../pgl/libpgl.a \

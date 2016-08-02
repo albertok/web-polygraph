@@ -11,9 +11,8 @@
 #include "loganalyzers/ReportTraceFigure.h"
 
 
-void ReportTraceFigure::setCtrlOptions() {
-	theLabelX1 = "minutes";
-	ReportFigure::setCtrlOptions();
+ReportTraceFigure::ReportTraceFigure() {
+	theAxisX1.label("minutes");
 }
 
 void ReportTraceFigure::globalStart(Time aStart) {
@@ -21,9 +20,9 @@ void ReportTraceFigure::globalStart(Time aStart) {
 }
 
 // use gnuplot date axis?
-void ReportTraceFigure::dumpTime(Time stamp) {
+void ReportTraceFigure::addDataPoint(const Time stamp, const double y) {
 	static bool complained = false;
 	complained = complained || !Should(theGlobalStart >= 0);
-
-	*theCtrlFile << Max(0.0, (stamp - theGlobalStart).secd()/60);
+	const double x = Max(0.0, (stamp - theGlobalStart).secd()/60);
+	ReportFigure::addDataPoint(x, y);
 }

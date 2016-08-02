@@ -18,7 +18,7 @@ bool StringArrayBlockSym::isA(const String &type) const {
 	return type == TheType || ContainerSym::isA(type);
 }
 
-void StringArrayBlockSym::forEach(Visitor &v) const {
+void StringArrayBlockSym::forEach(Visitor &v, RndGen *const rng) const {
 	// leaf; the visitor may use strings() to continue
 	v.visit(*this);
 }

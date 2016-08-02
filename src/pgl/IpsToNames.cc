@@ -13,6 +13,7 @@
 #include "pgl/PglNetAddrRangeSym.h"
 #include "pgl/PglArraySym.h"
 #include "pgl/IpsToNames.h"
+#include "pgl/PglSemx.h"
 
 
 static
@@ -43,6 +44,9 @@ String ipToNameWithMacros(const TokenLoc &loc, const NetAddr &ip, const String &
 
 	static const String ip_macro("${dashed_ip}");
 	String name = ExpandMacro(dname, ip_macro, buf);
+
+	static const String worker_id_macro("${worker}");
+	name = ExpandMacro(name, worker_id_macro, PglSemx::WorkerIdStr());
 
 	static const String port_macro("${port}");
 	if (ip.port() >= 0) {

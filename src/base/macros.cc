@@ -12,14 +12,15 @@
 // Simple macro expansion.
 // Replaces all occurences of @macro@ in @str@ with @replacement@ and returns the
 // resulting string.
-// Note: @macro@ should begin with '$'.
+// Note: @macro@ should begin with '$' or '%'.
 String ExpandMacro(const String &str, const String &macro, const String &replacement) {
-	Assert(macro && macro[0] == '$');
+	const char startMacro = macro ? macro[0] : '\0';
+	Assert(startMacro == '$' || startMacro == '%');
 	const Area m(Area::Create(macro.cstr()));
 
 	// a quick check before we start doing expensive preparations
 	int searchStart = str.len() >= m.size() ?
-		str.find('$', 0) : String::npos;
+		str.find(startMacro, 0) : String::npos;
 	if (searchStart == String::npos) // no macros
 		return str;
 

@@ -26,6 +26,7 @@ class ErrorRec;
 class ErrorStat;
 class StatTable;
 class XmlTable;
+class XmlTag;
 class BlobDb;
 class Stex;
 
@@ -35,7 +36,6 @@ class Stex;
 // manages info about all processes that belong to one side
 class SideInfo: public SomeInfo {
 	public:
-		static void CompileEmptyStats(BlobDb &db, const Scope &scope);
 		static void Configure();
 
 	public:
@@ -48,10 +48,10 @@ class SideInfo: public SomeInfo {
 		const String &benchmarkVersion() const;
 		const String &pglCfg() const;
 		Time startTime() const;
-		int repCount(const Scope &scope) const;
-		int hitCount(const Scope &scope) const;
-		int offeredHitCount(const Scope &scope) const;
-		int uselessProxyValidationCount(const Scope &scope) const;
+		Counter repCount(const Scope &scope) const;
+		Counter hitCount(const Scope &scope) const;
+		Counter offeredHitCount(const Scope &scope) const;
+		Counter uselessProxyValidationCount(const Scope &scope) const;
 		BigSize repVolume(const Scope &scope) const;
 		BigSize hitVolume(const Scope &scope) const;
 		BigSize offeredHitVolume(const Scope &scope) const;
@@ -80,11 +80,19 @@ class SideInfo: public SomeInfo {
 		const StatPhaseRec &execScopeStats() const;
 
 		void checkConsistency();
+		void compileExecScope(const InfoScope *other);
 		void compileStats(BlobDb &db);
+		void cmplLoadFigure(BlobDb &db, XmlTag &blob, const Scope &scope, const bool small = false) const;
+		String cmplRptmFigure(BlobDb &db, const Scope &scope, const bool small = false) const;
 
 	protected:
+		typedef const SslPhaseStat::Stat &(SslPhaseStat::*SslStatsPtr)() const;
+
 		static void AddProtoStexes(ProtoIntvlPtr protoPtr);
 		static void AddStex(Array<Stex*> &stexes, Stex *stex, const Stex *parent);
+
+		void configureExecScope(const char *reqSrc, const Array<String*> &reqPhases);
+		void guessExecScope();
 
 		void addPhase(const PhaseInfo &phase);
 		const PhaseInfo *findPhase(const String &name) const;
@@ -98,12 +106,10 @@ class SideInfo: public SomeInfo {
 		void compileStats(BlobDb &db, const PhaseInfo &phase, const Scope &scope);
 		void cmplLoadBlob(BlobDb &db, const Scope &scope);
 		void cmplLoadTable(BlobDb &db, ReportBlob &parent, const Scope &scope);
-		void cmplLoadFigure(BlobDb &db, ReportBlob &blob, const Scope &scope);
 		void cmpProtoStats(BlobDb &db, const PhaseInfo &phase, ProtoIntvlPtr protoPtr, const Scope &scope);
 		void cmplProtoLoadBlob(BlobDb &db, const PhaseInfo &phase, ProtoIntvlPtr protoPtr, const Scope &scope);
 		void cmplProtoLoadTable(BlobDb &db, ReportBlob &parent, const PhaseInfo &phase, ProtoIntvlPtr protoPtr, const Scope &scope);
 		void cmplProtoLoadFigure(BlobDb &db, ReportBlob &blob, const PhaseInfo &phase, ProtoIntvlPtr protoPtr, const Scope &scope);
-		void cmplRptmFigure(BlobDb &db, const Scope &scope);
 		void cmplRptmVsLoadFigure(BlobDb &db, const PhaseInfo &phase, const Scope &scope);
 
 		void cmplHitRatioTable(BlobDb &db, const Scope &scope);
@@ -136,6 +142,10 @@ class SideInfo: public SomeInfo {
 		void cmplValidationTable(BlobDb &db, const PhaseInfo &s, const Scope &scope);
 		void cmplErrorTable(BlobDb &db, const PhaseInfo &phase, const Scope &scope);
 		void cmplCookieTable(BlobDb &db, const PhaseInfo &phase, const Scope &scope);
+		void cmplSslSessionTable(BlobDb &db, const PhaseInfo &phase, const Scope &scope);
+		void cmplSslSessionStats(BlobDb &db, const PhaseInfo &phase, const Scope &scope, const String &pfx);
+		void cmplSslSessionCommonStats(BlobDb &db, const PhaseInfo &phase, const Scope &scope, const String &pfx, const String &titlePfx, const SslStatsPtr sslStatsPtr);
+		void cmplSslSessionTableRec(BlobDb &db, XmlTable &table, const Scope &scope, const String &pfx, const String &name);
 		void cmplObjectBlobs(BlobDb &db, const PhaseInfo &phase, const Scope &scope, const Array<Stex*> &stexes);
 		void cmplUnseenObjectsBlob(BlobDb &db, const Scope &scope);
 		void cmplSideSum(BlobDb &db);

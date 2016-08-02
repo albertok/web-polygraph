@@ -20,7 +20,7 @@
 void ObjId::reset() {
 	theForeignUrl = String();
 	theWorld.clear();
-	theViserv = theType = theName = -1;
+	theName = theViserv = theType = -1;
 
 	theTarget = -1;
 
@@ -140,7 +140,7 @@ bool ObjId::parse(const char *&buf, const char *end) {
 	if (const char *tid = StrBoundChr(buf, 't', end))
 		isInt(tid + 1, theType, &buf, 16);
 	if (const char *oid = StrBoundChr(buf, '_', end))
-		isInt(oid + 1, theName, &buf, 16);
+		isInt64(oid + 1, theName, &buf, 16);
 
 	// find the end of the Uri
 	while (buf < end && !isspace(*buf))

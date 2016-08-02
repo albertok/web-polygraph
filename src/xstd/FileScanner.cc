@@ -195,8 +195,7 @@ void FileScanner::configure(int fdLimit) {
 	if (fdLimit <= 0)
 		cerr << "error: zero filedescriptor limit?!" << endl << xexit;
 
-	theRegs.stretch(fdLimit);
-	theRegs.count(fdLimit);
+	theRegs.resize(fdLimit);
 	for (int fd = 0; fd < fdLimit; ++fd)
 		theRegs[fd].reset();
 	theForcedReady.stretch(fdLimit);

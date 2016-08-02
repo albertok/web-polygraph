@@ -17,11 +17,11 @@ class StatPhaseGroup;
 class StatPhaseSync {
 	public:
 		StatPhaseSync();
-		~StatPhaseSync();
 
 		int capacity() const { return theIndex.capacity(); }
-		int count() const { return theCount; }
+		Counter count() const { return theCount; }
 
+		int phaseSyncPosMin() const { return thePhaseSyncPosMin; }
 		int phaseSyncPos() const;
 		int waitGroupCount() const;
 
@@ -33,8 +33,8 @@ class StatPhaseSync {
 		bool endSearch(const UniqId &group, int idx, bool &res) const;
 
 	protected:
-		Array<StatPhaseGroup*> theIndex;
-		int theCount;       // entries in the index
+		PtrArray<StatPhaseGroup*> theIndex;
+		Counter theCount; // entries in the index
 
 		int thePhaseSyncPosMin; // min among all known groups
 };

@@ -14,7 +14,8 @@
 XmlNodes::XmlNodes(XmlNode *aParent): theParent(aParent) {
 }
 
-XmlNodes::XmlNodes(const XmlNodes &nodes): theParent(0) {
+XmlNodes::XmlNodes(const XmlNodes &nodes): Array<XmlNode*>(nodes.count()),
+	theParent(0) {
 	for (int i = 0; i < nodes.count(); ++i)
 		*this << *nodes[i];
 }

@@ -143,6 +143,12 @@ const SynSym *GParser::parse() {
 	}
 }
 
+SynSym **GParser::sem_top(int len) {
+	// Cannot use Array::item() method here because idx can be negative.
+	const int idx = theSemStack.count() - len - 1;
+	return &theSemStack[idx];
+}
+
 void GParser::sem_push(SynSym *x) {
 	if (!x)
 		cerr << here << "null symbol on parsing stack :(" << endl << xabort;

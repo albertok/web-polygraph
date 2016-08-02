@@ -9,6 +9,7 @@
 #include "xstd/LibInit.h"
 
 class IOBufState;
+class RndBuf;
 
 class IOBuf {
 	public:
@@ -31,8 +32,10 @@ class IOBuf {
 		void copyContent(IOBuf &buf, Size maxSize) const;
 
 		void append(const char *buf, Size sz);
-		void appendRnd(Size rndOff, Size sz);     // random content
-		Size appendRndUpTo(Size rndOff, Size sz); // random content
+
+		/* appending random content (of the given kind) */
+		void appendRnd(Size rndOff, Size sz, const RndBuf &rb); // exactly sz
+		Size appendRndUpTo(Size rndOff, Size sz, const RndBuf &rb); // up to sz
 
 		void appended(Size sz) { theInOff += sz; Assert(theInOff <= theCapacity); if (!theBuf) unzip(); }
 		void consumed(Size sz) { theOutOff += sz; if (theOutOff == theInOff) reset(); else Assert(theOutOff < theInOff); }
@@ -45,7 +48,7 @@ class IOBuf {
 
 		// used by appendRnd* methods and end users
 		static Size RandomOffset(Size seed, Size off);
-		static void RandomFill(ostream &os, Size rndOff, Size sz);
+		static void RandomFill(ostream &os, Size rndOff, Size sz, const RndBuf &rndBuf);
 
 	protected:
 		void zip();
@@ -82,6 +85,12 @@ class IOBufState {
 		Size theOutOff;
 		Size theInOff;
 };
+
+
+// two kinds of random content are available
+const RndBuf &RndText(); // an ASCII subset
+const RndBuf &RndBinary(); // nearly all possible characters; includes RndText
+
 
 LIB_INITIALIZER(IOBufInit)
 

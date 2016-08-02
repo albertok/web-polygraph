@@ -13,7 +13,7 @@
 
 void OptGrp::share(OptGrp *other) {
 	Assert(other);
-	for (int i = 0; i < theCount; ++i)
+	for (int i = 0; i < count(); ++i)
 		other->append(item(i));
 }
 
@@ -38,7 +38,7 @@ Opt::Opt(OptGrp *aGrp, const char *aName, const char *aDescr):
 Opt::~Opt() {
 }
 
-const bool Opt::set(const String &name, const String &val) {
+bool Opt::set(const String &name, const String &val) {
 	isSet = true;
-	return parse(name, val);
+	return parse(name, theGrp->ExpandMacros(*this, val));
 }

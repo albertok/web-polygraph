@@ -45,6 +45,11 @@ void InfoScope::name(const String &aName) {
 	theName = aName;
 }
 
+void InfoScope::rename(const String &aName) {
+	theName = String();
+	name(aName);
+}
+
 String InfoScope::name() const {
 	return theName ? theName : image();
 }
@@ -82,7 +87,12 @@ InfoScope InfoScope::onePhase(const String &name) const {
 }
 
 void InfoScope::addSide(const String &name) {
-	theSides->add(name);
+	// we need to keep sides ordered because hasScope() and such use image()
+	// equality tests while some code adds sides in random order
+	if (name == "client")
+		theSides->addFront(name);
+	else
+		theSides->add(name);
 }
 
 void InfoScope::addPhase(const String &name) {
@@ -111,6 +121,7 @@ bool InfoScope::hasPhase(const String &name) const {
 void InfoScope::copy(const InfoScope &s) {
 	if (s.theSides != theSides && s.thePhases != thePhases) {
 		Assert(!*this);
+		reason = s.reason;
 		theName = s.theName;
 		theSides->copy(*s.theSides);
 		thePhases->copy(*s.thePhases);
@@ -118,6 +129,8 @@ void InfoScope::copy(const InfoScope &s) {
 }
 
 void InfoScope::reset() {
+	reason = String();
+	theName = String();
 	theSides->reset();
 	thePhases->reset();
 }

@@ -10,18 +10,21 @@
 #include "xstd/Clock.h"
 #include "base/ObjId.h"
 #include "base/RndPermut.h"
-#include "base/Progress.h"
 #include "base/polyLogCats.h"
 #include "base/polyLogTags.h"
 #include "runtime/Agent.h"
+#include "runtime/CompoundXactInfo.h"
 #include "runtime/ErrorMgr.h"
 #include "runtime/HostMap.h"
+#include "runtime/ObjUniverse.h"
 #include "runtime/SharedOpts.h"
+#include "runtime/StatPhaseSync.h"
 #include "runtime/PolyOLog.h"
-#include "runtime/PubWorld.h"
+#include "runtime/HttpPrinter.h"
 #include "runtime/httpHdrs.h"
 #include "runtime/httpText.h"
 #include "runtime/Xaction.h"
+#include "runtime/BcastSender.h"
 #include "runtime/polyBcastChannels.h"
 #include "runtime/polyErrors.h"
 #include "runtime/globals.h"
@@ -31,7 +34,7 @@
 
 XactLiveQueue TheLiveXacts;
 int Xaction::TheSampleDebt = 0;
-int Xaction::TheCount = 0;
+Counter Xaction::TheCount = 0;
 
 
 void Xaction::reset() {
@@ -132,20 +135,12 @@ void Xaction::finish(Error err) {
 }
 
 void Xaction::countSuccess() {
-	if (socksActive())
-		++TheProgress.socks.successes;
-	if (sslActive())
-		++TheProgress.ssl.successes;
-	if (protoStat) // XXX: assume FTP, wont work if add others
-		++TheProgress.ftp.successes;
-	TheProgress.success();
 	Broadcast(TheXactEndChannel, this);
 }
 
 void Xaction::countFailure() {
 	// note: may be called by an Agent before the transaction started
 	// if, for example, launch failed
-	TheProgress.failure();
 	Broadcast(TheXactErrChannel, this);
 }
 
@@ -224,7 +219,7 @@ void Xaction::logStats(OLog &ol) const {
 	ol
 		<< theId << theConn->seqId()
 		<< theStartTime
-		<< (int)theEnqueTime.msec()
+		<< (int)queueTime().msec()
 		<< (int)theLifeTime.msec()
 		<< theOid
 		<< theRepSize
@@ -262,6 +257,12 @@ void Xaction::printMsg(const char *buf, Size maxSize) const {
 
 	if (theId)
 		cout << " xact: " << theId;
+
+	if (theEnqueTime > 0)
+		cout << " enque: " << theEnqueTime;
+
+	if (theStartTime > 0)
+		cout << " start: " << theStartTime;
 
 	cout << endl;
 
@@ -314,24 +315,44 @@ void Xaction::printXactLogEntry() const {
 }
 
 // build and put checksum header field
-void Xaction::putChecksum(ContentCfg &ccfg, const ObjId &oid, ostream &os) const {
+void Xaction::putChecksum(ContentCfg &ccfg, const ObjId &oid, HttpPrinter &hp) const {
+	if (!hp.putHeader(hfpContMd5))
+		return;
+
 	const xstd::Checksum sum(ccfg.calcChecksum(oid));
-
-	os << hfpContMd5;
-	PrintBase64(os, sum.image(), sum.size());
-	os << crlf;
+	PrintBase64(hp, sum.image(), sum.size()) << crlf;
 }
 
-void Xaction::updatePubWorld(const ObjWorld &newSlice) {
-	PubWorld &pubWorld = *TheHostMap->findPubWorldAt(theOid.viserv());
-	int sliceIdx;
-	if (pubWorld.find(newSlice.id(), sliceIdx))
-		pubWorld.sliceAt(sliceIdx).update(newSlice);
-	else
-		pubWorld.add(newSlice);
+void Xaction::updateUniverse(const ObjWorld &newWorld) {
+	ObjUniverse &universe = *TheHostMap->findUniverseAt(theOid.viserv());
+	universe.update(newWorld);
 }
 
-bool Xaction::authing() const {
+// report our readiness to change phase
+void Xaction::putPhaseSyncPos(HttpPrinter &hp, const int pos) const {
+	if (hp.putHeader(hfpXPhaseSyncPos))
+		hp << pos << crlf;
+}
+
+// sync phases
+void Xaction::doPhaseSync(const MsgHdr &hdr) const {
+	if (hdr.thePhaseSyncPos >= 0 && hdr.theGroupId) {
+		TheStatPhaseSync.notePhaseSync(hdr.theGroupId,
+			hdr.thePhaseSyncPos);
+	}
+}
+
+bool Xaction::preliminary() const {
+	if (theOid.connect())
+		return true;
+
+	if (const CompoundXactInfo *info = partOf())
+		return !info->completed();
+
+	return false; // not a part of any compound transaction (yet?)
+}
+
+bool Xaction::authing() const { // XXX: review uses; final errors are not -ING!
 	return httpStatus() == RepHdr::sc401_Unauthorized ||
 		httpStatus() == RepHdr::sc403_Forbidden ||
 		httpStatus() == RepHdr::sc407_ProxyAuthRequired ||

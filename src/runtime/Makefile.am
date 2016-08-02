@@ -19,6 +19,10 @@ libruntime_a_SOURCES = \
 	HttpFindCrlf.cc \
 	HttpCookies.h \
 	HttpCookies.cc \
+	MimeHeadersCfg.h \
+	MimeHeadersCfg.cc \
+	HttpPrinter.h \
+	HttpPrinter.cc \
 	httpHdrs.h \
 	httpHdrs.cc \
 	httpText.h \
@@ -76,6 +80,10 @@ libruntime_a_SOURCES = \
 	TransFactor.cc \
 	SharedOpts.h \
 	SharedOpts.cc \
+	ObjGalaxy.cc \
+	ObjGalaxy.h \
+	ObjUniverse.cc \
+	ObjUniverse.h \
 	ObjWorld.h \
 	ObjWorld.cc \
 	HotSet.h \
@@ -127,8 +135,9 @@ libagent_a_SOURCES = \
 	ConnMgr.h \
 	ConnMgr.cc \
 	\
-	PubWorld.h \
-	PubWorld.cc \
+	ProxyCfg.h \
+	ProxyCfg.cc \
+	\
 	PopModel.h \
 	PopModel.cc \
 	PersistWorkSetMgr.h \
@@ -136,13 +145,13 @@ libagent_a_SOURCES = \
 	\
 	Script.h \
 	Script.cc \
-	DutState.h \
-	DutState.cc \
 	DutWatchdog.h \
 	DutWatchdog.cc \
 	Rptmstat.h \
 	Rptmstat.cc \
 	\
+	BcastSender.h \
+	BcastSender.cc \
 	StatIntvl.h \
 	StatIntvl.cc \
 	StatCycle.h \

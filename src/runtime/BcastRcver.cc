@@ -26,6 +26,7 @@ void BcastRcver::noteAgentEvent(BcastChannel *, const Agent *) { Assert(false); 
 void BcastRcver::noteClientEvent(BcastChannel *, const Client *) { Assert(false); }
 void BcastRcver::noteConnEvent(BcastChannel *, const Connection *) { Assert(false); }
 void BcastRcver::noteXactEvent(BcastChannel *, const Xaction *) { Assert(false); }
+void BcastRcver::noteCompoundXactEvent(BcastChannel *, const CompoundXactInfo *) { Assert(false); }
 void BcastRcver::noteIcpXactEvent(BcastChannel *, const IcpXaction *) { Assert(false); }
 void BcastRcver::notePageEvent(BcastChannel *, const PageInfo *) { Assert(false); }
 void BcastRcver::noteMsgStrEvent(BcastChannel *, const char *) { Assert(false); }

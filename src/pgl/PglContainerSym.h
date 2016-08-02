@@ -8,6 +8,7 @@
 
 #include "pgl/PglExprSym.h"
 
+class RndGen;
 class StringArray;
 
 // one expression can represent more than one SynSym,
@@ -38,7 +39,7 @@ class ContainerSym: public ExpressionSym {
 
 		virtual bool isA(const String &type) const;
 
-		virtual void forEach(Visitor &v) const = 0;
+		virtual void forEach(Visitor &v, RndGen *const rng = 0) const = 0;
 
 		virtual ExpressionSym *bnOper(const Oper &op, const SynSym &exp) const;
 };

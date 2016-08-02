@@ -6,17 +6,21 @@
 #include "pgl/pgl.h"
 
 #include "xstd/String.h"
+#include "xstd/TblDistr.h"
 #include "pgl/PglRec.h"
 #include "pgl/PglArraySym.h"
 #include "pgl/PglNetAddrSym.h"
 #include "pgl/HostsBasedSym.h"
+#include "pgl/SslWrapSym.h"
 
 
 String HostsBasedSym::TheType = "HostsBased";
 
+static String strSslWrapArr = "SslWrap[]";
 static String strAddrArr = "addr[]";
 static String strAddresses = "addresses";
 static String strHosts = "hosts";
+static String strSslWraps = "ssl_wraps";
 
 
 HostsBasedSym::HostsBasedSym(const String &aType): RecSym(aType, new PglRec) {
@@ -24,6 +28,7 @@ HostsBasedSym::HostsBasedSym(const String &aType): RecSym(aType, new PglRec) {
 	// change class name when the field name has changed 
 	// to avoid renaming a bunhc of files
 	theRec->bAdd(strAddrArr, strAddresses, 0);
+	theRec->bAdd(strSslWrapArr, strSslWraps, 0);
 }
 
 HostsBasedSym::HostsBasedSym(const String &aType, PglRec *aRec): RecSym(aType, aRec) {
@@ -64,4 +69,18 @@ bool HostsBasedSym::addresses(ArraySym &addrs) const {
 		return true;
 	}
 	return false;
+}
+
+bool HostsBasedSym::sslWraps(Array<SslWrapSym*> &syms, RndDistr *&sel) const {
+	SynSymTblItem *wi = 0;
+	Assert(theRec->find(strSslWraps, wi));
+	if (!wi->sym())
+		return false; // undefined
+
+	ArraySym &a = (ArraySym&)wi->sym()->cast(ArraySym::TheType);
+	a.exportA(syms);
+	Array<double> probs;
+	a.copyProbs(probs);
+	sel = TblDistr::FromDistrTable(type() + "-" + strSslWraps, probs);
+	return true;
 }

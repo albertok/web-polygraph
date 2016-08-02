@@ -37,7 +37,7 @@ class ObjId {
 		int viserv() const { return theViserv; }
 		int target() const { return theTarget; }
 		int type() const { return theType; }
-		int name() const { return theName; }
+		Counter name() const { return theName; }
 		int scheme() const { return theScheme; }
 		const String &foreignUrl() const { return theForeignUrl; }
 
@@ -110,11 +110,11 @@ class ObjId {
 		void viserv(int aViserv) { theViserv = aViserv; }
 		void target(int aTarget) { theTarget = aTarget; }
 		void type(int aType) { theType = aType; }
-		void name(int aName) { theName = aName; }
+		void name(const Counter aName) { theName = aName; }
 		void scheme(int aScheme) { theScheme = aScheme; }
 
 		UniqId &world() { return theWorld; }
-		int name() { return theName; }
+		Counter name() { return theName; }
 		int type() { return theType; }
 
 		int hash() const;
@@ -128,8 +128,8 @@ class ObjId {
 		void store(OLog &ol) const;
 		void load(ILog &il);
 
-		unsigned int prefix() const { return thePrefix; }
-		void prefix(const unsigned int aPrefix) { thePrefix = aPrefix; }
+		Counter prefix() const { return thePrefix; }
+		void prefix(const Counter aPrefix) { thePrefix = aPrefix; }
 		bool calcPublic(const double prob);
 
 		bool parse(const char *&buf, const char *end);
@@ -143,11 +143,11 @@ class ObjId {
 		UniqId theWorld;   // world id
 		int theViserv;     // visible server (index to Viservs)
 		int theTarget;     // actual server (index to HostMap)
-		int theName;       // object "name"
+		Counter theName;   // object "name"
 		int theType;       // object content type
 		int theScheme;     // protocol scheme (Agent::Protocol)
 
-		unsigned int thePrefix; // dynamic DNS prefix
+		Counter thePrefix; // dynamic DNS prefix
 
 		unsigned theFlags;
 };

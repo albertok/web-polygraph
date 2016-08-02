@@ -21,9 +21,9 @@ class ErrorRec: public Error {
 		void reset();
 
 		bool needReport() const;
-		int count() const { return theCount; }
+		Counter count() const { return theCount; }
 		
-		void noteError(int count = 1) { theCount += count; }
+		void noteError(const Counter count = 1) { theCount += count; }
 		void noteReport(const Time &tout);
 
 		void store(OLog &ol) const;
@@ -36,9 +36,9 @@ class ErrorRec: public Error {
 		ostream &print(ostream &os) const { return Error::print(os, theText.cstr()); }
 
 	protected:
-		int theCount;  // number of occurencies
+		Counter theCount; // number of occurencies
 
-		int theRepCount; // report when count is reached
+		Counter theRepCount; // report when count is reached
 		Time theRepTime; // report when time is reached
 
 		String theText; // error text
